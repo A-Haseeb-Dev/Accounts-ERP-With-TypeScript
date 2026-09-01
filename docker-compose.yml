@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: has-erp-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: has_erp
+      POSTGRES_PASSWORD: has_erp_pass
+      POSTGRES_DB: has_erp
+    ports:
+      - "5432:5432"
+    volumes:
+      - has_erp_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U has_erp -d has_erp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: has-erp-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - has_erp_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  has_erp_pgdata:
+  has_erp_redisdata:

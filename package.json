@@ -1,0 +1,48 @@
+{
+  "name": "has-erp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HAS ERP - Modern web-based ERP / inventory / sales / accounting management system",
+  "packageManager": "pnpm@10.34.4",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "argon2",
+      "esbuild",
+      "prisma"
+    ]
+  },
+  "scripts": {
+    "dev": "pnpm --parallel -r run dev",
+    "dev:web": "pnpm --filter @has-erp/web run dev",
+    "dev:api": "pnpm --filter @has-erp/api run dev",
+    "build": "pnpm -r run build",
+    "build:web": "pnpm --filter @has-erp/web run build",
+    "build:api": "pnpm --filter @has-erp/api run build",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "prisma": "^5.22.0"
+  },
+  "prisma": {
+    "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
+  },
+  "devDependencies": {
+    "@types/argon2": "^0.15.4",
+    "argon2": "^0.41.1",
+    "ts-node": "^10.9.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,15 @@
+# HAS ERP
+node_modules/
+dist/
+.next/
+coverage/
+*.log
+.env
+.env.local
+.env.*.local
+.DS_Store
+.vscode/
+.idea/
+prisma/*.db
+*.tsbuildinfo
+/tmp
