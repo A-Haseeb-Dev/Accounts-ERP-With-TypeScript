@@ -10,6 +10,7 @@ import {
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { filterByPermissions, NAV_ITEMS } from '@/lib/navigation';
@@ -67,6 +68,15 @@ export function Sidebar({
           </Link>
 
           <div className="flex items-center gap-1">
+            {/* Mobile close — sits top-right of the sidebar */}
+            <button
+              onClick={() => onMobileToggle(false)}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white md:hidden"
+              aria-label="Close menu"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
             {/* Desktop/tablet collapse toggle */}
             <button
               onClick={onToggle}
