@@ -18,6 +18,7 @@ import {
   ACCOUNT_TYPE_LABELS,
   nextHeadCode,
   nextSubHeadCode,
+  regenerateHeadCode,
   typeForLetter,
 } from '@/lib/accounts';
 
@@ -113,7 +114,7 @@ export default function ChartOfAccountsPage() {
     setHeadSaving(true);
     try {
       const code = editingHead
-        ? editingHead.code
+        ? regenerateHeadCode(editingHead.code, headForm.type, heads.map((h) => h.code))
         : nextHeadCode(headForm.type, heads.map((h) => h.code));
       const payload: Record<string, unknown> = {
         code,
@@ -122,7 +123,18 @@ export default function ChartOfAccountsPage() {
         status: 'active',
       };
       if (editingHead) {
+        const oldCode = editingHead.code;
         await apiFetch(`/head-accounts/${editingHead.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+        // Re-prefix sub head codes when the head code changed (e.g. 01 -> A1).
+        if (code !== oldCode) {
+          const subs = grouped[editingHead.id] ?? [];
+          for (const sub of subs) {
+            const newSubCode = `${code}-${suffixOf(sub.code, 3)}`;
+            if (newSubCode !== sub.code) {
+              await apiFetch(`/sub-heads/${sub.id}`, { method: 'PATCH', body: JSON.stringify({ code: newSubCode }) });
+            }
+          }
+        }
       } else {
         await apiFetch('/head-accounts', { method: 'POST', body: JSON.stringify(payload) });
       }
@@ -187,7 +199,9 @@ export default function ChartOfAccountsPage() {
     }
   };
 
-  const previewCode = editingHead ? editingHead.code : nextHeadCode(headForm.type, heads.map((h) => h.code));
+  const previewCode = editingHead
+    ? regenerateHeadCode(editingHead.code, headForm.type, heads.map((h) => h.code))
+    : nextHeadCode(headForm.type, heads.map((h) => h.code));
   const subPreviewCode =
     editingSub && subParentHead ? editingSub.code : subParentHead ? nextSubHeadCode(subParentHead.code, (grouped[subParentHead.id] ?? []).map((s) => s.code)) : '';
 
@@ -280,7 +294,7 @@ export default function ChartOfAccountsPage() {
             <Input value={headForm.name} onChange={(e) => setHeadForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Assets" required />
           </Field>
           <Field label="Type" required hint="Determines the code letter: A (Assets), L (Liabilities), E (Expenses), R (Revenue), P (Proprietorship).">
-            <Select value={headForm.type} onChange={(e) => setHeadForm((f) => ({ ...f, type: e.target.value }))} disabled={!!editingHead}>
+            <Select value={headForm.type} onChange={(e) => setHeadForm((f) => ({ ...f, type: e.target.value }))}>
               {ACCOUNT_TYPES.map((t) => <option key={t} value={t}>{ACCOUNT_TYPE_LABELS[t]}</option>)}
             </Select>
           </Field>
@@ -346,6 +360,14 @@ export default function ChartOfAccountsPage() {
 
 function letterOf(code: string): string {
   return (code.trim().split('-')[0] ?? 'A').charAt(0).toUpperCase();
+}
+
+function suffixOf(code: string, pad: number): string {
+  const parts = code.trim().split('-');
+  const last = parts[parts.length - 1].trim();
+  const num = parseInt(last, 10);
+  if (Number.isNaN(num)) return last.padStart(pad, '0');
+  return String(num).padStart(pad, '0');
 }
 
 function toneForType(type: string): 'teal' | 'amber' | 'blue' | 'green' | 'red' {

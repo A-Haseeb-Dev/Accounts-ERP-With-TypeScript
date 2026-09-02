@@ -84,3 +84,13 @@ export function headCodeBase(code: string): string {
   // e.g. "A1-001" -> "A1"
   return code.trim().split('-')[0] ?? code.trim();
 }
+
+// For editing a head, derive the code from the (possibly changed) type/letter.
+// Keeps the existing numeric suffix when the letter is unchanged; otherwise
+// uses the next available number for the new letter.
+export function regenerateHeadCode(oldCode: string, type: string, existingCodes: string[]): string {
+  const letter = letterForType(type);
+  const oldLetter = headCodeBase(oldCode).charAt(0).toUpperCase();
+  if (letter === oldLetter) return headCodeBase(oldCode);
+  return nextHeadCode(type, existingCodes);
+}
