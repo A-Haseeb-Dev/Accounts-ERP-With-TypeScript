@@ -33,8 +33,9 @@ export function Sidebar() {
       )}
 
       <aside
+        aria-label="Sidebar"
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-slate-900 transition-transform lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col bg-slate-900 transition-transform duration-200 lg:static lg:translate-x-0 lg:max-w-none',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
