@@ -3,12 +3,27 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { Building2, ChevronDown, Home, LogOut, Menu, X } from 'lucide-react';
+import {
+  Building2,
+  ChevronDown,
+  Home,
+  LogOut,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  X,
+} from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { filterByPermissions, NAV_ITEMS } from '@/lib/navigation';
 import { cn, initials } from '@/lib/utils';
 
-export function Sidebar() {
+export function Sidebar({
+  collapsed,
+  onToggle,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
   const { user, logout, can } = useAuth();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -35,25 +50,51 @@ export function Sidebar() {
       <aside
         aria-label="Sidebar"
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col bg-slate-900 transition-transform duration-200 lg:static lg:translate-x-0 lg:max-w-none',
-          mobileOpen ? 'translate-x-0' : '-translate-x-full',
+          'fixed inset-y-0 left-0 z-50 flex flex-col bg-slate-900 transition-all duration-200 lg:relative max-w-[85vw]',
+          collapsed ? 'lg:w-16' : 'w-72',
+          mobileOpen ? 'w-72 translate-x-0 max-w-[85vw]' : '-translate-x-full lg:translate-x-0',
         )}
       >
-        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-600 text-white">
-              <Building2 className="h-5 w-5" />
+        {/* Header */}
+        <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-4 py-4 lg:px-3">
+          {collapsed ? (
+            <Link href="/" onClick={() => setMobileOpen(false)} className="mx-auto block">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-600 text-white">
+                <Building2 className="h-5 w-5" />
+              </div>
+            </Link>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-600 text-white">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-white">HAS ERP</p>
+                <p className="text-[11px] text-slate-500">Management System</p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-bold text-white">HAS ERP</p>
-              <p className="text-[11px] text-slate-500">Management System</p>
-            </div>
-          </div>
-          <button onClick={() => setMobileOpen(false)} className="text-slate-500 lg:hidden">
+          )}
+
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="text-slate-500 hover:text-white lg:hidden"
+            aria-label="Close menu"
+          >
             <X className="h-5 w-5" />
+          </button>
+
+          {/* Desktop collapse toggle */}
+          <button
+            onClick={onToggle}
+            className="hidden rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white lg:block"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
         </div>
 
+        {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <Link
             href="/"
@@ -61,10 +102,12 @@ export function Sidebar() {
             className={cn(
               'mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-white',
               pathname === '/' && 'bg-slate-800 text-white',
+              collapsed && 'lg:justify-center lg:px-0',
             )}
+            title={collapsed ? 'Dashboard' : undefined}
           >
-            <Home className="h-4 w-4" />
-            Dashboard
+            <Home className="h-4 w-4 shrink-0" />
+            {!collapsed && <span>Dashboard</span>}
           </Link>
 
           {topLevel.map((group) => (
@@ -75,24 +118,34 @@ export function Sidebar() {
               children={group.children ?? []}
               pathname={pathname}
               can={can}
+              collapsed={collapsed}
               onNavigate={() => setMobileOpen(false)}
             />
           ))}
         </nav>
 
-        <div className="border-t border-slate-800 p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white">
-              {initials(user?.fullName)}
+        {/* User footer */}
+        <div className="border-t border-slate-800 p-4 lg:px-3">
+          {collapsed ? (
+            <div className="flex justify-center">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white" title={user?.fullName}>
+                {initials(user?.fullName)}
+              </div>
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-white">{user?.fullName}</p>
-              <p className="truncate text-[11px] text-slate-500">@{user?.username}</p>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white">
+                {initials(user?.fullName)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-white">{user?.fullName}</p>
+                <p className="truncate text-[11px] text-slate-500">@{user?.username}</p>
+              </div>
+              <button onClick={() => logout()} title="Sign out" className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white">
+                <LogOut className="h-4 w-4" />
+              </button>
             </div>
-            <button onClick={() => logout()} title="Sign out" className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white">
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
+          )}
         </div>
       </aside>
     </>
@@ -105,6 +158,7 @@ function NavGroup({
   children,
   pathname,
   can,
+  collapsed,
   onNavigate,
 }: {
   label: string;
@@ -112,10 +166,31 @@ function NavGroup({
   children: { label: string; href: string; permission?: string }[];
   pathname: string;
   can: (p: string) => boolean;
+  collapsed: boolean;
   onNavigate: () => void;
 }) {
   const [open, setOpen] = useState(true);
   const anyActive = children.some((c) => pathname.startsWith(c.href));
+
+  // When collapsed on desktop, render as a single icon link to the first child
+  // (a flyout is complex; navigating or expanding is handled by re-expanding sidebar).
+  if (collapsed) {
+    const first = children.find((c) => !c.permission || can(c.permission));
+    if (!first) return null;
+    return (
+      <Link
+        href={first.href}
+        onClick={onNavigate}
+        className={cn(
+          'mb-1 flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-slate-400 hover:bg-slate-800 hover:text-white',
+          pathname.startsWith(first.href) && 'bg-slate-800 text-teal-400',
+        )}
+        title={first.label}
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+      </Link>
+    );
+  }
 
   return (
     <div className="mb-0.5">
