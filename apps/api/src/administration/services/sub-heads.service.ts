@@ -20,6 +20,11 @@ export class SubHeadsService {
     });
     if (existing) throw ApiException.duplicateCode('Sub head code');
 
+    const dupName = await this.prisma.subHead.findFirst({
+      where: { headAccountId: dto.headAccountId, name: { equals: dto.name, mode: 'insensitive' } },
+    });
+    if (dupName) throw ApiException.conflict(`A sub head named "${dto.name}" already exists under this head`);
+
     const item = await this.prisma.subHead.create({
       data: {
         code: dto.code,
@@ -79,10 +84,23 @@ export class SubHeadsService {
   }
 
   async update(id: string, dto: UpdateSubHeadDto, actorId?: string) {
-    await this.ensureExists(id);
+    const existing = await this.ensureExists(id);
+    const parentId = dto.headAccountId ?? existing.headAccountId;
     if (dto.headAccountId) {
       const head = await this.prisma.headAccount.findUnique({ where: { id: dto.headAccountId } });
       if (!head) throw ApiException.notFound('Head account');
+    }
+    if (dto.code) {
+      const dup = await this.prisma.subHead.findFirst({
+        where: { code: dto.code, headAccountId: parentId, id: { not: id } },
+      });
+      if (dup) throw ApiException.duplicateCode('Sub head code');
+    }
+    if (dto.name) {
+      const dupName = await this.prisma.subHead.findFirst({
+        where: { headAccountId: parentId, name: { equals: dto.name, mode: 'insensitive' }, id: { not: id } },
+      });
+      if (dupName) throw ApiException.conflict(`A sub head named "${dto.name}" already exists under this head`);
     }
     const item = await this.prisma.subHead.update({ where: { id }, data: dto });
     this.audit.record({

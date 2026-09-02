@@ -15,6 +15,11 @@ export class HeadAccountsService {
     const existing = await this.prisma.headAccount.findUnique({ where: { code: dto.code } });
     if (existing) throw ApiException.duplicateCode('Account code');
 
+    const dupName = await this.prisma.headAccount.findFirst({
+      where: { name: { equals: dto.name, mode: 'insensitive' } },
+    });
+    if (dupName) throw ApiException.conflict(`A head account named "${dto.name}" already exists`);
+
     const item = await this.prisma.headAccount.create({
       data: { code: dto.code, name: dto.name, description: dto.description ?? null, status: dto.status ?? 'active' },
     });
@@ -63,6 +68,16 @@ export class HeadAccountsService {
 
   async update(id: string, dto: UpdateHeadAccountDto, actorId?: string) {
     await this.ensureExists(id);
+    if (dto.code) {
+      const dup = await this.prisma.headAccount.findFirst({ where: { code: dto.code, id: { not: id } } });
+      if (dup) throw ApiException.duplicateCode('Account code');
+    }
+    if (dto.name) {
+      const dupName = await this.prisma.headAccount.findFirst({
+        where: { name: { equals: dto.name, mode: 'insensitive' }, id: { not: id } },
+      });
+      if (dupName) throw ApiException.conflict(`A head account named "${dto.name}" already exists`);
+    }
     const item = await this.prisma.headAccount.update({ where: { id }, data: dto });
     this.audit.record({
       userId: actorId, action: 'UPDATE', module: 'HEAD_ACCOUNT', entity: 'HeadAccount',
