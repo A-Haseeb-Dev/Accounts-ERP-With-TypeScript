@@ -1,24 +1,24 @@
 // Chart of Accounts code scheme
 // Head code starts with a type letter: A (Assets), L (Liabilities),
-// E (Equity), R (Revenue), P (Expenses). The head code is the letter plus a
-// 1-digit sequence, e.g. A1. A sub head extends it with a 3-digit number,
-// e.g. A1-001. A leaf (main) account extends with a 4-digit serial,
+// E (Expenses), R (Revenue), P (Proprietorship). The head code is the letter
+// plus a 1-digit sequence, e.g. A1. A sub head extends it with a 3-digit
+// number, e.g. A1-001. A leaf (main) account extends with a 4-digit serial,
 // e.g. A1-001-0001.
 
 export const ACCOUNT_LETTERS: Record<string, string> = {
   ASSET: 'A',
   LIABILITY: 'L',
-  EQUITY: 'E',
+  EQUITY: 'P',
   REVENUE: 'R',
-  EXPENSE: 'P',
+  EXPENSE: 'E',
 };
 
 export const LETTER_TO_TYPE: Record<string, string> = {
   A: 'ASSET',
   L: 'LIABILITY',
-  E: 'EQUITY',
+  E: 'EXPENSE',
   R: 'REVENUE',
-  P: 'EXPENSE',
+  P: 'EQUITY',
 };
 
 export const ACCOUNT_TYPES = ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'] as const;
@@ -26,7 +26,7 @@ export const ACCOUNT_TYPES = ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENS
 export const ACCOUNT_TYPE_LABELS: Record<string, string> = {
   ASSET: 'Assets',
   LIABILITY: 'Liabilities',
-  EQUITY: 'Equity',
+  EQUITY: 'Proprietorship',
   REVENUE: 'Revenue',
   EXPENSE: 'Expenses',
 };

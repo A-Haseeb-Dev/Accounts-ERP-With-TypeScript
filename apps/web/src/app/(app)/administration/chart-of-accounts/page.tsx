@@ -203,7 +203,7 @@ export default function ChartOfAccountsPage() {
         <div className="border-b border-slate-100 px-4 py-4">
           <p className="text-xs text-slate-500">
             Code scheme: <Badge tone="teal">A1</Badge> head · <Badge tone="teal">A1-001</Badge> sub head ·{' '}
-            <Badge tone="teal">A1-001-0001</Badge> main account. A=Assets, L=Liabilities, E=Equity, R=Revenue, P=Expenses.
+            <Badge tone="teal">A1-001-0001</Badge> main account. A=Assets, E=Expenses, L=Liabilities, R=Revenue, P=Proprietorship.
           </p>
         </div>
 
