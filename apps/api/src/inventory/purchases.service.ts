@@ -6,6 +6,7 @@ import { InventoryService } from '../common/services/inventory.service';
 import { AccountingService, VoucherEntryInput } from '../common/services/accounting.service';
 import { DefaultAccountsService } from '../common/services/default-accounts.service';
 import { ApiException } from '../common/exceptions/api.exception';
+import { Prisma } from '@prisma/client';
 import { CreatePurchaseDto } from './dto/inventory.dto';
 
 @Injectable()
@@ -75,6 +76,12 @@ export class PurchasesService {
         return header;
       });
       return purchase;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw ApiException.duplicateCode(`Purchase number ${number} is already taken.`);
+      }
+      throw error;
+    }
   }
 
   async post(id: string, actorId?: string) {
