@@ -94,18 +94,41 @@ export class SubHeadsService {
 
   async remove(id: string, actorId?: string) {
     const item = await this.ensureExists(id);
-    const count = await this.prisma.mainAccount.count({ where: { subHeadId: id } });
-    if (count > 0) {
+
+    const accounts = await this.prisma.mainAccount.findMany({
+      where: { subHeadId: id },
+      include: { _count: { select: { voucherEntries: true, customers: true, suppliers: true } } },
+    });
+
+    const deletableAccountIds: string[] = [];
+    const blockers: string[] = [];
+    for (const acc of accounts) {
+      const linked = acc._count.voucherEntries + acc._count.customers + acc._count.suppliers;
+      if (linked === 0) {
+        deletableAccountIds.push(acc.id);
+      } else {
+        blockers.push(`${acc.code} · ${acc.name} (${linked} link${linked === 1 ? '' : 's'})`);
+      }
+    }
+
+    if (blockers.length > 0) {
+      await this.prisma.subHead.update({ where: { id }, data: { status: 'inactive' } });
       throw ApiException.invalidTransaction(
-        `Sub head "${item.name}" has ${count} main account(s) and cannot be deleted`,
+        `Sub head "${item.name}" is referenced by main account(s) with activity and cannot be deleted. ` +
+          `Deactivate or remove them first: ${blockers.join('; ')}`,
       );
     }
-    await this.prisma.subHead.update({ where: { id }, data: { status: 'inactive' } });
+
+    if (deletableAccountIds.length > 0) {
+      await this.prisma.mainAccount.deleteMany({ where: { id: { in: deletableAccountIds } } });
+    }
+    await this.prisma.subHead.delete({ where: { id } });
+
     this.audit.record({
-      userId: actorId, action: 'DEACTIVATE', module: 'SUB_HEAD', entity: 'SubHead',
-      entityId: id, message: `Sub head ${item.name} deactivated`,
+      userId: actorId, action: 'DELETE', module: 'SUB_HEAD', entity: 'SubHead',
+      entityId: id, message: `Sub head ${item.name} deleted with ${deletableAccountIds.length} main account(s)`,
     });
-    return { id, status: 'inactive' };
+    return { id, deleted: true };
   }
 
   private async ensureExists(id: string) {

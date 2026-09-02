@@ -73,18 +73,57 @@ export class HeadAccountsService {
 
   async remove(id: string, actorId?: string) {
     const item = await this.ensureExists(id);
-    const subHeadCount = await this.prisma.subHead.count({ where: { headAccountId: id, status: 'active' } });
-    if (subHeadCount > 0) {
+
+    const subHeads = await this.prisma.subHead.findMany({ where: { headAccountId: id } });
+    const blockers: string[] = [];
+    const deletableSubHeadIds: string[] = [];
+
+    for (const sub of subHeads) {
+      const accounts = await this.prisma.mainAccount.findMany({
+        where: { subHeadId: sub.id },
+        include: {
+          _count: { select: { voucherEntries: true, customers: true, suppliers: true } },
+        },
+      });
+
+      const deletableAccountIds: string[] = [];
+      let subBlocked = false;
+      for (const acc of accounts) {
+        const linked = acc._count.voucherEntries + acc._count.customers + acc._count.suppliers;
+        if (linked === 0) {
+          deletableAccountIds.push(acc.id);
+        } else {
+          subBlocked = true;
+          blockers.push(`${acc.code} · ${acc.name} (${linked} link${linked === 1 ? '' : 's'})`);
+        }
+      }
+
+      if (deletableAccountIds.length > 0) {
+        await this.prisma.mainAccount.deleteMany({ where: { id: { in: deletableAccountIds } } });
+      }
+      if (!subBlocked) {
+        deletableSubHeadIds.push(sub.id);
+      }
+    }
+
+    if (blockers.length > 0) {
+      // Preserve the structure (soft-deactivate) but tell the user exactly
+      // which main accounts are preventing deletion.
+      await this.prisma.headAccount.update({ where: { id }, data: { status: 'inactive' } });
       throw ApiException.invalidTransaction(
-        `Head account "${item.name}" has ${subHeadCount} sub head(s) and cannot be deleted`,
+        `Head account "${item.name}" is referenced by main account(s) with activity and cannot be deleted. ` +
+          `Deactivate or remove them first: ${blockers.join('; ')}`,
       );
     }
-    await this.prisma.headAccount.update({ where: { id }, data: { status: 'inactive' } });
+
+    await this.prisma.subHead.deleteMany({ where: { id: { in: deletableSubHeadIds } } });
+    await this.prisma.headAccount.delete({ where: { id } });
+
     this.audit.record({
-      userId: actorId, action: 'DEACTIVATE', module: 'HEAD_ACCOUNT', entity: 'HeadAccount',
-      entityId: id, message: `Head account ${item.name} deactivated`,
+      userId: actorId, action: 'DELETE', module: 'HEAD_ACCOUNT', entity: 'HeadAccount',
+      entityId: id, message: `Head account ${item.name} deleted with ${deletableSubHeadIds.length} sub head(s)`,
     });
-    return { id, status: 'inactive' };
+    return { id, deleted: true };
   }
 
   private async ensureExists(id: string) {
