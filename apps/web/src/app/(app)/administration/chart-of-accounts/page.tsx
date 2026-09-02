@@ -241,8 +241,8 @@ export default function ChartOfAccountsPage() {
                     </div>
                     <Badge tone={toneForType(typeForLetter(letterOf(head.code)))}>{ACCOUNT_TYPE_LABELS[typeForLetter(letterOf(head.code))]}</Badge>
                     <span className="text-xs text-slate-400">{subs.length} sub</span>
-                    <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
-                      <button onClick={() => openNewSub(head)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-teal-700" title="New Sub Head"><Plus className="h-4 w-4" /></button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openNewSub(head)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-teal-50 hover:text-teal-700" title="Add Sub Head"><Plus className="h-3.5 w-3.5" /> Sub</button>
                       <button onClick={() => openEditHead(head)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-teal-700" title="Edit Head"><Pencil className="h-4 w-4" /></button>
                       <button onClick={() => setDeleteTarget({ type: 'head', id: head.id, name: head.name })} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete Head"><Trash2 className="h-4 w-4" /></button>
                     </div>
@@ -258,7 +258,7 @@ export default function ChartOfAccountsPage() {
                               <span className="truncate text-sm text-slate-700">{sub.name}</span>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                          <div className="flex items-center gap-1">
                             <button onClick={() => openEditSub(head, sub)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-teal-700" title="Edit Sub Head"><Pencil className="h-4 w-4" /></button>
                             <button onClick={() => setDeleteTarget({ type: 'sub', id: sub.id, name: sub.name })} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete Sub Head"><Trash2 className="h-4 w-4" /></button>
                           </div>
@@ -279,7 +279,7 @@ export default function ChartOfAccountsPage() {
           <Field label="Name" required>
             <Input value={headForm.name} onChange={(e) => setHeadForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Assets" required />
           </Field>
-          <Field label="Type" required hint="Determines the code letter: A (Assets), L (Liabilities), E (Equity), R (Revenue), P (Expenses).">
+          <Field label="Type" required hint="Determines the code letter: A (Assets), L (Liabilities), E (Expenses), R (Revenue), P (Proprietorship).">
             <Select value={headForm.type} onChange={(e) => setHeadForm((f) => ({ ...f, type: e.target.value }))} disabled={!!editingHead}>
               {ACCOUNT_TYPES.map((t) => <option key={t} value={t}>{ACCOUNT_TYPE_LABELS[t]}</option>)}
             </Select>
