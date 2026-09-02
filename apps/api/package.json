@@ -8,9 +8,16 @@
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "start:prod": "node dist/main.js",
+    "vercel-build": "prisma generate --schema=../../prisma/schema.prisma && nest build",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
+  },
+  "prisma": {
+    "schema": "../../prisma/schema.prisma"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.4",
@@ -54,6 +61,8 @@
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.6.2",
-    "vitest": "^2.1.2"
+    "vitest": "^2.1.2",
+    "prisma": "^5.22.0",
+    "@prisma/client": "^5.22.0"
   }
 }

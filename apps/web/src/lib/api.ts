@@ -1,4 +1,7 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+// In development, point at the local NestJS server (set via apps/web/.env.local).
+// In production (Vercel) the value is empty so requests stay same-origin and are
+// proxied to the NestJS API by the Next.js rewrites in next.config.mjs.
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 export class ApiError extends Error {
   status: number;

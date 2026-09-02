@@ -218,6 +218,77 @@ pnpm typecheck
 | `pnpm typecheck`  | Type-check all workspaces               |
 | `pnpm db:*`       | Prisma generate/push/migrate/seed/studio|
 
+## Deploying to Vercel
+
+This monorepo deploys as **two Vercel projects** (both from this same GitHub repo) that share one umbrella domain. The Next.js web app is served at your main domain, and the NestJS API on an `api.` subdomain. The web app proxies `/api/*` server-side to the API via Next.js rewrites, so the browser stays same-origin (no CORS, first-party session cookie).
+
+### 1. Database
+
+Point the API at a PostgreSQL database. With [Neon](https://neon.tech) (serverless Postgres) or any host, set `DATABASE_URL` and apply the schema once:
+
+```bash
+DATABASE_URL="postgresql://..." pnpm prisma db push
+# or: pnpm prisma migrate deploy --schema prisma/schema.prisma
+```
+
+Then optionally seed demo data:
+
+```bash
+pnpm db:seed
+```
+
+### 2. API project (NestJS)
+
+| Setting            | Value                        |
+|--------------------|------------------------------|
+| Imported from      | `A-Haseeb-Dev/Accounts-ERP-With-TypeScript` |
+| Framework preset   | NestJS (auto-detected)       |
+| Root Directory     | `apps/api`                   |
+| Node.js Version    | 20.x                         |
+
+Environment variables (Project → Settings → Environment Variables):
+
+| Variable                     | Purpose                                  |
+|------------------------------|------------------------------------------|
+| `DATABASE_URL`               | Prisma PostgreSQL connection string      |
+| `NODE_ENV`                   | `production`                             |
+| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | Signing secrets (change these) |
+| `JWT_ACCESS_EXPIRES_IN`      | e.g. `15m`                               |
+| `JWT_REFRESH_EXPIRES_IN`     | e.g. `7d`                                |
+| `WEB_URL`                    | The web project URL(s), comma-separated  |
+| `BOOTSTRAP_ADMIN_USERNAME` / `BOOTSTRAP_ADMIN_PASSWORD` / `BOOTSTRAP_ADMIN_EMAIL` | Default admin on first boot |
+
+`apps/api/vercel.json` runs `pnpm vercel-build`, which runs `prisma generate` (against the root `prisma/schema.prisma`, via the `prisma` field in `apps/api/package.json`) and then `nest build` to `dist/`.
+
+### 3. Web project (Next.js)
+
+| Setting            | Value                                      |
+|--------------------|--------------------------------------------|
+| Imported from      | same GitHub repo                           |
+| Framework preset   | Next.js (auto-detected)                    |
+| Root Directory     | `apps/web`                                 |
+| Node.js Version    | 20.x                                       |
+
+Environment variables:
+
+| Variable                             | Purpose                                                        |
+|--------------------------------------|----------------------------------------------------------------|
+| `API_PROXY_TARGET` (build-time only) | The deployed API origin, e.g. `https://has-erp-api.vercel.app`. Next.js rewrites `/api/*` to this. Do NOT prefix with `/api`. |
+
+`NEXT_PUBLIC_API_URL` is intentionally **not** set in production. When it is empty, the web app uses same-origin relative `/api/...` paths and relies on the Next.js rewrites in `apps/web/next.config.mjs` to reach the API. For local development, keep `NEXT_PUBLIC_API_URL=http://localhost:4000` in `apps/web/.env.local`.
+
+> Add `API_PROXY_TARGET` to the web project **before** the build (Previews/Production/Development as needed), since rewrite targets are resolved at build/serve time.
+
+### 4. Wire up the domain (optional)
+
+- Add your custom domain to the **web** project (e.g. `app.example.com`) and to the **API** project as `api.app.example.com`.
+- Set `WEB_URL=https://app.example.com` on the API project.
+- Set `API_PROXY_TARGET=https://api.app.example.com` on the web project.
+
+### Why two projects?
+
+A NestJS app is a long-running Express server. On Vercel it runs as its own serverless function; the officially supported model keeps the Next.js frontend and the NestJS API as two Vercel functions/projects. Embedding a NestJS server inside the Next.js bundle is fragile with native `argon2` and Prisma engine bundling, and leads to exactly the kind of `FUNCTION_INVOCATION_FAILED` crash seen on Vercel.
+
 ## GitHub
 
 Repository: <https://github.com/A-Haseeb-Dev/Accounts-ERP-With-TypeScript.git>
