@@ -46,20 +46,26 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       />
 
       <div className="min-w-0 flex-1 flex flex-col">
-        {/* Top bar — only on mobile, where the sidebar is a push drawer */}
-        {/* Top bar — only on mobile, hidden while the sidebar is open */}
-        {!mobileOpen && (
-          <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 md:hidden">
-            <button
-              onClick={() => setMobileOpen(true)}
-              className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100"
-              aria-label="Open menu"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <span className="text-sm font-bold text-slate-900">HAS ERP</span>
-          </header>
-        )}
+        {/* Persistent top bar — gives a consistent, easy-to-find sidebar toggle:
+            mobile opens the push drawer, desktop expands the collapsed rail. */}
+        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4">
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 md:hidden"
+            aria-label="Open menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <button
+            onClick={() => setCollapsed((v) => !v)}
+            className="hidden rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 md:inline-flex"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <span className="text-sm font-bold text-slate-900">HAS ERP</span>
+        </header>
 
         <main className="min-w-0 flex-1 px-4 pb-6 pt-6 sm:px-6 md:px-8">
           <div key={pathname} className="mx-auto max-w-7xl">
