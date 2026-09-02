@@ -73,7 +73,7 @@ export class HeadAccountsService {
 
   async remove(id: string, actorId?: string) {
     const item = await this.ensureExists(id);
-    const subHeadCount = await this.prisma.subHead.count({ where: { headAccountId: id } });
+    const subHeadCount = await this.prisma.subHead.count({ where: { headAccountId: id, status: 'active' } });
     if (subHeadCount > 0) {
       throw ApiException.invalidTransaction(
         `Head account "${item.name}" has ${subHeadCount} sub head(s) and cannot be deleted`,
