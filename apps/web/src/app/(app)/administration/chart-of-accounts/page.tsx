@@ -350,8 +350,8 @@ export default function ChartOfAccountsPage() {
         title={deleteTarget?.type === 'head' ? 'Delete Head Account' : 'Delete Sub Head'}
         message={
           deleteTarget?.type === 'head'
-            ? `Delete "${deleteTarget.name}" and its sub heads. Main accounts with no voucher activity are removed too; accounts with activity block deletion.`
-            : `Delete "${deleteTarget.name}". Main accounts with no voucher activity are removed too; accounts with activity block deletion.`
+            ? `Delete "${deleteTarget?.name ?? ''}" and its sub heads. Main accounts with no voucher activity are removed too; accounts with activity block deletion.`
+            : `Delete "${deleteTarget?.name ?? ''}". Main accounts with no voucher activity are removed too; accounts with activity block deletion.`
         }
         confirmLabel="Delete"
         loading={deleting}
