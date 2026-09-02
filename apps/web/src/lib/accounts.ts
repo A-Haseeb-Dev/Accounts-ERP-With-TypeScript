@@ -66,8 +66,8 @@ export function nextSubHeadCode(headCode: string, existingSubCodes: string[]): s
   return `${headCode.trim()}-${String(max + 1).padStart(3, '0')}`;
 }
 
-// Build a leaf/main account code "A1-001-00001" under a sub head code
-// (5-digit serial).
+// Build a leaf/main account code "A1-001-0001" under a sub head code
+// (4-digit serial).
 export function nextMainAccountCode(subHeadCode: string, existingAccountCodes: string[]): string {
   let max = 0;
   for (const code of existingAccountCodes) {
@@ -77,7 +77,7 @@ export function nextMainAccountCode(subHeadCode: string, existingAccountCodes: s
     const num = parseInt(last, 10);
     if (!Number.isNaN(num)) max = Math.max(max, num);
   }
-  return `${subHeadCode.trim()}-${String(max + 1).padStart(5, '0')}`;
+  return `${subHeadCode.trim()}-${String(max + 1).padStart(4, '0')}`;
 }
 
 export function headCodeBase(code: string): string {

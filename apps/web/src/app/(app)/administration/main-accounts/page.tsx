@@ -144,7 +144,7 @@ export default function MainAccountsPage() {
             <Input
               value={generatedCode}
               onChange={(e) => set('code', e.target.value)}
-              placeholder="auto A1-001-00001"
+              placeholder="auto A1-001-0001"
               required
               disabled={!!selectedSubHead && !editing}
             />
