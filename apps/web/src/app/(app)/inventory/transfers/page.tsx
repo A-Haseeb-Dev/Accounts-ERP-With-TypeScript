@@ -244,8 +244,8 @@ export default function StockTransfersPage() {
                 </thead>
                 <tbody>
                   {detailLines.map((it) => (
-                    <tr key={it.item.code} className="border-b border-slate-100">
-                      <td className="px-3 py-2 text-slate-800">{it.item.name} <span className="text-xs text-slate-400">({it.item.code})</span></td>
+                    <tr key={String((it.item as Row | null)?.code ?? it.id ?? 'line')} className="border-b border-slate-100">
+                      <td className="px-3 py-2 text-slate-800">{String((it.item as Row | null)?.name ?? it.itemId ?? '—')} <span className="text-xs text-slate-400">({String((it.item as Row | null)?.code ?? '')})</span></td>
                       <td className="px-3 py-2 text-right font-medium text-slate-800">{it.quantity}</td>
                     </tr>
                   ))}

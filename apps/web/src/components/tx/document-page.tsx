@@ -322,9 +322,10 @@ function DocumentDetailModal({
               <tbody>
                 {items.map((it) => {
                   const unit = priceKey === 'unitCost' ? it.unitCost : it.unitPrice;
+                  const item = (it.item as Row | null) ?? ({} as Row);
                   return (
-                    <tr key={it.item.code} className="border-b border-slate-100">
-                      <td className="px-3 py-2 text-slate-800">{it.item.name} <span className="text-xs text-slate-400">({it.item.code})</span></td>
+                    <tr key={String((item.code as string) ?? it.id ?? 'line')} className="border-b border-slate-100">
+                      <td className="px-3 py-2 text-slate-800">{String((item.name as string) ?? it.itemId ?? '—')} <span className="text-xs text-slate-400">({String((item.code as string) ?? '')})</span></td>
                       <td className="px-3 py-2 text-right text-slate-700">{it.quantity}</td>
                       <td className="px-3 py-2 text-right text-slate-700">{money(unit, 'PKR')}</td>
                       <td className="px-3 py-2 text-right font-medium text-slate-800">{money(it.quantity * unit, 'PKR')}</td>
