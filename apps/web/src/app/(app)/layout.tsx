@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Menu } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { Sidebar } from '@/components/sidebar';
 import { PageLoader } from '@/components/ui/spinner';
@@ -44,21 +44,26 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         mobileOpen={mobileOpen}
         onMobileToggle={setMobileOpen}
       />
-      <main className="min-w-0 flex-1 px-4 pt-16 pb-6 sm:px-6 md:pt-6 md:pb-6 md:px-8">
-        {/* Mobile hamburger to open the sidebar; it pushes main when open */}
-        {!mobileOpen && (
+
+      <div className="min-w-0 flex-1 flex flex-col">
+        {/* Top bar — only on mobile, where the sidebar is a push drawer */}
+        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 md:hidden">
           <button
-            onClick={() => setMobileOpen(true)}
-            className="fixed left-4 top-4 z-40 rounded-lg border border-slate-200 bg-white p-2 shadow-sm md:hidden"
-            aria-label="Open menu"
+            onClick={() => setMobileOpen((v) => !v)}
+            className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100"
+            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
           >
-            <Menu className="h-5 w-5 text-slate-700" />
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
-        )}
-        <div key={pathname} className="mx-auto max-w-7xl">
-          {children}
-        </div>
-      </main>
+          <span className="text-sm font-bold text-slate-900">HAS ERP</span>
+        </header>
+
+        <main className="min-w-0 flex-1 px-4 pb-6 pt-6 sm:px-6 md:px-8">
+          <div key={pathname} className="mx-auto max-w-7xl">
+            {children}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
