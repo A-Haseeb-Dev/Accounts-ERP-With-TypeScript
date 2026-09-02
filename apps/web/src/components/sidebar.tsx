@@ -8,7 +8,6 @@ import {
   ChevronDown,
   Home,
   LogOut,
-  Menu,
   PanelLeftClose,
   PanelLeftOpen,
   X,
@@ -20,94 +19,90 @@ import { cn, initials } from '@/lib/utils';
 export function Sidebar({
   collapsed,
   onToggle,
+  mobileOpen,
+  onMobileToggle,
 }: {
   collapsed: boolean;
   onToggle: () => void;
+  mobileOpen: boolean;
+  onMobileToggle: (open: boolean) => void;
 }) {
   const { user, logout, can } = useAuth();
   const pathname = usePathname();
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   const items = filterByPermissions(NAV_ITEMS, user?.permissions ?? []);
   const topLevel = items.filter((i) => i.children);
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(href);
+  // `rail` is true when the sidebar is a narrow icon-only column: desktop
+  // collapsed, OR mobile closed (width 0). `expanded` controls whether the
+  // full labels are shown.
+  const rail = collapsed && !mobileOpen;
+  const full = mobileOpen || !rail;
 
+  // Mobile open/close state drives a width of w-72 / w-0; desktop uses
+  // `collapsed` for a w-16 icon rail / w-72 full. Because the aside is a
+  // flex sibling, main automatically resizes when this width changes.
   return (
     <>
-      <button
-        onClick={() => setMobileOpen(true)}
-        className="fixed left-4 top-4 z-40 rounded-lg border border-slate-200 bg-white p-2 shadow-sm md:hidden"
-        aria-label="Open menu"
-      >
-        <Menu className="h-5 w-5 text-slate-700" />
-      </button>
-
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 bg-slate-900/50 md:hidden" onClick={() => setMobileOpen(false)} />
-      )}
-
       <aside
         aria-label="Sidebar"
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex flex-col bg-slate-900 transition-all duration-200 md:relative max-w-[85vw]',
-          collapsed ? 'md:w-16' : 'w-72',
-          mobileOpen ? 'w-72 translate-x-0 max-w-[85vw]' : '-translate-x-full md:translate-x-0',
+          'relative z-30 flex shrink-0 flex-col bg-slate-900 transition-all duration-200 overflow-hidden',
+          mobileOpen && 'w-72',
+          !mobileOpen && 'w-0 md:w-72',
+          rail && 'md:w-16',
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-4 py-4 md:px-3">
-          {collapsed ? (
-            <Link href="/" onClick={() => setMobileOpen(false)} className="mx-auto block">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-600 text-white">
-                <Building2 className="h-5 w-5" />
-              </div>
-            </Link>
-          ) : (
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-600 text-white">
-                <Building2 className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-white">HAS ERP</p>
-                <p className="text-[11px] text-slate-500">Management System</p>
-              </div>
+        <div className={cn('flex items-center justify-between border-b border-slate-800 px-4 py-4', rail ? 'md:px-2' : 'md:px-3')}>
+          <Link href="/" onClick={() => onMobileToggle(false)} className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-600 text-white">
+              <Building2 className="h-5 w-5" />
             </div>
-          )}
+            {full && (
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-white">HAS ERP</p>
+                <p className="truncate text-[11px] text-slate-500">Management System</p>
+              </div>
+            )}
+          </Link>
 
-          <button
-            onClick={() => setMobileOpen(false)}
-            className="text-slate-500 hover:text-white md:hidden"
-            aria-label="Close menu"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* Mobile close */}
+            <button
+              onClick={() => onMobileToggle(false)}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white md:hidden"
+              aria-label="Close menu"
+            >
+              <X className="h-5 w-5" />
+            </button>
 
-          {/* Desktop/tablet collapse toggle */}
-          <button
-            onClick={onToggle}
-            className="hidden rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white md:block"
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-          </button>
+            {/* Desktop/tablet collapse toggle */}
+            <button
+              onClick={onToggle}
+              className="hidden rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white md:block"
+              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
+        <nav className={cn('flex-1 overflow-y-auto py-4', rail ? 'px-2' : 'px-3')}>
           <Link
             href="/"
-            onClick={() => setMobileOpen(false)}
+            onClick={() => onMobileToggle(false)}
             className={cn(
               'mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-white',
               pathname === '/' && 'bg-slate-800 text-white',
-              collapsed && 'md:justify-center md:px-0',
+              rail && 'md:justify-center md:px-0',
             )}
-            title={collapsed ? 'Dashboard' : undefined}
+            title={rail ? 'Dashboard' : undefined}
           >
             <Home className="h-4 w-4 shrink-0" />
-            {!collapsed && <span>Dashboard</span>}
+            {full && <span>Dashboard</span>}
           </Link>
 
           {topLevel.map((group) => (
@@ -118,23 +113,23 @@ export function Sidebar({
               children={group.children ?? []}
               pathname={pathname}
               can={can}
-              collapsed={collapsed}
-              onNavigate={() => setMobileOpen(false)}
+              collapsed={rail}
+              onNavigate={() => onMobileToggle(false)}
             />
           ))}
         </nav>
 
         {/* User footer */}
-        <div className="border-t border-slate-800 p-4 md:px-3">
-          {collapsed ? (
+        <div className={cn('border-t border-slate-800 p-4', rail ? 'md:px-2' : 'md:px-3')}>
+          {rail ? (
             <div className="flex justify-center">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white" title={user?.fullName}>
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white" title={user?.fullName}>
                 {initials(user?.fullName)}
               </div>
             </div>
           ) : (
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white">
                 {initials(user?.fullName)}
               </div>
               <div className="min-w-0 flex-1">
@@ -172,8 +167,6 @@ function NavGroup({
   const [open, setOpen] = useState(true);
   const anyActive = children.some((c) => pathname.startsWith(c.href));
 
-  // When collapsed on desktop, render as a single icon link to the first child
-  // (a flyout is complex; navigating or expanding is handled by re-expanding sidebar).
   if (collapsed) {
     const first = children.find((c) => !c.permission || can(c.permission));
     if (!first) return null;
