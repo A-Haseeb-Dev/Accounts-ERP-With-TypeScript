@@ -26,19 +26,23 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4">
-      <div className="w-full max-w-md">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-950 px-4">
+      {/* Decorative glows */}
+      <div className="pointer-events-none absolute -left-32 -top-32 h-96 w-96 rounded-full bg-teal-600/20 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-slate-700/30 blur-3xl" />
+
+      <div className="relative w-full max-w-md">
         <div className="mb-8 flex flex-col items-center gap-3">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-600 text-white shadow-lg shadow-teal-900/40">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-teal-700 text-white shadow-lg shadow-teal-900/50">
             <Building2 className="h-7 w-7" />
           </div>
           <div className="text-center">
-            <h1 className="text-2xl font-bold text-white">HAS ERP</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-white">HAS ERP</h1>
             <p className="text-sm text-slate-400">Inventory · Sales · Accounting</p>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 shadow-2xl">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-8 shadow-2xl backdrop-blur-xl">
           <h2 className="mb-1 text-lg font-semibold text-white">Sign in</h2>
           <p className="mb-6 text-sm text-slate-400">Use your organisation credentials</p>
 
@@ -52,7 +56,7 @@ export default function LoginPage() {
                   onChange={(e) => setUsername(e.target.value)}
                   autoFocus
                   required
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 py-2.5 pl-10 pr-3 text-sm text-white placeholder-slate-500 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/30"
+                  className="w-full rounded-lg border border-white/10 bg-slate-950/60 py-2.5 pl-10 pr-3 text-sm text-white placeholder-slate-500 outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-500/20"
                   placeholder="developer"
                 />
               </div>
@@ -66,7 +70,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 py-2.5 pl-10 pr-3 text-sm text-white placeholder-slate-500 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/30"
+                  className="w-full rounded-lg border border-white/10 bg-slate-950/60 py-2.5 pl-10 pr-3 text-sm text-white placeholder-slate-500 outline-none transition focus:border-teal-500 focus:ring-4 focus:ring-teal-500/20"
                   placeholder="••••••••"
                 />
               </div>
@@ -81,7 +85,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-teal-600 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-br from-teal-600 to-teal-700 py-2.5 text-sm font-semibold text-white shadow-lg shadow-teal-900/40 transition hover:to-teal-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
               {submitting ? 'Signing in…' : 'Sign in'}

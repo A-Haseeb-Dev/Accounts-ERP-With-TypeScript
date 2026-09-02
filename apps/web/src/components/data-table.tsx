@@ -46,12 +46,12 @@ export function DataTable<T>({
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="border-b border-slate-200 bg-slate-50">
+            <tr className="border-b border-slate-200 bg-slate-50/80">
               {columns.map((c) => (
                 <th
                   key={c.key}
                   className={cn(
-                    'whitespace-nowrap px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500',
+                    'whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500',
                     c.align === 'right' && 'text-right',
                     c.align === 'center' && 'text-center',
                     c.className,
@@ -81,8 +81,8 @@ export function DataTable<T>({
                   key={rowKey(row)}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   className={cn(
-                    'border-b border-slate-100 transition-colors last:border-0',
-                    onRowClick && 'cursor-pointer hover:bg-slate-50',
+                    'border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50/70',
+                    onRowClick && 'cursor-pointer',
                   )}
                 >
                   {columns.map((c) => (
@@ -90,7 +90,7 @@ export function DataTable<T>({
                       key={c.key}
                       className={cn(
                         'px-4 py-3 text-slate-700',
-                        c.align === 'right' && 'text-right font-medium',
+                        c.align === 'right' && 'text-right font-medium tabular-nums',
                         c.align === 'center' && 'text-center',
                         c.className,
                       )}
@@ -106,22 +106,24 @@ export function DataTable<T>({
       </div>
 
       {totalPages > 0 && onPageChange && (
-        <div className="flex items-center justify-between border-t border-slate-200 px-4 py-2 text-sm text-slate-500">
-          <span>
+        <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50/50 px-4 py-3 text-sm text-slate-500">
+          <span className="tabular-nums">
             Page {page} of {totalPages} · {total} records
           </span>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             <button
               disabled={!page || page <= 1}
               onClick={() => onPageChange((page ?? 1) - 1)}
-              className="rounded-lg border border-slate-200 p-1.5 disabled:opacity-40"
+              className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:opacity-40"
+              aria-label="Previous page"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
             <button
               disabled={!page || page >= totalPages}
               onClick={() => onPageChange((page ?? 1) + 1)}
-              className="rounded-lg border border-slate-200 p-1.5 disabled:opacity-40"
+              className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:opacity-40"
+              aria-label="Next page"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
