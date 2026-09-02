@@ -37,26 +37,26 @@ export function Sidebar({
     <>
       <button
         onClick={() => setMobileOpen(true)}
-        className="fixed left-4 top-4 z-40 rounded-lg border border-slate-200 bg-white p-2 shadow-sm lg:hidden"
+        className="fixed left-4 top-4 z-40 rounded-lg border border-slate-200 bg-white p-2 shadow-sm md:hidden"
         aria-label="Open menu"
       >
         <Menu className="h-5 w-5 text-slate-700" />
       </button>
 
       {mobileOpen && (
-        <div className="fixed inset-0 z-40 bg-slate-900/50 lg:hidden" onClick={() => setMobileOpen(false)} />
+        <div className="fixed inset-0 z-40 bg-slate-900/50 md:hidden" onClick={() => setMobileOpen(false)} />
       )}
 
       <aside
         aria-label="Sidebar"
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex flex-col bg-slate-900 transition-all duration-200 lg:relative max-w-[85vw]',
-          collapsed ? 'lg:w-16' : 'w-72',
-          mobileOpen ? 'w-72 translate-x-0 max-w-[85vw]' : '-translate-x-full lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex flex-col bg-slate-900 transition-all duration-200 md:relative max-w-[85vw]',
+          collapsed ? 'md:w-16' : 'w-72',
+          mobileOpen ? 'w-72 translate-x-0 max-w-[85vw]' : '-translate-x-full md:translate-x-0',
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-4 py-4 lg:px-3">
+        <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-4 py-4 md:px-3">
           {collapsed ? (
             <Link href="/" onClick={() => setMobileOpen(false)} className="mx-auto block">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-600 text-white">
@@ -77,16 +77,16 @@ export function Sidebar({
 
           <button
             onClick={() => setMobileOpen(false)}
-            className="text-slate-500 hover:text-white lg:hidden"
+            className="text-slate-500 hover:text-white md:hidden"
             aria-label="Close menu"
           >
             <X className="h-5 w-5" />
           </button>
 
-          {/* Desktop collapse toggle */}
+          {/* Desktop/tablet collapse toggle */}
           <button
             onClick={onToggle}
-            className="hidden rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white lg:block"
+            className="hidden rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white md:block"
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
@@ -102,7 +102,7 @@ export function Sidebar({
             className={cn(
               'mb-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-white',
               pathname === '/' && 'bg-slate-800 text-white',
-              collapsed && 'lg:justify-center lg:px-0',
+              collapsed && 'md:justify-center md:px-0',
             )}
             title={collapsed ? 'Dashboard' : undefined}
           >
@@ -125,7 +125,7 @@ export function Sidebar({
         </nav>
 
         {/* User footer */}
-        <div className="border-t border-slate-800 p-4 lg:px-3">
+        <div className="border-t border-slate-800 p-4 md:px-3">
           {collapsed ? (
             <div className="flex justify-center">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white" title={user?.fullName}>
