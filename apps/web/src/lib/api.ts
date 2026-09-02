@@ -25,18 +25,47 @@ interface ApiResponse<T> {
   statusCode?: number;
 }
 
+// In-memory token storage (survives SPA navigation, lost on full reload — user re-logs in).
+let accessToken: string | null = null;
+let refreshToken: string | null = null;
+
+export function setTokens(access: string, refresh: string) {
+  accessToken = access;
+  refreshToken = refresh;
+}
+
+export function clearTokens() {
+  accessToken = null;
+  refreshToken = null;
+}
+
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
 let refreshing: Promise<boolean> | null = null;
 
 async function tryRefresh(): Promise<boolean> {
   if (refreshing) return refreshing;
+  if (!refreshToken) return false;
   refreshing = (async () => {
     try {
       const res = await fetch(`${API_URL}/api/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        body: JSON.stringify({ refreshToken }),
       });
-      return res.ok;
+      if (res.ok) {
+        const body = (await res.json()) as ApiResponse<{ accessToken: string; refreshToken?: string }>;
+        const data = body?.data;
+        if (data?.accessToken) {
+          accessToken = data.accessToken;
+          if (data.refreshToken) refreshToken = data.refreshToken;
+          return true;
+        }
+      }
+      clearTokens();
+      return false;
     } catch {
       return false;
     } finally {
@@ -56,7 +85,11 @@ export async function apiFetch<T>(
     ...(init.headers as Record<string, string>),
   };
 
-  const res = await fetch(`${API_URL}/api${path}`, { ...init, headers, credentials: 'include' });
+  if (accessToken && !headers['Authorization']) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+
+  const res = await fetch(`${API_URL}/api${path}`, { ...init, headers });
 
   if (res.status === 401 && retryAuth) {
     const ok = await tryRefresh();

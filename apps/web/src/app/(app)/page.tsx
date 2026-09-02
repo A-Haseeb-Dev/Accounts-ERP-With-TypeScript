@@ -10,65 +10,69 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { DollarSign, Package, ShoppingCart, TrendingUp, Users } from 'lucide-react';
+import { Package, ShoppingCart, TrendingUp, Users } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/page-header';
 import { PageLoader } from '@/components/ui/spinner';
 import { money } from '@/lib/utils';
 
-interface DashboardData {
-  overview: {
-    totalSales: number;
-    totalPurchases: number;
-    totalVouchers: number;
-    totalCustomers: number;
-    totalSuppliers: number;
-    totalItems: number;
-    stockValue: number;
-  };
-  recentSales: { id: string; number: string; saleDate: string; customer: { name: string }; grandTotal: number; status: string }[];
-  recentPurchases: { id: string; number: string; purchaseDate: string; supplier: { name: string }; grandTotal: number; status: string }[];
+interface DashboardOverview {
+  todaySales: number;
+  todayPurchases: number;
+  totalCustomers: number;
+  totalSuppliers: number;
+  totalProducts: number;
+  currentStockValue: number;
+  outstandingCustomerBalance: number;
+  outstandingSupplierBalance: number;
+  recentSales: { id: string; number: string; saleDate: string; customer: { name: string } | null; grandTotal: number; status: string }[];
+  recentPurchases: { id: string; number: string; purchaseDate: string; supplier: { name: string } | null; grandTotal: number; status: string }[];
+  recentVouchers: Record<string, unknown>[];
 }
 
-const KPI_CARDS = [
-  { key: 'totalSales', label: 'Total Sales', icon: ShoppingCart },
-  { key: 'totalPurchases', label: 'Total Purchases', icon: TrendingUp },
-  { key: 'stockValue', label: 'Stock Value', icon: Package },
-  { key: 'totalCustomers', label: 'Customers', icon: Users },
-] as const;
+interface TrendPoint {
+  date: string;
+  sales: number;
+  purchases: number;
+}
 
 export default function DashboardPage() {
-  const { data, isLoading } = useQuery<DashboardData>({
+  const { data, isLoading } = useQuery<DashboardOverview>({
     queryKey: ['dashboard'],
     queryFn: () => apiFetch('/dashboard'),
   });
 
-  const { data: trend } = useQuery<{ data: { date: string; sales: number; purchases: number }[] }>({
+  const { data: trendResult } = useQuery<{ days: number; points: TrendPoint[] }>({
     queryKey: ['dashboard', 'trend'],
     queryFn: () => apiFetch('/dashboard/sales-trend?days=14'),
   });
 
   if (isLoading || !data) return <PageLoader />;
 
-  const trendRows = trend?.data ?? [];
+  const trendRows = trendResult?.points ?? [];
+
+  const kpis = [
+    { label: 'Today Sales', value: money(data.todaySales), icon: ShoppingCart },
+    { label: 'Today Purchases', value: money(data.todayPurchases), icon: TrendingUp },
+    { label: 'Stock Value', value: money(data.currentStockValue), icon: Package },
+    { label: 'Customers', value: String(data.totalCustomers), icon: Users },
+  ];
 
   return (
     <div>
       <PageHeader title="Dashboard" description="Business overview and recent activity" />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {KPI_CARDS.map(({ key, label, icon: Icon }) => (
-          <Card key={key}>
+        {kpis.map(({ label, value, icon: Icon }) => (
+          <Card key={label}>
             <Card.Body className="flex items-center gap-4">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-teal-50 text-teal-700">
                 <Icon className="h-5 w-5" />
               </div>
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-                <p className="text-xl font-bold text-slate-900">
-                  {key === 'stockValue' ? money(data.overview[key]) : Number(data.overview[key]).toLocaleString()}
-                </p>
+                <p className="text-xl font-bold text-slate-900">{value}</p>
               </div>
             </Card.Body>
           </Card>
@@ -112,10 +116,11 @@ export default function DashboardPage() {
           </Card.Header>
           <Card.Body>
             <div className="space-y-4">
-              <InfoRow label="Stock value" value={money(data.overview.stockValue)} />
-              <InfoRow label="Posted vouchers" value={String(data.overview.totalVouchers)} />
-              <InfoRow label="Total suppliers" value={String(data.overview.totalSuppliers)} />
-              <InfoRow label="Total items" value={String(data.overview.totalItems)} />
+              <InfoRow label="Stock value" value={money(data.currentStockValue)} />
+              <InfoRow label="Outstanding customers" value={money(data.outstandingCustomerBalance)} />
+              <InfoRow label="Outstanding suppliers" value={money(data.outstandingSupplierBalance)} />
+              <InfoRow label="Total suppliers" value={String(data.totalSuppliers)} />
+              <InfoRow label="Total products" value={String(data.totalProducts)} />
             </div>
           </Card.Body>
         </Card>

@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, setTokens, clearTokens } from '@/lib/api';
 import type { SessionUser } from '@/lib/auth-types';
 
 interface AuthContextValue {
@@ -43,11 +43,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const login = useCallback(async (username: string, password: string) => {
-    const res = await apiFetch<{ accessToken: string; user: SessionUser }>('/auth/login', {
+    const res = await apiFetch<{ accessToken: string; refreshToken: string; user: SessionUser }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
       retryAuth: false,
     });
+    if (res.accessToken && res.refreshToken) {
+      setTokens(res.accessToken, res.refreshToken);
+    }
     setUser(res.user);
     router.replace('/');
   }, [router]);
@@ -56,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await apiFetch('/auth/logout', { method: 'POST', retryAuth: false });
     } finally {
+      clearTokens();
       setUser(null);
       router.replace('/login');
     }

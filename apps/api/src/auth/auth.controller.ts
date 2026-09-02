@@ -27,6 +27,7 @@ export class AuthController {
     this.authService.setAuthCookies(res, tokens);
     return {
       accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
       user: tokens.user,
       message: 'Login successful',
     };
@@ -47,7 +48,7 @@ export class AuthController {
     }
     const tokens = await this.authService.refresh(refreshToken, req.ip, req.get('user-agent'));
     this.authService.setAuthCookies(res, tokens);
-    return { accessToken: tokens.accessToken, message: 'Token refreshed' };
+    return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, message: 'Token refreshed' };
   }
 
   @Public()
