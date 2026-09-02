@@ -14,6 +14,7 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge, Badge } from '@/components/ui/badge';
 import { dateTime, num } from '@/lib/utils';
+import { nextMainAccountCode } from '@/lib/accounts';
 
 type Row = Record<string, unknown>;
 
@@ -27,7 +28,8 @@ const ACCOUNT_TYPES = [
 
 export default function MainAccountsPage() {
   const qc = useQueryClient();
-  const { options: subHeadOptions, isLoading: subHeadsLoading } = useFlatOptions('sub-heads');
+  const { options: subHeadOptions, data: subHeadData, isLoading: subHeadsLoading } = useFlatOptions('sub-heads');
+  const { data: allAccounts } = useFlatOptions('main-accounts');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -43,10 +45,13 @@ export default function MainAccountsPage() {
   });
 
   const save = useMutation({
-    mutationFn: (payload: Row) =>
-      editing?.id
-        ? apiFetch(`/main-accounts/${editing.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
-        : apiFetch('/main-accounts', { method: 'POST', body: JSON.stringify(payload) }),
+    mutationFn: (payload: Row) => {
+      const merged: Row = { ...payload };
+      if (!editing?.id) merged.code = generatedCode || payload.code;
+      return editing?.id
+        ? apiFetch(`/main-accounts/${editing.id}`, { method: 'PATCH', body: JSON.stringify(merged) })
+        : apiFetch('/main-accounts', { method: 'POST', body: JSON.stringify(merged) });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['main-accounts'] });
       qc.invalidateQueries({ queryKey: ['flat', 'main-accounts'] });
@@ -67,6 +72,15 @@ export default function MainAccountsPage() {
   });
 
   const set = (name: string, value: unknown) => setForm((f) => ({ ...f, [name]: value }));
+
+  const selectedSubHead = subHeadData.find((s) => s.id === form.subHeadId);
+  const accountCodesUnderSub = allAccounts
+    .filter((a) => (a as Record<string, unknown>).subHeadId === form.subHeadId)
+    .map((a) => String((a as Record<string, unknown>).code ?? ''));
+  const generatedCode =
+    editing || !selectedSubHead
+      ? (form.code as string | undefined) ?? ''
+      : nextMainAccountCode(selectedSubHead.code, accountCodesUnderSub);
 
   return (
     <div>
@@ -126,9 +140,18 @@ export default function MainAccountsPage() {
           className="space-y-4"
         >
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Code" required>
-              <Input value={String(form.code ?? '')} onChange={(e) => set('code', e.target.value)} placeholder="e.g. 01-05" required />
-            </Field>
+          <Field label="Code" required>
+            <Input
+              value={generatedCode}
+              onChange={(e) => set('code', e.target.value)}
+              placeholder="auto A1-001-0001"
+              required
+              disabled={!!selectedSubHead && !editing}
+            />
+            {!!selectedSubHead && !editing && (
+              <p className="mt-1 text-[11px] text-slate-400">Auto-generated from the selected sub head. Clear the sub head to enter manually.</p>
+            )}
+          </Field>
             <Field label="Name" required>
               <Input value={String(form.name ?? '')} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Petty Cash" required />
             </Field>

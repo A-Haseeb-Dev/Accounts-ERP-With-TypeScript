@@ -32,8 +32,7 @@ export const NAV_ITEMS: NavItem[] = [
     href: '/administration',
     icon: Landmark,
     children: [
-      { label: 'Head Accounts', href: '/administration/head-accounts', icon: Network, permission: 'administration.head-accounts.view' },
-      { label: 'Sub Heads', href: '/administration/sub-heads', icon: Network, permission: 'administration.sub-heads.view' },
+      { label: 'Chart of Accounts', href: '/administration/chart-of-accounts', icon: Network, permission: 'administration.head-accounts.view' },
       { label: 'Main Accounts', href: '/administration/main-accounts', icon: Landmark, permission: 'administration.main-accounts.view' },
       { label: 'Item Types', href: '/administration/item-types', icon: Boxes, permission: 'administration.item-types.view' },
       { label: 'Brands', href: '/administration/brands', icon: Building2, permission: 'administration.brands.view' },
