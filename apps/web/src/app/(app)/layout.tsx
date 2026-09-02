@@ -6,23 +6,13 @@ import { Menu } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { Sidebar } from '@/components/sidebar';
 import { PageLoader } from '@/components/ui/spinner';
+import { initials } from '@/lib/utils';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  // Auto-collapse the sidebar on narrower desktops/tablets so the main content
-  // never gets cramped, while keeping it expanded on very wide screens.
-  useEffect(() => {
-    const mql = window.matchMedia('(min-width: 1280px)');
-    const apply = () => setCollapsed(!mql.matches);
-    apply();
-    mql.addEventListener('change', apply);
-    return () => mql.removeEventListener('change', apply);
-  }, []);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
@@ -37,40 +27,41 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="min-h-screen bg-slate-50">
       <Sidebar
-        collapsed={collapsed}
-        onToggle={() => setCollapsed((v) => !v)}
         mobileOpen={mobileOpen}
         onMobileToggle={setMobileOpen}
       />
 
-      <div className="min-w-0 flex-1 flex flex-col">
-        {/* Persistent top bar — gives a consistent, easy-to-find sidebar toggle:
-            mobile opens the push drawer, desktop expands the collapsed rail. */}
-        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4">
+      <div className="min-h-screen lg:pl-64">
+        {/* Top header */}
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-slate-200 bg-white/80 px-4 backdrop-blur sm:px-6">
           <button
             onClick={() => setMobileOpen(true)}
-            className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 md:hidden"
+            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
             aria-label="Open menu"
           >
             <Menu className="h-5 w-5" />
           </button>
-          <button
-            onClick={() => setCollapsed((v) => !v)}
-            className="hidden rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 md:inline-flex"
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-          <span className="text-sm font-bold text-slate-900">HAS ERP</span>
+
+          <div className="ml-auto flex items-center gap-3">
+            <div className="hidden text-right sm:block">
+              <p className="text-sm font-medium leading-tight text-slate-800">{user?.fullName}</p>
+              <p className="text-xs text-slate-400">@{user?.username}</p>
+            </div>
+            <button
+              onClick={() => logout()}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-600 text-xs font-bold text-white transition hover:bg-teal-500"
+              title="Sign out"
+            >
+              {initials(user?.fullName)}
+            </button>
+          </div>
         </header>
 
-        <main className="min-w-0 flex-1 px-4 pb-6 pt-6 sm:px-6 md:px-8">
-          <div key={pathname} className="mx-auto max-w-7xl">
-            {children}
-          </div>
+        {/* Content */}
+        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <div key={pathname}>{children}</div>
         </main>
       </div>
     </div>
