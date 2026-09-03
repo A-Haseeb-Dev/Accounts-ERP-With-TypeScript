@@ -8,6 +8,7 @@ import { Field, Input, Select } from '@/components/ui/field';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { ReportActions } from '@/components/report-actions';
+import { QueryError } from '@/components/query-error';
 import { money } from '@/lib/utils';
 
 type Row = Record<string, unknown>;
@@ -19,7 +20,7 @@ export default function SalesBookPage() {
   const [customerId, setCustomerId] = useState('');
   const [status, setStatus] = useState('posted');
 
-  const { data, isLoading } = useQuery<{ rows: Row[]; subtotal: number; tax: number; grandTotal: number }>({
+  const { data, isLoading, isError, refetch } = useQuery<{ rows: Row[]; subtotal: number; tax: number; grandTotal: number }>({
     queryKey: ['sales-book', from, to, customerId, status],
     queryFn: () => apiFetch('/reports/sales-book' + qs({ from: from || undefined, to: to || undefined, customerId: customerId || undefined, status })),
   });
@@ -59,6 +60,8 @@ export default function SalesBookPage() {
             </Select>
           </Field>
         </div>
+
+        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
 
         <div id="sb-report" className="overflow-x-auto">
           <table className="w-full text-sm">

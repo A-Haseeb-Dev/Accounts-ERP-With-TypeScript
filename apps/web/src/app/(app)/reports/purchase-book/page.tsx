@@ -8,6 +8,7 @@ import { Field, Input, Select } from '@/components/ui/field';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { ReportActions } from '@/components/report-actions';
+import { QueryError } from '@/components/query-error';
 import { money } from '@/lib/utils';
 
 type Row = Record<string, unknown>;
@@ -19,7 +20,7 @@ export default function PurchaseBookPage() {
   const [supplierId, setSupplierId] = useState('');
   const [status, setStatus] = useState('posted');
 
-  const { data, isLoading } = useQuery<{ rows: Row[]; grandTotal: number }>({
+  const { data, isLoading, isError, refetch } = useQuery<{ rows: Row[]; grandTotal: number }>({
     queryKey: ['purchase-book', from, to, supplierId, status],
     queryFn: () => apiFetch('/reports/purchase-book' + qs({ from: from || undefined, to: to || undefined, supplierId: supplierId || undefined, status })),
   });
@@ -58,6 +59,8 @@ export default function PurchaseBookPage() {
             </Select>
           </Field>
         </div>
+
+        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
 
         <div id="pb-report" className="overflow-x-auto">
           <table className="w-full text-sm">

@@ -6,8 +6,8 @@
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",
-    "start": "node dist/main.js",
-    "start:prod": "node dist/main.js",
+    "start": "node dist/src/main.js",
+    "start:prod": "node dist/src/main.js",
     "vercel-build": "prisma generate --schema=../../prisma/schema.prisma && nest build",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",

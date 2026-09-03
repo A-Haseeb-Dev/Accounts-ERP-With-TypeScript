@@ -7,6 +7,7 @@ import { Field, Input } from '@/components/ui/field';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { ReportActions } from '@/components/report-actions';
+import { QueryError } from '@/components/query-error';
 import { money } from '@/lib/utils';
 
 type Row = Record<string, unknown>;
@@ -16,7 +17,7 @@ export default function GeneralJournalPage() {
   const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
 
-  const { data, isLoading } = useQuery<{ vouchers: Row[]; total: number }>({
+  const { data, isLoading, isError, refetch } = useQuery<{ vouchers: Row[]; total: number }>({
     queryKey: ['general-journal', from, to, page],
     queryFn: () => apiFetch('/reports/general-journal' + qs({ from: from || undefined, to: to || undefined, page, pageSize: 30 })),
   });
@@ -42,6 +43,8 @@ export default function GeneralJournalPage() {
           <Field label="From"><Input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} className="w-40" /></Field>
           <Field label="To"><Input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} className="w-40" /></Field>
         </div>
+
+        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
 
         <div id="gj-report" className="overflow-x-auto">
           <table className="w-full text-sm">

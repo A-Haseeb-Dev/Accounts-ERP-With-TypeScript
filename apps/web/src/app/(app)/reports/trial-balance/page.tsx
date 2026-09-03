@@ -8,6 +8,7 @@ import { Field, Input } from '@/components/ui/field';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { ReportActions } from '@/components/report-actions';
+import { QueryError } from '@/components/query-error';
 import { money } from '@/lib/utils';
 
 type Row = Record<string, unknown>;
@@ -15,7 +16,7 @@ type Row = Record<string, unknown>;
 export default function TrialBalancePage() {
   const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
 
-  const { data, isLoading, refetch } = useQuery<{ rows: Row[]; totalDebit: number; totalCredit: number; balanced: boolean }>({
+  const { data, isLoading, isError, refetch } = useQuery<{ rows: Row[]; totalDebit: number; totalCredit: number; balanced: boolean }>({
     queryKey: ['trial-balance', asOf],
     queryFn: () => apiFetch('/reports/trial-balance' + (asOf ? `?asOf=${asOf}` : '')),
   });
@@ -45,6 +46,8 @@ export default function TrialBalancePage() {
           </Field>
           <Button variant="secondary" onClick={() => refetch()} disabled={isLoading}>Refresh</Button>
         </div>
+
+        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
 
         <div id="tb-report" className="overflow-x-auto">
           <table className="w-full text-sm">

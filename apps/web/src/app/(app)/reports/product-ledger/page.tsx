@@ -8,6 +8,7 @@ import { Field, Input, Select } from '@/components/ui/field';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { ReportActions } from '@/components/report-actions';
+import { QueryError } from '@/components/query-error';
 import { money } from '@/lib/utils';
 
 type Row = Record<string, unknown>;
@@ -20,7 +21,7 @@ export default function ProductLedgerPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
 
-  const { data, isLoading } = useQuery<{ rows: Row[]; total: number; item?: Row }>({
+  const { data, isLoading, isError, refetch } = useQuery<{ rows: Row[]; total: number; item?: Row }>({
     queryKey: ['product-ledger', itemId, locationId, from, to],
     queryFn: () => apiFetch('/reports/product-ledger' + qs({ itemId, locationId: locationId || undefined, from: from || undefined, to: to || undefined, pageSize: 100 })),
     enabled: !!itemId,
@@ -65,7 +66,9 @@ export default function ProductLedgerPage() {
         )}
 
         {itemId && (
-          <div id="pl-report" className="overflow-x-auto">
+          <>
+            {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
+            <div id="pl-report" className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
@@ -103,6 +106,7 @@ export default function ProductLedgerPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </Card>
     </div>
