@@ -69,6 +69,20 @@ export class VouchersController {
     return this.service.post(id, actor?.id);
   }
 
+  @Patch(':id')
+  @Permissions('accounts.vouchers.update')
+  @ApiOperation({ summary: 'Update a draft voucher' })
+  update(@Param('id') id: string, @Body() dto: CreateVoucherDto, @CurrentUser() actor: any) {
+    return this.service.update(id, dto, actor?.id);
+  }
+
+  @Delete(':id')
+  @Permissions('accounts.vouchers.delete')
+  @ApiOperation({ summary: 'Delete a draft voucher' })
+  remove(@Param('id') id: string, @CurrentUser() actor: any) {
+    return this.service.remove(id, actor?.id);
+  }
+
   @Delete(':id/cancel')
   @Permissions('accounts.vouchers.cancel')
   @ApiOperation({ summary: 'Cancel a voucher with reason' })

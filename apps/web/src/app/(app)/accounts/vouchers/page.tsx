@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { CheckCircle2, Eye, Plus, Search, Trash2, XCircle } from 'lucide-react';
+import { CheckCircle2, Eye, Pencil, Plus, Search, Trash2, XCircle } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { useAccountingAccounts } from '@/hooks/use-options';
 import { useDocumentMutations } from '@/hooks/use-document-mutations';
@@ -46,6 +46,9 @@ export default function VouchersPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Row | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [editId, setEditId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Row | null>(null);
+  const [deleteError, setDeleteError] = useState('');
 
   const { data, isLoading } = useQuery<{ items: Row[]; total: number }>({
     queryKey: ['vouchers', page, search, status, voucherType],
@@ -70,6 +73,49 @@ export default function VouchersPage() {
     onError: (e: Error) => setError(e.message),
   });
 
+  const update = useMutation({
+    mutationFn: (payload: unknown) => apiFetch(`/vouchers/${editId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['vouchers'] });
+      setModalOpen(false);
+      setEditId(null);
+      setEntries([]);
+      setDescription('');
+      setReference('');
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => apiFetch(`/vouchers/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['vouchers'] });
+      setDeleteTarget(null);
+      setDeleteError('');
+    },
+    onError: (e: Error) => setDeleteError(e.message),
+  });
+
+  const openEdit = (r: Row) => {
+    setDeleteError('');
+    setEditId(String(r.id));
+    setDate(String(r.voucherDate).slice(0, 10));
+    setType(String(r.voucherType) as 'JOURNAL' | 'CREDIT' | 'DEBIT');
+    setReference(String(r.reference ?? ''));
+    setDescription(String(r.description ?? ''));
+    setEntries(
+      ((r.entries as unknown as Entry[]) ?? []).map((en) => ({
+        key: crypto.randomUUID?.() ?? String(Date.now()) + Math.random(),
+        mainAccountId: en.mainAccountId,
+        debit: en.debit ?? 0,
+        credit: en.credit ?? 0,
+        narration: en.narration ?? '',
+      })),
+    );
+    setError('');
+    setModalOpen(true);
+  };
+
   const totalDebit = entries.reduce((s, e) => s + e.debit, 0);
   const totalCredit = entries.reduce((s, e) => s + e.credit, 0);
   const balanced = Math.abs(totalDebit - totalCredit) < 0.01;
@@ -85,7 +131,7 @@ export default function VouchersPage() {
       setError(`Entries don't balance: debit ${money(totalDebit, 'PKR')} vs credit ${money(totalCredit, 'PKR')}.`);
       return;
     }
-    create.mutate({
+    const payload = {
       voucherType: type,
       voucherDate: date,
       reference: reference || undefined,
@@ -98,12 +144,14 @@ export default function VouchersPage() {
           credit: en.credit || undefined,
           narration: en.narration || undefined,
         })),
-    });
+    };
+    if (editId) update.mutate(payload);
+    else create.mutate(payload);
   };
 
   const addEntry = () => setEntries((es) => [...es, { key: crypto.randomUUID?.() ?? String(Date.now()), mainAccountId: '', debit: 0, credit: 0 }]);
-  const update = (key: string, patch: Partial<Entry>) => setEntries((es) => es.map((en) => (en.key === key ? { ...en, ...patch } : en)));
-  const remove = (key: string) => setEntries((es) => es.filter((en) => en.key !== key));
+  const updateEntry = (key: string, patch: Partial<Entry>) => setEntries((es) => es.map((en) => (en.key === key ? { ...en, ...patch } : en)));
+  const removeEntry = (key: string) => setEntries((es) => es.filter((en) => en.key !== key));
 
   const detailEntries = (detail?.entries as unknown as (Entry & { mainAccount: { code: string; name: string } })[] | undefined) ?? [];
 
@@ -113,7 +161,7 @@ export default function VouchersPage() {
         title="Vouchers"
         description="Double-entry journals for manual and recurring accounting entries."
         actions={
-          <Button onClick={() => { setDate(new Date().toISOString().slice(0, 10)); setEntries([]); setError(''); setModalOpen(true); }}>
+          <Button onClick={() => { setDate(new Date().toISOString().slice(0, 10)); setType('JOURNAL'); setReference(''); setDescription(''); setEntries([]); setEditId(null); setError(''); setModalOpen(true); }}>
             <Plus className="h-4 w-4" /> New Voucher
           </Button>
         }
@@ -155,6 +203,8 @@ export default function VouchersPage() {
                   <button onClick={() => setDetailId(String(r.id))} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
                   {String(r.status) === 'draft' && (
                     <>
+                      <button onClick={() => openEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="Edit"><Pencil className="h-4 w-4" /></button>
+                      <button onClick={() => { setDeleteTarget(r); setDeleteError(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>
                       <button onClick={() => post.mutate(String(r.id))} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
                       <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
                     </>
@@ -173,7 +223,7 @@ export default function VouchersPage() {
         />
       </Card>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New Voucher" size="lg">
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditId(null); }} title={editId ? 'Edit Voucher' : 'New Voucher'} size="lg">
         <form onSubmit={submit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Field label="Voucher Date" required>
@@ -213,23 +263,23 @@ export default function VouchersPage() {
                       <td className="px-3 py-1.5">
                         <Select value={en.mainAccountId} onChange={(e) => {
                           const opt = accountOptions.find((o) => o.value === e.target.value);
-                          update(en.key, { mainAccountId: e.target.value, accountName: opt?.label });
+                          updateEntry(en.key, { mainAccountId: e.target.value, accountName: opt?.label });
                         }} className="min-w-[160px]">
                           <option value="">Select account…</option>
                           {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </Select>
                       </td>
                       <td className="px-3 py-1.5">
-                        <Input type="number" min={0} step="0.01" value={en.debit ? String(en.debit) : ''} onChange={(e) => update(en.key, { debit: Number(e.target.value) || 0, credit: 0 })} className="text-right" placeholder="0" />
+                        <Input type="number" min={0} step="0.01" value={en.debit ? String(en.debit) : ''} onChange={(e) => updateEntry(en.key, { debit: Number(e.target.value) || 0, credit: 0 })} className="text-right" placeholder="0" />
                       </td>
                       <td className="px-3 py-1.5">
-                        <Input type="number" min={0} step="0.01" value={en.credit ? String(en.credit) : ''} onChange={(e) => update(en.key, { credit: Number(e.target.value) || 0, debit: 0 })} className="text-right" placeholder="0" />
+                        <Input type="number" min={0} step="0.01" value={en.credit ? String(en.credit) : ''} onChange={(e) => updateEntry(en.key, { credit: Number(e.target.value) || 0, debit: 0 })} className="text-right" placeholder="0" />
                       </td>
                       <td className="px-3 py-1.5">
-                        <Input value={en.narration ?? ''} onChange={(e) => update(en.key, { narration: e.target.value })} placeholder="optional" />
+                        <Input value={en.narration ?? ''} onChange={(e) => updateEntry(en.key, { narration: e.target.value })} placeholder="optional" />
                       </td>
                       <td className="px-3 py-1.5 text-center">
-                        <button onClick={() => remove(en.key)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                        <button onClick={() => removeEntry(en.key)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
                       </td>
                     </tr>
                   ))}
@@ -257,8 +307,8 @@ export default function VouchersPage() {
           {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button type="submit" loading={create.isPending} disabled={!balanced}>Create</Button>
+            <Button type="button" variant="outline" onClick={() => { setModalOpen(false); setEditId(null); }}>Cancel</Button>
+            <Button type="submit" loading={editId ? update.isPending : create.isPending} disabled={!balanced}>{editId ? 'Save changes' : 'Create'}</Button>
           </div>
         </form>
       </Modal>
@@ -280,6 +330,19 @@ export default function VouchersPage() {
             <Textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Optional reason" />
           </Field>
         </div>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        danger
+        title="Delete Voucher"
+        message={`Delete voucher "${String(deleteTarget?.number ?? '')}"? This permanently removes the draft and its entries and cannot be undone.`}
+        confirmLabel="Delete voucher"
+        loading={remove.isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget?.id && remove.mutate(String(deleteTarget.id))}
+      >
+        {deleteError && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{deleteError}</div>}
       </ConfirmDialog>
     </div>
   );

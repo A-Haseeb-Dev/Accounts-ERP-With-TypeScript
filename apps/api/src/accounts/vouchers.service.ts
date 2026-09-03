@@ -205,4 +205,86 @@ export class VouchersService {
     if (!voucher) throw ApiException.notFound('Voucher');
     return voucher;
   }
+
+  async update(id: string, dto: CreateVoucherDto, actorId?: string) {
+    const voucher = await this.prisma.voucher.findUnique({ where: { id, entries: { some: {} } }, include: { entries: true } });
+    if (!voucher) throw ApiException.notFound('Voucher');
+    if (voucher.status !== 'draft') {
+      throw ApiException.invalidTransaction(`Only draft vouchers can be edited. "${voucher.number}" is ${voucher.status}.`);
+    }
+
+    if (!dto.entries.some((e) => Number(e.debit ?? 0) > 0)) {
+      throw ApiException.validation('A debit entry is required');
+    }
+    if (!dto.entries.some((e) => Number(e.credit ?? 0) > 0)) {
+      throw ApiException.validation('A credit entry is required');
+    }
+    this.accounting.assertBalanced(dto.entries);
+
+    const totalDebit = round2(dto.entries.reduce((s, e) => s + Number(e.debit ?? 0), 0));
+    const totalCredit = round2(dto.entries.reduce((s, e) => s + Number(e.credit ?? 0), 0));
+
+    try {
+      const updated = await this.prisma.$transaction(async (tx) => {
+        await tx.voucherEntry.deleteMany({ where: { voucherId: id } });
+        return tx.voucher.update({
+          where: { id },
+          data: {
+            voucherDate: new Date(dto.voucherDate),
+            description: dto.description ?? null,
+            reference: dto.reference ?? null,
+            totalDebit,
+            totalCredit,
+            entries: {
+              create: dto.entries.map((e) => ({
+                mainAccountId: e.mainAccountId,
+                debit: Number(e.debit ?? 0),
+                credit: Number(e.credit ?? 0),
+                narration: e.narration ?? null,
+              })),
+            },
+          },
+          include: { entries: true },
+        });
+      });
+      this.audit.record({
+        userId: actorId,
+        action: 'UPDATE',
+        module: 'VOUCHER',
+        entity: 'Voucher',
+        entityId: id,
+        message: `${voucher.voucherType} voucher ${voucher.number} updated`,
+      });
+      return updated;
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async remove(id: string, actorId?: string) {
+    const voucher = await this.prisma.voucher.findUnique({ where: { id } });
+    if (!voucher) throw ApiException.notFound('Voucher');
+    if (voucher.status !== 'draft') {
+      throw ApiException.invalidTransaction(`Only draft vouchers can be deleted. "${voucher.number}" is ${voucher.status}.`);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.voucherEntry.deleteMany({ where: { voucherId: id } });
+      await tx.voucher.delete({ where: { id } });
+    });
+
+    this.audit.record({
+      userId: actorId,
+      action: 'DELETE',
+      module: 'VOUCHER',
+      entity: 'Voucher',
+      entityId: id,
+      message: `${voucher.voucherType} voucher ${voucher.number} deleted`,
+    });
+    return { id, deleted: true };
+  }
+}
+
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
 }
