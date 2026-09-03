@@ -37,6 +37,7 @@ export default function MainAccountsPage() {
   const [editing, setEditing] = useState<Row | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [deleteTarget, setDeleteTarget] = useState<Row | null>(null);
+  const [deleteError, setDeleteError] = useState('');
   const [error, setError] = useState('');
 
   const { data, isLoading } = useQuery<{ items: Row[]; total: number }>({
@@ -68,7 +69,9 @@ export default function MainAccountsPage() {
       qc.invalidateQueries({ queryKey: ['main-accounts'] });
       qc.invalidateQueries({ queryKey: ['flat', 'main-accounts'] });
       setDeleteTarget(null);
+      setDeleteError('');
     },
+    onError: (e: Error) => setDeleteError(e.message),
   });
 
   const set = (name: string, value: unknown) => setForm((f) => ({ ...f, [name]: value }));
@@ -193,12 +196,16 @@ export default function MainAccountsPage() {
         open={!!deleteTarget}
         danger
         title="Delete Main Account"
-        message={`This will permanently delete "${String(deleteTarget?.name ?? '')}". This action cannot be undone.`}
+        message={`Delete "${String(deleteTarget?.name ?? '')}"? Accounts with posting activity cannot be deleted.`}
         confirmLabel="Delete"
         loading={del.isPending}
-        onCancel={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget?.id && del.mutate(String(deleteTarget.id))}
-      />
+        onCancel={() => { setDeleteTarget(null); setDeleteError(''); }}
+        onConfirm={() => { setDeleteError(''); deleteTarget?.id && del.mutate(String(deleteTarget.id)); }}
+      >
+        {deleteError && (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{deleteError}</div>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }
