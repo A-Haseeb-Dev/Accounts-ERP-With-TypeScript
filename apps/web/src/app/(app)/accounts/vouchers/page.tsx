@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { CheckCircle2, Eye, Pencil, Plus, Search, Trash2, XCircle } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
+import { createVoucher, updateVoucher, deleteVoucher } from '@/lib/accounts-api';
+import type { VoucherPayload } from '@/lib/accounts-api';
 import { useAccountingAccounts } from '@/hooks/use-options';
 import { useDocumentMutations } from '@/hooks/use-document-mutations';
 import { Button } from '@/components/ui/button';
@@ -63,7 +65,7 @@ export default function VouchersPage() {
   });
 
   const create = useMutation({
-    mutationFn: (payload: unknown) => apiFetch('/vouchers', { method: 'POST', body: JSON.stringify(payload) }),
+    mutationFn: (payload: VoucherPayload) => createVoucher(payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vouchers'] });
       setModalOpen(false);
@@ -79,7 +81,7 @@ export default function VouchersPage() {
   });
 
   const update = useMutation({
-    mutationFn: (payload: unknown) => apiFetch(`/vouchers/${editId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+    mutationFn: (payload: VoucherPayload) => updateVoucher(editId!, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vouchers'] });
       setModalOpen(false);
@@ -96,7 +98,7 @@ export default function VouchersPage() {
   });
 
   const remove = useMutation({
-    mutationFn: (id: string) => apiFetch(`/vouchers/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => deleteVoucher(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vouchers'] });
       setDeleteTarget(null);
@@ -153,8 +155,8 @@ export default function VouchersPage() {
         .filter((en) => en.mainAccountId)
         .map((en) => ({
           mainAccountId: en.mainAccountId,
-          debit: en.debit || undefined,
-          credit: en.credit || undefined,
+          debit: Number(en.debit) || 0,
+          credit: Number(en.credit) || 0,
           narration: en.narration || undefined,
         })),
     };
