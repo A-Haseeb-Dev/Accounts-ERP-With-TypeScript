@@ -18,13 +18,14 @@ export default function SalesBookPage() {
   const [customerId, setCustomerId] = useState('');
   const [status, setStatus] = useState('posted');
 
-  const { data, isLoading } = useQuery<{ items: Row[] }>({
+  const { data, isLoading } = useQuery<{ rows: Row[]; subtotal: number; tax: number; grandTotal: number }>({
     queryKey: ['sales-book', from, to, customerId, status],
     queryFn: () => apiFetch('/reports/sales-book' + qs({ from: from || undefined, to: to || undefined, customerId: customerId || undefined, status })),
   });
 
-  const totalSales = (data?.items ?? []).reduce((s, r) => s + Number(r.grandTotal ?? 0), 0);
-  const totalPaid = (data?.items ?? []).reduce((s, r) => s + Number(r.amountPaid ?? 0), 0);
+  const rows = data?.rows ?? [];
+  const totalSales = rows.reduce((s, r) => s + Number(r.grandTotal ?? 0), 0);
+  const totalPaid = rows.reduce((s, r) => s + Number(r.amountPaid ?? 0), 0);
 
   return (
     <div>
@@ -61,7 +62,7 @@ export default function SalesBookPage() {
               </tr>
             </thead>
             <tbody>
-              {(data?.items ?? []).map((r) => {
+              {rows.map((r) => {
                 const bal = Number(r.grandTotal ?? 0) - Number(r.amountPaid ?? 0);
                 return (
                   <tr key={String(r.id)} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
@@ -74,11 +75,11 @@ export default function SalesBookPage() {
                   </tr>
                 );
               })}
-              {(!data || data.items.length === 0) && !isLoading && (
+              {rows.length === 0 && !isLoading && (
                 <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No sales found.</td></tr>
               )}
             </tbody>
-            {data && data.items.length > 0 && (
+            {rows.length > 0 && (
               <tfoot>
                 <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-800">
                   <td colSpan={3} className="px-4 py-2 text-xs font-semibold uppercase text-slate-500">Totals</td>

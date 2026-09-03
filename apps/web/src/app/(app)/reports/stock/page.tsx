@@ -20,13 +20,14 @@ export default function StockReportPage() {
   const [itemTypeId, setItemTypeId] = useState('');
   const [brandId, setBrandId] = useState('');
 
-  const { data, isLoading } = useQuery<{ items: Row[] }>({
+  const { data, isLoading } = useQuery<{ rows: Row[]; totalQty: number; totalValue: number }>({
     queryKey: ['stock-report', locationId, itemTypeId, brandId],
     queryFn: () => apiFetch('/reports/stock' + qs({ locationId: locationId || undefined, itemTypeId: itemTypeId || undefined, brandId: brandId || undefined })),
   });
 
-  const totalQty = (data?.items ?? []).reduce((s, r) => s + Number(r.quantity ?? 0), 0);
-  const totalValue = (data?.items ?? []).reduce((s, r) => s + Number(r.value ?? 0), 0);
+  const rows = data?.rows ?? [];
+  const totalQty = data?.totalQty ?? 0;
+  const totalValue = data?.totalValue ?? 0;
 
   return (
     <div>
@@ -52,21 +53,21 @@ export default function StockReportPage() {
               </tr>
             </thead>
             <tbody>
-              {(data?.items ?? []).map((r) => (
-                <tr key={String(r.id)} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                  <td className="px-4 py-2 font-mono font-semibold text-slate-800">{String(r.code)}</td>
-                  <td className="px-4 py-2 text-slate-700">{String(r.name)}</td>
-                  <td className="px-4 py-2 text-xs text-slate-500">{String((r.itemType as Row)?.name ?? '-')}</td>
-                  <td className="px-4 py-2 text-xs text-slate-500">{String((r.brand as Row)?.name ?? '-')}</td>
+              {rows.map((r) => (
+                <tr key={String(r.itemId ?? r.itemCode)} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                  <td className="px-4 py-2 font-mono font-semibold text-slate-800">{String(r.itemCode)}</td>
+                  <td className="px-4 py-2 text-slate-700">{String(r.itemName)}</td>
+                  <td className="px-4 py-2 text-xs text-slate-500">{String(r.itemType ?? '-')}</td>
+                  <td className="px-4 py-2 text-xs text-slate-500">{String(r.brand ?? '-')}</td>
                   <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{String(r.quantity ?? 0)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.value ?? 0, 'PKR')}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.stockValue ?? 0, 'PKR')}</td>
                 </tr>
               ))}
-              {(!data || data.items.length === 0) && !isLoading && (
+              {rows.length === 0 && !isLoading && (
                 <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No stock data.</td></tr>
               )}
             </tbody>
-            {data && data.items.length > 0 && (
+            {rows.length > 0 && (
               <tfoot>
                 <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-800">
                   <td colSpan={4} className="px-4 py-2 text-xs font-semibold uppercase text-slate-500">Totals</td>

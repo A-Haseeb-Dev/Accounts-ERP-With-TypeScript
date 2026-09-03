@@ -15,10 +15,12 @@ export default function GeneralJournalPage() {
   const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
 
-  const { data, isLoading } = useQuery<{ items: Row[]; total: number }>({
+  const { data, isLoading } = useQuery<{ vouchers: Row[]; total: number }>({
     queryKey: ['general-journal', from, to, page],
     queryFn: () => apiFetch('/reports/general-journal' + qs({ from: from || undefined, to: to || undefined, page, pageSize: 30 })),
   });
+
+  const vouchers = data?.vouchers ?? [];
 
   return (
     <div>
@@ -43,7 +45,7 @@ export default function GeneralJournalPage() {
               </tr>
             </thead>
             <tbody>
-              {(data?.items ?? []).flatMap((voucher) =>
+              {(vouchers ?? []).flatMap((voucher) =>
                 (voucher.entries as unknown as Row[] | undefined ?? []).map((entry, j) => (
                   <tr key={`${String(voucher.id)}-${j}`} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                     {j === 0 && <td rowSpan={Math.max((voucher.entries as unknown[] | undefined)?.length ?? 1, 1)} className="px-4 py-2 text-slate-600">{new Date(String(voucher.voucherDate)).toLocaleDateString('en-GB')}</td>}
@@ -55,16 +57,16 @@ export default function GeneralJournalPage() {
                   </tr>
                 ))
               )}
-              {(!data || data.items.length === 0) && !isLoading && (
+              {(vouchers.length === 0) && !isLoading && (
                 <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No entries found.</td></tr>
               )}
             </tbody>
           </table>
         </div>
 
-        {data && data.items.length > 0 && (
+        {vouchers.length > 0 && (
           <div className="flex justify-end border-t border-slate-100 px-4 py-2 text-sm text-slate-500">
-            Showing {data.items.length} of {data.total} vouchers
+            Showing {vouchers.length} of {data?.total} vouchers
           </div>
         )}
       </Card>

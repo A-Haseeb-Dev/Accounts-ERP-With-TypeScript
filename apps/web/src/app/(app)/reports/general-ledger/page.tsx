@@ -18,7 +18,7 @@ export default function GeneralLedgerPage() {
   const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
 
-  const { data, isLoading } = useQuery<{ items: Row[]; total: number; accountName?: string }>({
+  const { data, isLoading } = useQuery<{ rows: Row[]; total: number; openingBalance: number; closingBalance: number; account?: Row }>({
     queryKey: ['general-ledger', accountId, from, to, page],
     queryFn: () => apiFetch('/reports/general-ledger' + qs({ accountId, from: from || undefined, to: to || undefined, page, pageSize: 30 })),
     enabled: !!accountId,
@@ -46,6 +46,10 @@ export default function GeneralLedgerPage() {
 
         {accountId && (
           <div className="overflow-x-auto">
+            <div className="flex flex-wrap justify-between gap-2 border-b border-slate-100 px-4 py-2 text-sm">
+              <span className="text-slate-600">Opening balance: <span className="font-semibold text-slate-800">{money(data?.openingBalance ?? 0, 'PKR')}</span></span>
+              <span className="text-slate-600">Closing balance: <span className="font-semibold text-slate-800">{money(data?.closingBalance ?? 0, 'PKR')}</span></span>
+            </div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
@@ -58,17 +62,17 @@ export default function GeneralLedgerPage() {
                 </tr>
               </thead>
               <tbody>
-                {(data?.items ?? []).map((r, i) => (
+                {(data?.rows ?? []).map((r, i) => (
                   <tr key={i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                     <td className="px-4 py-2 text-slate-600">{r.date ? new Date(String(r.date)).toLocaleDateString('en-GB') : '—'}</td>
-                    <td className="px-4 py-2 font-mono font-semibold text-slate-800">{String((r.voucherNumber as string) ?? (r.voucher as Row)?.number ?? '')}</td>
-                    <td className="max-w-[300px] truncate px-4 py-2 text-slate-600">{String(r.description ?? r.narration ?? '')}</td>
+                    <td className="px-4 py-2 font-mono font-semibold text-slate-800">{String(r.voucherNumber ?? '')}</td>
+                    <td className="max-w-[300px] truncate px-4 py-2 text-slate-600">{String(r.description ?? '')}</td>
                     <td className="px-4 py-2 text-right tabular-nums text-teal-600">{r.debit ? money(r.debit, 'PKR') : ''}</td>
                     <td className="px-4 py-2 text-right tabular-nums text-red-600">{r.credit ? money(r.credit, 'PKR') : ''}</td>
-                    <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(r.runningBalance, 'PKR')}</td>
+                    <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(r.balance, 'PKR')}</td>
                   </tr>
                 ))}
-                {(!data || data.items.length === 0) && !isLoading && (
+                {(!data || data.rows.length === 0) && !isLoading && (
                   <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No entries found.</td></tr>
                 )}
               </tbody>

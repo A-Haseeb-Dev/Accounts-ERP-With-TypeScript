@@ -19,7 +19,7 @@ export default function ProductLedgerPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
 
-  const { data, isLoading } = useQuery<{ items: Row[]; total: number }>({
+  const { data, isLoading } = useQuery<{ rows: Row[]; total: number; item?: Row }>({
     queryKey: ['product-ledger', itemId, locationId, from, to],
     queryFn: () => apiFetch('/reports/product-ledger' + qs({ itemId, locationId: locationId || undefined, from: from || undefined, to: to || undefined, pageSize: 100 })),
     enabled: !!itemId,
@@ -66,22 +66,25 @@ export default function ProductLedgerPage() {
                 </tr>
               </thead>
               <tbody>
-                {(data?.items ?? []).map((r, i) => (
-                  <tr key={i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-4 py-2 text-slate-600">{r.date ? new Date(String(r.date)).toLocaleDateString('en-GB') : '—'}</td>
-                    <td className="px-4 py-2">
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${String(r.type).includes('IN') || String(r.type) === 'PURCHASE' ? 'bg-teal-50 text-teal-700' : 'bg-red-50 text-red-700'}`}>
-                        {String(r.type ?? '')}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 font-mono text-xs text-slate-600">{String(r.reference ?? '')}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-teal-600">{r.qtyIn ? String(r.qtyIn) : ''}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-red-600">{r.qtyOut ? String(r.qtyOut) : ''}</td>
-                    <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{String(r.balance ?? '')}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.value ?? 0, 'PKR')}</td>
-                  </tr>
-                ))}
-                {(!data || data.items.length === 0) && !isLoading && (
+                {(data?.rows ?? []).map((r, i) => {
+                  const value = Number(r.balance ?? 0) * Number(r.unitCost ?? 0);
+                  return (
+                    <tr key={i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                      <td className="px-4 py-2 text-slate-600">{r.date ? new Date(String(r.date)).toLocaleDateString('en-GB') : '—'}</td>
+                      <td className="px-4 py-2">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${Number(r.stockIn) > 0 ? 'bg-teal-50 text-teal-700' : 'bg-red-50 text-red-700'}`}>
+                          {String(r.transactionType ?? '')}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 font-mono text-xs text-slate-600">{String(r.referenceType ?? '')} {r.referenceId ? `(${String(r.referenceId).slice(0, 8)})` : ''}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-teal-600">{Number(r.stockIn) ? String(r.stockIn) : ''}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-red-600">{Number(r.stockOut) ? String(r.stockOut) : ''}</td>
+                      <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{String(r.balance ?? 0)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(value, 'PKR')}</td>
+                    </tr>
+                  );
+                })}
+                {(!data || data.rows.length === 0) && !isLoading && (
                   <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">No movements found.</td></tr>
                 )}
               </tbody>
