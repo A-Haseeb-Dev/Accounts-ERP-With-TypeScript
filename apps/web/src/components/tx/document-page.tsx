@@ -16,6 +16,7 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { dateTime, money } from '@/lib/utils';
+import { toast } from 'sonner';
 import type { Option } from '@/hooks/use-options';
 
 type Row = Record<string, unknown>;
@@ -50,7 +51,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
 
   const qc = useQueryClient();
   const { options: itemOptions } = useItemOptions();
-  const { post, cancel } = useDocumentMutations(resource, resource);
+  const { post, cancel } = useDocumentMutations(resource, resource, { noun: config.newLabel?.toLowerCase() ?? 'document' });
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -81,8 +82,12 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
       setModalOpen(false);
       setForm({});
       setLines([]);
+      toast.success(`${config.newLabel ?? 'Document'} saved`);
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => {
+      setError(e.message);
+      toast.error(e.message || 'Could not save document');
+    },
   });
 
   const submit = (e: React.FormEvent) => {

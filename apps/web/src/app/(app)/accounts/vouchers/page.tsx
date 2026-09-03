@@ -13,6 +13,7 @@ import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
+import { toast } from 'sonner';
 import { StatusBadge } from '@/components/ui/badge';
 import { dateTime, money } from '@/lib/utils';
 
@@ -30,7 +31,7 @@ interface Entry {
 export default function VouchersPage() {
   const qc = useQueryClient();
   const { options: accountOptions } = useAccountingAccounts();
-  const { post, cancel } = useDocumentMutations('vouchers', 'vouchers');
+  const { post, cancel } = useDocumentMutations('vouchers', 'vouchers', { noun: 'voucher' });
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -69,8 +70,12 @@ export default function VouchersPage() {
       setEntries([]);
       setDescription('');
       setReference('');
+      toast.success('Voucher created');
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => {
+      setError(e.message);
+      toast.error(e.message || 'Could not create voucher');
+    },
   });
 
   const update = useMutation({
@@ -82,8 +87,12 @@ export default function VouchersPage() {
       setEntries([]);
       setDescription('');
       setReference('');
+      toast.success('Voucher updated');
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => {
+      setError(e.message);
+      toast.error(e.message || 'Could not update voucher');
+    },
   });
 
   const remove = useMutation({
@@ -92,8 +101,12 @@ export default function VouchersPage() {
       qc.invalidateQueries({ queryKey: ['vouchers'] });
       setDeleteTarget(null);
       setDeleteError('');
+      toast.success('Voucher deleted');
     },
-    onError: (e: Error) => setDeleteError(e.message),
+    onError: (e: Error) => {
+      setDeleteError(e.message);
+      toast.error(e.message || 'Could not delete voucher');
+    },
   });
 
   const openEdit = (r: Row) => {

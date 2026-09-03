@@ -29,7 +29,7 @@ export default function StockTransfersPage() {
   const qc = useQueryClient();
   const { options: locationOptions } = useFlatOptions('stock-locations');
   const { options: itemOptions } = useItemOptions();
-  const { post, cancel } = useDocumentMutations('stock-transfers', 'stock-transfers');
+  const { post, cancel } = useDocumentMutations('stock-transfers', 'stock-transfers', { noun: 'transfer' });
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');

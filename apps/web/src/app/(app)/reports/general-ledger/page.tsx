@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { ReportActions } from '@/components/report-actions';
 import { QueryError } from '@/components/query-error';
+import { TableSkeleton } from '@/components/table-skeleton';
 import { money } from '@/lib/utils';
 
 type Row = Record<string, unknown>;
@@ -66,6 +67,9 @@ export default function GeneralLedgerPage() {
               <span className="text-slate-600">Opening balance: <span className="font-semibold text-slate-800">{money(data?.openingBalance ?? 0, 'PKR')}</span></span>
               <span className="text-slate-600">Closing balance: <span className="font-semibold text-slate-800">{money(data?.closingBalance ?? 0, 'PKR')}</span></span>
             </div>
+            {isLoading ? (
+              <TableSkeleton rows={6} columns={6} />
+            ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
@@ -93,6 +97,7 @@ export default function GeneralLedgerPage() {
                 )}
               </tbody>
             </table>
+            )}
           </div>
           </>
         )}

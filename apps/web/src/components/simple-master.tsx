@@ -14,6 +14,7 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { dateTime } from '@/lib/utils';
+import { toast } from 'sonner';
 
 export interface FieldDef {
   name: string;
@@ -71,8 +72,12 @@ export function SimpleMaster({ config }: { config: SimpleMasterConfig }) {
       setModalOpen(false);
       setEditing(null);
       setForm({});
+      toast.success(editing ? `${config.singular} updated` : `${config.singular} created`);
     },
-    onError: (e: Error) => setFormError(e.message),
+    onError: (e: Error) => {
+      setFormError(e.message);
+      toast.error(e.message || 'Something went wrong');
+    },
   });
 
   const deleteMutation = useMutation({
@@ -80,7 +85,9 @@ export function SimpleMaster({ config }: { config: SimpleMasterConfig }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [config.apiPath] });
       setDeleteTarget(null);
+      toast.success(`${config.singular} deleted`);
     },
+    onError: (e: Error) => toast.error(e.message || 'Delete failed'),
   });
 
   const openCreate = () => {
