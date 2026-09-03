@@ -45,6 +45,9 @@ export default function SettingsPage() {
       defaultStockLocationId: form.defaultStockLocationId || undefined,
       defaultCustomerId: form.defaultCustomerId || undefined,
       defaultSupplierId: form.defaultSupplierId || undefined,
+      values: {
+        'fiscal.locked_until': form.lockedUntil || '',
+      },
     });
   };
 
@@ -105,6 +108,22 @@ export default function SettingsPage() {
                     <option value="">—</option>
                     {supplierOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </Select>
+                </Field>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-3 text-sm font-semibold text-slate-700">Fiscal Period</p>
+              <div className="grid grid-cols-2 gap-4">
+                <Field
+                  label="Lock Vouchers Up To"
+                  hint="Posting or changing vouchers on or before this date is blocked. Leave empty to unlock."
+                >
+                  <Input
+                    type="date"
+                    value={merged.lockedUntil ?? ''}
+                    onChange={(e) => set('lockedUntil', e.target.value)}
+                  />
                 </Field>
               </div>
             </div>
