@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NumberingService } from '../common/services/numbering.service';
 import { AccountingService } from '../common/services/accounting.service';
+import { FiscalPeriodGuard } from '../common/services/fiscal-period.guard';
 import { ApiException } from '../common/exceptions/api.exception';
 import { CreateVoucherDto } from './dto/vouchers.dto';
 
@@ -21,6 +22,7 @@ export class VouchersService {
     private readonly audit: AuditService,
     private readonly numbering: NumberingService,
     private readonly accounting: AccountingService,
+    private readonly fiscal: FiscalPeriodGuard,
   ) {}
 
   async create(dto: CreateVoucherDto, actorId?: string) {
@@ -32,6 +34,7 @@ export class VouchersService {
     }
     // Pre-validate balance before opening a transaction.
     this.accounting.assertBalanced(dto.entries);
+    await this.fiscal.assertOpen(dto.voucherDate, 'Cannot create a voucher');
 
     const number = await this.numbering.next(
       `voucher_${dto.voucherType.toLowerCase()}`,
@@ -72,6 +75,7 @@ export class VouchersService {
   async post(id: string, actorId?: string) {
     const voucher = await this.prisma.voucher.findUnique({ where: { id } });
     if (!voucher) throw ApiException.notFound('Voucher');
+    await this.fiscal.assertOpen(voucher.voucherDate, 'Cannot post a voucher');
 
     const posted = await this.prisma.$transaction(async (tx) => {
       const result = await this.accounting.postVoucher(tx, id, actorId);
@@ -91,6 +95,7 @@ export class VouchersService {
   async cancel(id: string, reason: string, actorId?: string) {
     const voucher = await this.prisma.voucher.findUnique({ where: { id } });
     if (!voucher) throw ApiException.notFound('Voucher');
+    await this.fiscal.assertOpen(voucher.voucherDate, 'Cannot cancel a voucher');
 
     const cancelled = await this.prisma.$transaction(async (tx) => {
       const result = await this.accounting.cancelVoucher(tx, id, reason, actorId);
@@ -220,6 +225,7 @@ export class VouchersService {
       throw ApiException.validation('A credit entry is required');
     }
     this.accounting.assertBalanced(dto.entries);
+    await this.fiscal.assertOpen(dto.voucherDate, 'Cannot update a voucher');
 
     const totalDebit = round2(dto.entries.reduce((s, e) => s + Number(e.debit ?? 0), 0));
     const totalCredit = round2(dto.entries.reduce((s, e) => s + Number(e.credit ?? 0), 0));
@@ -267,6 +273,7 @@ export class VouchersService {
     if (voucher.status !== 'draft') {
       throw ApiException.invalidTransaction(`Only draft vouchers can be deleted. "${voucher.number}" is ${voucher.status}.`);
     }
+    await this.fiscal.assertOpen(voucher.voucherDate, 'Cannot delete a voucher');
 
     await this.prisma.$transaction(async (tx) => {
       await tx.voucherEntry.deleteMany({ where: { voucherId: id } });

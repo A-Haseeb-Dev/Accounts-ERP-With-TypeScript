@@ -50,8 +50,9 @@ function buildService(overrides?: {
   const audit = overrides?.audit ?? { record: vi.fn().mockResolvedValue(undefined) };
   const numbering = overrides?.numbering ?? { next: vi.fn().mockResolvedValue('JV-000001') };
   const accounting = new AccountingService({} as never);
-  const svc = new VouchersService(prisma as never, audit as never, numbering as never, accounting as never);
-  return { svc, prisma, audit, numbering, accounting };
+  const fiscal = overrides?.fiscal ?? { assertOpen: vi.fn().mockResolvedValue(undefined) };
+  const svc = new VouchersService(prisma as never, audit as never, numbering as never, accounting as never, fiscal as never);
+  return { svc, prisma, audit, numbering, accounting, fiscal };
 }
 
 describe('VouchersService.create validation', () => {
@@ -98,7 +99,8 @@ describe('VouchersService.create', () => {
     const audit = { record: vi.fn().mockResolvedValue(undefined) };
     const numbering = { next: vi.fn().mockResolvedValue('JV-000001') };
     const accounting = new AccountingService({} as never);
-    const svc = new VouchersService(prisma as never, audit as never, numbering as never, accounting as never);
+    const fiscal = { assertOpen: vi.fn().mockResolvedValue(undefined) };
+    const svc = new VouchersService(prisma as never, audit as never, numbering as never, accounting as never, fiscal as never);
 
     const result = await svc.create(dto(), 'u1');
 
