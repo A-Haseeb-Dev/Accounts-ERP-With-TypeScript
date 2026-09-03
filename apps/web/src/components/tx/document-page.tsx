@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { CheckCircle2, Eye, Plus, Search, XCircle } from 'lucide-react';
+import { CheckCircle2, Eye, Plus, Printer, Search, XCircle } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { useItemOptions } from '@/hooks/use-options';
 import { ItemsEditor, type LineItem } from '@/components/tx/items-editor';
@@ -17,6 +17,8 @@ import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { dateTime, money } from '@/lib/utils';
 import { toast } from 'sonner';
+import { printElement } from '@/lib/report-export';
+import { PrintableDocument } from '@/components/tx/printable-document';
 import type { Option } from '@/hooks/use-options';
 
 type Row = Record<string, unknown>;
@@ -304,15 +306,30 @@ function DocumentDetailModal({
 }) {
   const items = (detail?.items as unknown as DocLine[] | undefined) ?? [];
   return (
-    <Modal open={open} onClose={onClose} title={`${detail?.number ?? ''}`} size="lg">
-      {loading || !detail ? null : (
-        <div>
-          <div className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-            <Facts label="Date" value={new Date(String(detail[dateField])).toLocaleDateString('en-GB')} />
-            <Facts label={partyLabel} value={kvName(detail.party ?? detail.customer ?? detail.supplier)} />
-            <Facts label="Location" value={kvName(detail.stockLocation ?? detail.location)} />
-            <Facts label="Status" value={String(detail.status)} />
-          </div>
+    <>
+      <PrintableDocument
+        open={open}
+        detail={detail}
+        title={partyLabel === 'Supplier' ? 'Purchase Bill' : 'Sales Invoice'}
+        partyLabel={partyLabel}
+        dateField={dateField}
+        priceKey={priceKey}
+        showAmountPaid={showAmountPaid}
+      />
+      <Modal open={open} onClose={onClose} title={`${detail?.number ?? ''}`} size="lg">
+        {loading || !detail ? null : (
+          <div>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="grid flex-1 grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                <Facts label="Date" value={new Date(String(detail[dateField])).toLocaleDateString('en-GB')} />
+                <Facts label={partyLabel} value={kvName(detail.party ?? detail.customer ?? detail.supplier)} />
+                <Facts label="Location" value={kvName(detail.stockLocation ?? detail.location)} />
+                <Facts label="Status" value={String(detail.status)} />
+              </div>
+              <Button variant="outline" size="md" onClick={() => printElement('printable-document', partyLabel === 'Supplier' ? 'Purchase Bill' : 'Sales Invoice')}>
+                <Printer className="h-4 w-4" /> Print
+              </Button>
+            </div>
 
           <div className="overflow-x-auto rounded-lg border border-slate-200">
             <table className="w-full text-sm">
@@ -358,7 +375,8 @@ function DocumentDetailModal({
           {!!detail.note && <p className="mt-1 text-xs text-slate-500">Note: {String(detail.note)}</p>}
         </div>
       )}
-    </Modal>
+      </Modal>
+    </>
   );
 }
 
