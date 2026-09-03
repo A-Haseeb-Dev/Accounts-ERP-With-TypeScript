@@ -7,7 +7,7 @@ A modern, web-based Enterprise Resource Planning (ERP) system covering accountin
 | Layer      | Technology                                             |
 |------------|--------------------------------------------------------|
 | Backend    | NestJS 10, TypeScript, Prisma ORM                      |
-| Frontend   | Next.js 14 (App Router), React 18, Tailwind CSS        |
+| Frontend   | Next.js 15 (App Router), React, Tailwind CSS    |
 | Database   | PostgreSQL 16 (Neon serverless / Docker)               |
 | Auth       | JWT (access + refresh), Argon2 password hashing, RBAC  |
 | Testing    | Vitest (backend), 90 unit tests                        |
@@ -77,6 +77,7 @@ Errors are returned as:
 | Audit logs         | `/api/system/audit-logs`   | Action audit trail                        |
 | System             | `/api/system`              | Settings & branding                       |
 | Permissions        | `/api/permissions`         | Permission catalog                        |
+| Health             | `/api/health`              | Liveness check (public, no auth)          |
 
 ### Frontend navigation
 
@@ -198,7 +199,7 @@ pnpm build:web     # next build
 # or both: pnpm build
 ```
 
-The built API is served from `apps/api/dist` (run with `node dist/main.js` / `pnpm start:prod`), and the Next.js app from `apps/web/.next`.
+The built API is served from `apps/api/dist` (run with `node dist/src/main.js` / `pnpm start:prod`), and the Next.js app from `apps/web/.next`.
 
 ## Linting & Type Checking
 
