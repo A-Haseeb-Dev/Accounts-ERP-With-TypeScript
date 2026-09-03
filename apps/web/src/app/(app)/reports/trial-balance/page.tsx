@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
+import { ReportActions } from '@/components/report-actions';
 import { money } from '@/lib/utils';
 
 type Row = Record<string, unknown>;
@@ -25,7 +26,17 @@ export default function TrialBalancePage() {
 
   return (
     <div>
-      <PageHeader title="Trial Balance" description="All account balances as of a date." />
+      <PageHeader
+        title="Trial Balance"
+        description="All account balances as of a date."
+        actions={
+          <ReportActions
+            tableId="tb-report"
+            filename="trial-balance"
+            title={`Trial Balance — as of ${asOf}`}
+          />
+        }
+      />
 
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
@@ -35,7 +46,7 @@ export default function TrialBalancePage() {
           <Button variant="secondary" onClick={() => refetch()} disabled={isLoading}>Refresh</Button>
         </div>
 
-        <div className="overflow-x-auto">
+        <div id="tb-report" className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">

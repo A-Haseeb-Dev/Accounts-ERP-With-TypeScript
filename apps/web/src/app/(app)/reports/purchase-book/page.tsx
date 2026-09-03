@@ -7,6 +7,7 @@ import { useFlatOptions } from '@/hooks/use-options';
 import { Field, Input, Select } from '@/components/ui/field';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
+import { ReportActions } from '@/components/report-actions';
 import { money } from '@/lib/utils';
 
 type Row = Record<string, unknown>;
@@ -28,7 +29,17 @@ export default function PurchaseBookPage() {
 
   return (
     <div>
-      <PageHeader title="Purchase Book" description="Posted purchase invoices summary." />
+      <PageHeader
+        title="Purchase Book"
+        description="Posted purchase invoices summary."
+        actions={
+          <ReportActions
+            tableId="pb-report"
+            filename="purchase-book"
+            title={`Purchase Book ${from ? `(${from} to ${to || from})` : ''}`}
+          />
+        }
+      />
 
       <Card>
         <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 px-4 py-3">
@@ -48,7 +59,7 @@ export default function PurchaseBookPage() {
           </Field>
         </div>
 
-        <div className="overflow-x-auto">
+        <div id="pb-report" className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">

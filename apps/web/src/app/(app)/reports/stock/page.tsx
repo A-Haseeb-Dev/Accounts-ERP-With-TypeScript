@@ -7,6 +7,7 @@ import { useFlatOptions } from '@/hooks/use-options';
 import { Field, Input, Select } from '@/components/ui/field';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
+import { ReportActions } from '@/components/report-actions';
 import { money } from '@/lib/utils';
 
 type Row = Record<string, unknown>;
@@ -31,7 +32,17 @@ export default function StockReportPage() {
 
   return (
     <div>
-      <PageHeader title="Stock Report" description="Current stock quantities and values across locations." />
+      <PageHeader
+        title="Stock Report"
+        description="Current stock quantities and values across locations."
+        actions={
+          <ReportActions
+            tableId="stock-report"
+            filename="stock-report"
+            title={`Stock Report — as of ${new Date().toISOString().slice(0, 10)}`}
+          />
+        }
+      />
 
       <Card>
         <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 px-4 py-3">
@@ -40,7 +51,7 @@ export default function StockReportPage() {
           <Field label="Brand"><Select value={brandId} onChange={(e) => setBrandId(e.target.value)}><option value="">All brands</option>{brandOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</Select></Field>
         </div>
 
-        <div className="overflow-x-auto">
+        <div id="stock-report" className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">

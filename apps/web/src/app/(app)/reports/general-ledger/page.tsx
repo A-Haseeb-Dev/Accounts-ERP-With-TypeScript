@@ -7,6 +7,7 @@ import { useAccountingAccounts } from '@/hooks/use-options';
 import { Field, Input, Select } from '@/components/ui/field';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
+import { ReportActions } from '@/components/report-actions';
 import { money } from '@/lib/utils';
 
 type Row = Record<string, unknown>;
@@ -26,7 +27,19 @@ export default function GeneralLedgerPage() {
 
   return (
     <div>
-      <PageHeader title="General Ledger" description="Account-wise posted voucher entries with running balance." />
+      <PageHeader
+        title="General Ledger"
+        description="Account-wise posted voucher entries with running balance."
+        actions={
+          accountId && (
+            <ReportActions
+              tableId="gl-report"
+              filename="general-ledger"
+              title={`General Ledger — ${String((data?.account as Row)?.name ?? '')} ${from ? `(${from} to ${to || from})` : ''}`}
+            />
+          )
+        }
+      />
 
       <Card>
         <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 px-4 py-3">
@@ -45,7 +58,7 @@ export default function GeneralLedgerPage() {
         )}
 
         {accountId && (
-          <div className="overflow-x-auto">
+          <div id="gl-report" className="overflow-x-auto">
             <div className="flex flex-wrap justify-between gap-2 border-b border-slate-100 px-4 py-2 text-sm">
               <span className="text-slate-600">Opening balance: <span className="font-semibold text-slate-800">{money(data?.openingBalance ?? 0, 'PKR')}</span></span>
               <span className="text-slate-600">Closing balance: <span className="font-semibold text-slate-800">{money(data?.closingBalance ?? 0, 'PKR')}</span></span>

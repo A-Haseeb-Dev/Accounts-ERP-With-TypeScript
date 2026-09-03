@@ -6,6 +6,7 @@ import { apiFetch, qs } from '@/lib/api';
 import { Field, Input } from '@/components/ui/field';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
+import { ReportActions } from '@/components/report-actions';
 import { money } from '@/lib/utils';
 
 type Row = Record<string, unknown>;
@@ -24,7 +25,17 @@ export default function GeneralJournalPage() {
 
   return (
     <div>
-      <PageHeader title="General Journal" description="All posted vouchers in chronological order." />
+      <PageHeader
+        title="General Journal"
+        description="All posted vouchers in chronological order."
+        actions={
+          <ReportActions
+            tableId="gj-report"
+            filename="general-journal"
+            title={`General Journal ${from ? `(${from} to ${to || from})` : ''}`}
+          />
+        }
+      />
 
       <Card>
         <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 px-4 py-3">
@@ -32,7 +43,7 @@ export default function GeneralJournalPage() {
           <Field label="To"><Input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} className="w-40" /></Field>
         </div>
 
-        <div className="overflow-x-auto">
+        <div id="gj-report" className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">

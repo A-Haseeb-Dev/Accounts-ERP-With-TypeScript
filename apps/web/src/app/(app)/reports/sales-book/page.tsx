@@ -7,6 +7,7 @@ import { useFlatOptions } from '@/hooks/use-options';
 import { Field, Input, Select } from '@/components/ui/field';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
+import { ReportActions } from '@/components/report-actions';
 import { money } from '@/lib/utils';
 
 type Row = Record<string, unknown>;
@@ -29,7 +30,17 @@ export default function SalesBookPage() {
 
   return (
     <div>
-      <PageHeader title="Sales Book" description="Posted sales invoices summary." />
+      <PageHeader
+        title="Sales Book"
+        description="Posted sales invoices summary."
+        actions={
+          <ReportActions
+            tableId="sb-report"
+            filename="sales-book"
+            title={`Sales Book ${from ? `(${from} to ${to || from})` : ''}`}
+          />
+        }
+      />
 
       <Card>
         <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 px-4 py-3">
@@ -49,7 +60,7 @@ export default function SalesBookPage() {
           </Field>
         </div>
 
-        <div className="overflow-x-auto">
+        <div id="sb-report" className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
