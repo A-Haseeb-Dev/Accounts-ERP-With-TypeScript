@@ -105,19 +105,17 @@ export class MainAccountsService {
   async remove(id: string, actorId?: string) {
     const item = await this.ensureExists(id);
     const entryCount = await this.prisma.voucherEntry.count({ where: { mainAccountId: id } });
-    const customerCount = await this.prisma.customer.count({ where: { mainAccountId: id } });
-    const supplierCount = await this.prisma.supplier.count({ where: { mainAccountId: id } });
-    if (entryCount > 0 || customerCount > 0 || supplierCount > 0) {
+    if (entryCount > 0) {
       throw ApiException.invalidTransaction(
-        `Main account "${item.name}" has accounting activity and cannot be deleted. Deactivate it instead.`,
+        `Main account "${item.name}" has ${entryCount} voucher entr${entryCount === 1 ? 'y' : 'ies'} and cannot be deleted. Deactivate it instead.`,
       );
     }
-    await this.prisma.mainAccount.update({ where: { id }, data: { status: 'inactive' } });
+    await this.prisma.mainAccount.delete({ where: { id } });
     this.audit.record({
-      userId: actorId, action: 'DEACTIVATE', module: 'MAIN_ACCOUNT', entity: 'MainAccount',
-      entityId: id, message: `Main account ${item.name} deactivated`,
+      userId: actorId, action: 'DELETE', module: 'MAIN_ACCOUNT', entity: 'MainAccount',
+      entityId: id, message: `Main account ${item.name} deleted`,
     });
-    return { id, status: 'inactive' };
+    return { id, deleted: true };
   }
 
   private async ensureExists(id: string) {
