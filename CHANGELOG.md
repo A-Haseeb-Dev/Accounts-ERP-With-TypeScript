@@ -8,6 +8,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Fiscal period lock** — admins can set a "Lock Vouchers Up To" date under
+  Settings → Fiscal Period. The API then rejects creating, editing, deleting,
+  posting, or cancelling any voucher whose date falls on or before that boundary,
+  protecting closed accounting periods from accidental changes.
+- **Atomic, concurrency-safe document numbering** — voucher/sales/purchase
+  numbers are now reserved via a single `INSERT … ON CONFLICT DO UPDATE …
+  RETURNING` upsert against `SystemSetting`, so concurrent requests never receive
+  a duplicated sequence number (verified with 20 parallel calls).
 - **Professional print/download on all reports** — every report page now has a
   `Print` (isolated, styled A4 output) and `Download` (CSV) action.
 - **Professional printable invoice/bill template** — the document detail view for
