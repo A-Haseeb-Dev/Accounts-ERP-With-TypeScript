@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- **Fully typed legacy web layer** — replaced every remaining `Row =
+  Record<string, unknown>` + `String()` runtime cast in the Next.js app with
+  Prisma-schema-aligned shared types from `lib/types.ts`. This covers parties
+  (customers, suppliers, towns), administration (items, item-types, brands,
+  stock-locations, chart of accounts), transaction components (document
+  page, printable invoice, stock transfers, vouchers, cash book), system
+  (users, roles, branding, audit logs), and all reports (general journal,
+  general ledger, product ledger, purchase/sales book, stock, trial balance).
+  Verified via `pnpm --filter @has-erp/web typecheck` (the build intentionally
+  skips type checks). No runtime behavior changes — this is a compile-time
+  type-safety refactor.
+
 ### Added
 - **Fiscal period lock** — admins can set a "Lock Vouchers Up To" date under
   Settings → Fiscal Period. The API then rejects creating, editing, deleting,

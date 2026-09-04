@@ -11,8 +11,7 @@ import { ReportActions } from '@/components/report-actions';
 import { QueryError } from '@/components/query-error';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { money } from '@/lib/utils';
-
-type Row = Record<string, unknown>;
+import type { LedgerRow, MainAccount } from '@/lib/types';
 
 export default function GeneralLedgerPage() {
   const { options: accountOptions } = useAccountingAccounts();
@@ -21,7 +20,7 @@ export default function GeneralLedgerPage() {
   const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
 
-  const { data, isLoading, isError, refetch } = useQuery<{ rows: Row[]; total: number; openingBalance: number; closingBalance: number; account?: Row }>({
+  const { data, isLoading, isError, refetch } = useQuery<{ rows: LedgerRow[]; total: number; openingBalance: number; closingBalance: number; account?: MainAccount }>({
     queryKey: ['general-ledger', accountId, from, to, page],
     queryFn: () => apiFetch('/reports/general-ledger' + qs({ accountId, from: from || undefined, to: to || undefined, page, pageSize: 30 })),
     enabled: !!accountId,
@@ -37,7 +36,7 @@ export default function GeneralLedgerPage() {
             <ReportActions
               tableId="gl-report"
               filename="general-ledger"
-              title={`General Ledger — ${String((data?.account as Row)?.name ?? '')} ${from ? `(${from} to ${to || from})` : ''}`}
+              title={`General Ledger — ${data?.account?.name ?? ''} ${from ? `(${from} to ${to || from})` : ''}`}
             />
           )
         }
@@ -83,10 +82,10 @@ export default function GeneralLedgerPage() {
               </thead>
               <tbody>
                 {(data?.rows ?? []).map((r, i) => (
-                  <tr key={i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-4 py-2 text-slate-600">{r.date ? new Date(String(r.date)).toLocaleDateString('en-GB') : '—'}</td>
-                    <td className="px-4 py-2 font-mono font-semibold text-slate-800">{String(r.voucherNumber ?? '')}</td>
-                    <td className="max-w-[300px] truncate px-4 py-2 text-slate-600">{String(r.description ?? '')}</td>
+                  <tr key={r.id ?? i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                    <td className="px-4 py-2 text-slate-600">{r.date ? new Date(r.date).toLocaleDateString('en-GB') : '—'}</td>
+                    <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.voucherNumber ?? ''}</td>
+                    <td className="max-w-[300px] truncate px-4 py-2 text-slate-600">{r.description ?? ''}</td>
                     <td className="px-4 py-2 text-right tabular-nums text-teal-600">{r.debit ? money(r.debit, 'PKR') : ''}</td>
                     <td className="px-4 py-2 text-right tabular-nums text-red-600">{r.credit ? money(r.credit, 'PKR') : ''}</td>
                     <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(r.balance, 'PKR')}</td>

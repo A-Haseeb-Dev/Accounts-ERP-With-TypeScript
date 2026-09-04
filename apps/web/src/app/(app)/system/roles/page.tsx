@@ -10,26 +10,30 @@ import { Modal } from '@/components/ui/modal';
 import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/page-header';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import type { Permission, Role } from '@/lib/types';
 
-type Row = Record<string, unknown>;
+interface RoleForm {
+  name: string;
+  description?: string;
+}
 
 export default function RolesPage() {
   const qc = useQueryClient();
 
-  const { data: roles, isLoading: rolesLoading } = useQuery<Row[]>({
+  const { data: roles, isLoading: rolesLoading } = useQuery<Role[]>({
     queryKey: ['roles'],
     queryFn: () => apiFetch('/roles'),
   });
 
-  const { data: permissions } = useQuery<Row[]>({
+  const { data: permissions } = useQuery<Permission[]>({
     queryKey: ['permissions'],
     queryFn: () => apiFetch('/permissions'),
   });
 
   const grouped = useMemo(() => {
-    const map = new Map<string, Row[]>();
+    const map = new Map<string, Permission[]>();
     for (const p of permissions ?? []) {
-      const mod = String(p.module ?? 'other');
+      const mod = p.module ?? 'other';
       if (!map.has(mod)) map.set(mod, []);
       map.get(mod)!.push(p);
     }
@@ -37,11 +41,11 @@ export default function RolesPage() {
   }, [permissions]);
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [form, setForm] = useState<Record<string, unknown>>({});
+  const [form, setForm] = useState<RoleForm>({ name: '', description: '' });
   const [selectedPerms, setSelectedPerms] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Row | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Role | null>(null);
 
   const create = useMutation({
     mutationFn: (payload: unknown) => apiFetch('/roles', { method: 'POST', body: JSON.stringify(payload) }),
@@ -75,23 +79,23 @@ export default function RolesPage() {
     });
   };
 
-  const toggleAllModule = (modPerms: Row[]) => {
-    const allSelected = modPerms.every((p) => selectedPerms.has(String(p.id)));
+  const toggleAllModule = (modPerms: Permission[]) => {
+    const allSelected = modPerms.every((p) => selectedPerms.has(p.id));
     setSelectedPerms((prev) => {
       const next = new Set(prev);
       for (const p of modPerms) {
-        if (allSelected) next.delete(String(p.id));
-        else next.add(String(p.id));
+        if (allSelected) next.delete(p.id);
+        else next.add(p.id);
       }
       return next;
     });
   };
 
-  const startEdit = (row: Row) => {
-    setForm({ name: String(row.name ?? ''), description: String(row.description ?? '') });
-    const rolePerms = ((row.permissions as Row[] | undefined) ?? []).map((rp) => String((rp.permission as Row)?.id ?? rp.permissionId ?? ''));
+  const startEdit = (row: Role) => {
+    setForm({ name: row.name ?? '', description: row.description ?? '' });
+    const rolePerms = (row.permissions ?? []).map((rp) => rp.permission.id);
     setSelectedPerms(new Set(rolePerms.filter(Boolean)));
-    setEditId(String(row.id));
+    setEditId(row.id);
     setError('');
     setModalOpen(true);
   };
@@ -130,11 +134,11 @@ export default function RolesPage() {
             </thead>
             <tbody>
               {(roles ?? []).map((r) => (
-                <tr key={String(r.id)} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                  <td className="px-4 py-2 font-medium text-slate-800">{String(r.name)}</td>
-                  <td className="px-4 py-2 text-xs text-slate-500">{String(r.description ?? '—')}</td>
-                  <td className="px-4 py-2 text-xs text-slate-600">{((r.permissions as Row[] | undefined) ?? []).length}</td>
-                  <td className="px-4 py-2 text-xs text-slate-600">{String((r._count as Row | undefined)?.users ?? 0)}</td>
+                <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                  <td className="px-4 py-2 font-medium text-slate-800">{r.name}</td>
+                  <td className="px-4 py-2 text-xs text-slate-500">{r.description ?? '—'}</td>
+                  <td className="px-4 py-2 text-xs text-slate-600">{r.permissions?.length ?? 0}</td>
+                  <td className="px-4 py-2 text-xs text-slate-600">{r._count?.users ?? 0}</td>
                   <td className="px-4 py-2">{r.isSystem ? <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">System</span> : '—'}</td>
                   <td className="px-4 py-2">
                     <div className="flex gap-0.5">
@@ -155,15 +159,15 @@ export default function RolesPage() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editId ? 'Edit Role' : 'New Role'} size="lg">
         <form onSubmit={submit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Role Name" required><Input value={String(form.name ?? '')} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required /></Field>
-            <Field label="Description"><Textarea value={String(form.description ?? '')} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} /></Field>
+            <Field label="Role Name" required><Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required /></Field>
+            <Field label="Description"><Textarea value={form.description ?? ''} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} /></Field>
           </div>
 
           <div>
             <p className="mb-2 text-sm font-medium text-slate-700">Permissions</p>
             <div className="max-h-[400px] overflow-y-auto rounded-lg border border-slate-200 p-3 space-y-3">
               {Array.from(grouped.entries()).map(([mod, perms]) => {
-                const allSel = perms.every((p) => selectedPerms.has(String(p.id)));
+                const allSel = perms.every((p) => selectedPerms.has(p.id));
                 return (
                   <div key={mod}>
                     <label className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -172,10 +176,10 @@ export default function RolesPage() {
                     </label>
                     <div className="ml-5 flex flex-wrap gap-1.5">
                       {perms.map((p) => (
-                        <button type="button" key={String(p.id)} onClick={() => togglePerm(String(p.id))}
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${selectedPerms.has(String(p.id)) ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-300' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        <button type="button" key={p.id} onClick={() => togglePerm(p.id)}
+                          className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${selectedPerms.has(p.id) ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-300' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                         >
-                          {String(p.action)}
+                          {p.action}
                         </button>
                       ))}
                     </div>
@@ -199,11 +203,11 @@ export default function RolesPage() {
         open={!!deleteTarget}
         danger
         title="Delete Role"
-        message={`Delete role "${String(deleteTarget?.name ?? '')}"? Users with this role will lose associated permissions.`}
+        message={`Delete role "${deleteTarget?.name ?? ''}"? Users with this role will lose associated permissions.`}
         confirmLabel="Delete"
         loading={del.isPending}
         onCancel={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget?.id && del.mutate(String(deleteTarget.id))}
+        onConfirm={() => deleteTarget?.id && del.mutate(deleteTarget.id)}
       />
     </div>
   );

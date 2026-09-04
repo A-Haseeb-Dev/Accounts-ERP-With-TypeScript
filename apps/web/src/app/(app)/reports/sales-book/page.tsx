@@ -11,8 +11,7 @@ import { ReportActions } from '@/components/report-actions';
 import { QueryError } from '@/components/query-error';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { money } from '@/lib/utils';
-
-type Row = Record<string, unknown>;
+import type { Sale } from '@/lib/types';
 
 export default function SalesBookPage() {
   const { options: customerOptions } = useFlatOptions('customers');
@@ -21,14 +20,14 @@ export default function SalesBookPage() {
   const [customerId, setCustomerId] = useState('');
   const [status, setStatus] = useState('posted');
 
-  const { data, isLoading, isError, refetch } = useQuery<{ rows: Row[]; subtotal: number; tax: number; grandTotal: number }>({
+  const { data, isLoading, isError, refetch } = useQuery<{ rows: Sale[]; subtotal: number; tax: number; grandTotal: number }>({
     queryKey: ['sales-book', from, to, customerId, status],
     queryFn: () => apiFetch('/reports/sales-book' + qs({ from: from || undefined, to: to || undefined, customerId: customerId || undefined, status })),
   });
 
   const rows = data?.rows ?? [];
-  const totalSales = rows.reduce((s, r) => s + Number(r.grandTotal ?? 0), 0);
-  const totalPaid = rows.reduce((s, r) => s + Number(r.amountPaid ?? 0), 0);
+  const totalSales = rows.reduce((s, r) => s + r.grandTotal, 0);
+  const totalPaid = rows.reduce((s, r) => s + r.amountPaid, 0);
 
   return (
     <div>
@@ -81,12 +80,12 @@ export default function SalesBookPage() {
             </thead>
             <tbody>
               {rows.map((r) => {
-                const bal = Number(r.grandTotal ?? 0) - Number(r.amountPaid ?? 0);
+                const bal = r.grandTotal - r.amountPaid;
                 return (
-                  <tr key={String(r.id)} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-4 py-2 text-slate-600">{r.saleDate ? new Date(String(r.saleDate)).toLocaleDateString('en-GB') : '—'}</td>
-                    <td className="px-4 py-2 font-mono font-semibold text-slate-800">{String(r.number)}</td>
-                    <td className="px-4 py-2 text-slate-700">{String((r.customer as Row)?.name ?? '-')}</td>
+                  <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                    <td className="px-4 py-2 text-slate-600">{new Date(r.saleDate).toLocaleDateString('en-GB')}</td>
+                    <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.number}</td>
+                    <td className="px-4 py-2 text-slate-700">{r.customer?.name ?? '-'}</td>
                     <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(r.grandTotal, 'PKR')}</td>
                     <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.amountPaid, 'PKR')}</td>
                     <td className={`px-4 py-2 text-right tabular-nums font-medium ${bal > 0.01 ? 'text-red-600' : 'text-teal-600'}`}>{money(bal, 'PKR')}</td>

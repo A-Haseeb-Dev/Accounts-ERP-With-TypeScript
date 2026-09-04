@@ -11,8 +11,7 @@ import { ReportActions } from '@/components/report-actions';
 import { QueryError } from '@/components/query-error';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { money } from '@/lib/utils';
-
-type Row = Record<string, unknown>;
+import type { Purchase } from '@/lib/types';
 
 export default function PurchaseBookPage() {
   const { options: supplierOptions } = useFlatOptions('suppliers');
@@ -21,13 +20,13 @@ export default function PurchaseBookPage() {
   const [supplierId, setSupplierId] = useState('');
   const [status, setStatus] = useState('posted');
 
-  const { data, isLoading, isError, refetch } = useQuery<{ rows: Row[]; grandTotal: number }>({
+  const { data, isLoading, isError, refetch } = useQuery<{ rows: Purchase[]; grandTotal: number }>({
     queryKey: ['purchase-book', from, to, supplierId, status],
     queryFn: () => apiFetch('/reports/purchase-book' + qs({ from: from || undefined, to: to || undefined, supplierId: supplierId || undefined, status })),
   });
 
   const rows = data?.rows ?? [];
-  const totalPurchases = rows.reduce((s, r) => s + Number(r.grandTotal ?? 0), 0);
+  const totalPurchases = rows.reduce((s, r) => s + r.grandTotal, 0);
 
   return (
     <div>
@@ -79,12 +78,12 @@ export default function PurchaseBookPage() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={String(r.id)} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                  <td className="px-4 py-2 text-slate-600">{r.purchaseDate ? new Date(String(r.purchaseDate)).toLocaleDateString('en-GB') : '—'}</td>
-                  <td className="px-4 py-2 font-mono font-semibold text-slate-800">{String(r.number)}</td>
-                  <td className="px-4 py-2 text-slate-700">{String((r.supplier as Row)?.name ?? '-')}</td>
+                <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                  <td className="px-4 py-2 text-slate-600">{new Date(r.purchaseDate).toLocaleDateString('en-GB')}</td>
+                  <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.number}</td>
+                  <td className="px-4 py-2 text-slate-700">{r.supplier?.name ?? '-'}</td>
                   <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(r.grandTotal, 'PKR')}</td>
-                  <td className="px-4 py-2 text-slate-600">{String(r.status)}</td>
+                  <td className="px-4 py-2 text-slate-600">{r.status}</td>
                 </tr>
               ))}
               {rows.length === 0 && !isLoading && (

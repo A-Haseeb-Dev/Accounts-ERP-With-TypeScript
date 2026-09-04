@@ -11,8 +11,7 @@ import { ReportActions } from '@/components/report-actions';
 import { QueryError } from '@/components/query-error';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { money } from '@/lib/utils';
-
-type Row = Record<string, unknown>;
+import type { Item, ProductLedgerRow } from '@/lib/types';
 
 export default function ProductLedgerPage() {
   const { options: itemOptions } = useItemOptions();
@@ -22,7 +21,7 @@ export default function ProductLedgerPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
 
-  const { data, isLoading, isError, refetch } = useQuery<{ rows: Row[]; total: number; item?: Row }>({
+  const { data, isLoading, isError, refetch } = useQuery<{ rows: ProductLedgerRow[]; total: number; item?: Item }>({
     queryKey: ['product-ledger', itemId, locationId, from, to],
     queryFn: () => apiFetch('/reports/product-ledger' + qs({ itemId, locationId: locationId || undefined, from: from || undefined, to: to || undefined, pageSize: 100 })),
     enabled: !!itemId,
@@ -38,7 +37,7 @@ export default function ProductLedgerPage() {
             <ReportActions
               tableId="pl-report"
               filename="product-ledger"
-              title={`Product Ledger — ${String((data?.item as Row)?.name ?? '')}`}
+              title={`Product Ledger — ${data?.item?.name ?? ''}`}
             />
           )
         }
@@ -87,19 +86,19 @@ export default function ProductLedgerPage() {
               </thead>
               <tbody>
                 {(data?.rows ?? []).map((r, i) => {
-                  const value = Number(r.balance ?? 0) * Number(r.unitCost ?? 0);
+                  const value = (r.balance ?? 0) * (r.unitCost ?? 0);
                   return (
                     <tr key={i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                      <td className="px-4 py-2 text-slate-600">{r.date ? new Date(String(r.date)).toLocaleDateString('en-GB') : '—'}</td>
+                      <td className="px-4 py-2 text-slate-600">{r.date ? new Date(r.date).toLocaleDateString('en-GB') : '—'}</td>
                       <td className="px-4 py-2">
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${Number(r.stockIn) > 0 ? 'bg-teal-50 text-teal-700' : 'bg-red-50 text-red-700'}`}>
-                          {String(r.transactionType ?? '')}
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${(r.stockIn ?? 0) > 0 ? 'bg-teal-50 text-teal-700' : 'bg-red-50 text-red-700'}`}>
+                          {r.transactionType ?? ''}
                         </span>
                       </td>
-                      <td className="px-4 py-2 font-mono text-xs text-slate-600">{String(r.referenceType ?? '')} {r.referenceId ? `(${String(r.referenceId).slice(0, 8)})` : ''}</td>
-                      <td className="px-4 py-2 text-right tabular-nums text-teal-600">{Number(r.stockIn) ? String(r.stockIn) : ''}</td>
-                      <td className="px-4 py-2 text-right tabular-nums text-red-600">{Number(r.stockOut) ? String(r.stockOut) : ''}</td>
-                      <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{String(r.balance ?? 0)}</td>
+                      <td className="px-4 py-2 font-mono text-xs text-slate-600">{r.referenceType ?? ''} {r.referenceId ? `(${r.referenceId.slice(0, 8)})` : ''}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-teal-600">{r.stockIn ? r.stockIn : ''}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-red-600">{r.stockOut ? r.stockOut : ''}</td>
+                      <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{r.balance ?? 0}</td>
                       <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(value, 'PKR')}</td>
                     </tr>
                   );

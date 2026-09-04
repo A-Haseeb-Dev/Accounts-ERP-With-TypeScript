@@ -11,8 +11,7 @@ import { ReportActions } from '@/components/report-actions';
 import { QueryError } from '@/components/query-error';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { money } from '@/lib/utils';
-
-type Row = Record<string, unknown>;
+import type { StockReportRow } from '@/lib/types';
 
 export default function StockReportPage() {
   const { options: locationOptions } = useFlatOptions('stock-locations');
@@ -23,7 +22,7 @@ export default function StockReportPage() {
   const [itemTypeId, setItemTypeId] = useState('');
   const [brandId, setBrandId] = useState('');
 
-  const { data, isLoading, isError, refetch } = useQuery<{ rows: Row[]; totalQty: number; totalValue: number }>({
+  const { data, isLoading, isError, refetch } = useQuery<{ rows: StockReportRow[]; totalQty: number; totalValue: number }>({
     queryKey: ['stock-report', locationId, itemTypeId, brandId],
     queryFn: () => apiFetch('/reports/stock' + qs({ locationId: locationId || undefined, itemTypeId: itemTypeId || undefined, brandId: brandId || undefined })),
   });
@@ -72,12 +71,12 @@ export default function StockReportPage() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={String(r.itemId ?? r.itemCode)} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                  <td className="px-4 py-2 font-mono font-semibold text-slate-800">{String(r.itemCode)}</td>
-                  <td className="px-4 py-2 text-slate-700">{String(r.itemName)}</td>
-                  <td className="px-4 py-2 text-xs text-slate-500">{String(r.itemType ?? '-')}</td>
-                  <td className="px-4 py-2 text-xs text-slate-500">{String(r.brand ?? '-')}</td>
-                  <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{String(r.quantity ?? 0)}</td>
+                <tr key={r.itemId ?? r.itemCode} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                  <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.itemCode}</td>
+                  <td className="px-4 py-2 text-slate-700">{r.itemName}</td>
+                  <td className="px-4 py-2 text-xs text-slate-500">{r.itemType ?? '-'}</td>
+                  <td className="px-4 py-2 text-xs text-slate-500">{r.brand ?? '-'}</td>
+                  <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{r.quantity ?? 0}</td>
                   <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.stockValue ?? 0, 'PKR')}</td>
                 </tr>
               ))}

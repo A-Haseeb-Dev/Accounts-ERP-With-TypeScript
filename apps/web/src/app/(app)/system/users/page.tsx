@@ -13,23 +13,32 @@ import { PageHeader } from '@/components/page-header';
 import { useFlatOptions } from '@/hooks/use-options';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { dateTime } from '@/lib/utils';
+import type { Paginated, User } from '@/lib/types';
 
-type Row = Record<string, unknown>;
+interface UserForm {
+  fullName: string;
+  username: string;
+  email?: string;
+  phone?: string;
+  password?: string;
+  status: string;
+  roleIds?: string[];
+}
 
 export default function UsersPage() {
   const qc = useQueryClient();
   const { options: roleOptions } = useFlatOptions('roles');
 
-  const { data, isLoading } = useQuery<{ items: Row[]; total: number }>({
+  const { data, isLoading } = useQuery<Paginated<User>>({
     queryKey: ['users'],
     queryFn: () => apiFetch('/users'),
   });
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [form, setForm] = useState<Record<string, unknown>>({});
+  const [form, setForm] = useState<UserForm>({ fullName: '', username: '', email: '', phone: '', password: '', status: 'active' });
   const [error, setError] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Row | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
 
   const create = useMutation({
     mutationFn: (payload: unknown) => apiFetch('/users', { method: 'POST', body: JSON.stringify(payload) }),
@@ -52,9 +61,6 @@ export default function UsersPage() {
     e.preventDefault();
     setError('');
     const payload = { ...form };
-    if (payload.roleIds && !Array.isArray(payload.roleIds)) {
-      payload.roleIds = [payload.roleIds];
-    }
     if (editId) {
       update.mutate({ id: editId, ...payload });
     } else {
@@ -62,14 +68,21 @@ export default function UsersPage() {
     }
   };
 
-  const startEdit = (row: Row) => {
-    setForm({ fullName: String(row.fullName ?? ''), username: String(row.username ?? ''), email: String(row.email ?? ''), phone: String(row.phone ?? ''), status: String(row.status ?? 'active') });
-    setEditId(String(row.id));
+  const startEdit = (row: User) => {
+    setForm({
+      fullName: row.fullName ?? '',
+      username: row.username ?? '',
+      email: row.email ?? '',
+      phone: row.phone ?? '',
+      status: row.status ?? 'active',
+      roleIds: row.roles?.map((r) => r.role.id) ?? [],
+    });
+    setEditId(row.id);
     setError('');
     setModalOpen(true);
   };
 
-  const startCreate = () => { setForm({ fullName: '', username: '', email: '', phone: '', password: '', status: 'active' }); setEditId(null); setError(''); setModalOpen(true); };
+  const startCreate = () => { setForm({ fullName: '', username: '', email: '', phone: '', password: '', status: 'active', roleIds: [] }); setEditId(null); setError(''); setModalOpen(true); };
 
   return (
     <div>
@@ -91,12 +104,12 @@ export default function UsersPage() {
             </thead>
             <tbody>
               {(data?.items ?? []).map((r) => (
-                <tr key={String(r.id)} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                  <td className="px-4 py-2 font-medium text-slate-800">{String(r.fullName)}</td>
-                  <td className="px-4 py-2 font-mono text-slate-600">{String(r.username)}</td>
-                  <td className="px-4 py-2 text-slate-600">{String(r.email ?? '—')}</td>
-                  <td className="px-4 py-2 text-xs text-slate-500">{(r.roles as Row[] | undefined)?.map((ro) => ro.name).join(', ') ?? '—'}</td>
-                  <td className="px-4 py-2"><StatusBadge status={String(r.status)} /></td>
+                <tr key={r.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                  <td className="px-4 py-2 font-medium text-slate-800">{r.fullName}</td>
+                  <td className="px-4 py-2 font-mono text-slate-600">{r.username}</td>
+                  <td className="px-4 py-2 text-slate-600">{r.email ?? '—'}</td>
+                  <td className="px-4 py-2 text-xs text-slate-500">{r.roles?.map((ro) => ro.role.name).join(', ') ?? '—'}</td>
+                  <td className="px-4 py-2"><StatusBadge status={r.status} /></td>
                   <td className="px-4 py-2 text-xs text-slate-400">{dateTime(r.createdAt)}</td>
                   <td className="px-4 py-2">
                     <div className="flex gap-0.5">
@@ -116,15 +129,15 @@ export default function UsersPage() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editId ? 'Edit User' : 'New User'}>
         <form onSubmit={submit} className="space-y-4">
-          <Field label="Full Name" required><Input value={String(form.fullName ?? '')} onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))} required /></Field>
-          <Field label="Username" required><Input value={String(form.username ?? '')} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} required disabled={!!editId} /></Field>
+          <Field label="Full Name" required><Input value={form.fullName} onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))} required /></Field>
+          <Field label="Username" required><Input value={form.username} onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))} required disabled={!!editId} /></Field>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Email"><Input type="email" value={String(form.email ?? '')} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} /></Field>
-            <Field label="Phone"><Input value={String(form.phone ?? '')} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} /></Field>
+            <Field label="Email"><Input type="email" value={form.email ?? ''} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} /></Field>
+            <Field label="Phone"><Input value={form.phone ?? ''} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} /></Field>
           </div>
-          {!editId && <Field label="Password" required><Input type="password" minLength={8} value={String(form.password ?? '')} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} required /></Field>}
+          {!editId && <Field label="Password" required><Input type="password" minLength={8} value={form.password ?? ''} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} required /></Field>}
           <Field label="Roles">
-            <Select value={String(form.roleIds ?? '')} onChange={(e) => setForm((f) => ({ ...f, roleIds: [e.target.value] }))}>
+            <Select value={form.roleIds?.[0] ?? ''} onChange={(e) => setForm((f) => ({ ...f, roleIds: [e.target.value] }))}>
               <option value="">Select role…</option>
               {roleOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
@@ -141,11 +154,11 @@ export default function UsersPage() {
         open={!!deleteTarget}
         danger
         title="Delete User"
-        message={`Delete user "${String(deleteTarget?.fullName ?? '')}"? This cannot be undone.`}
+        message={`Delete user "${deleteTarget?.fullName ?? ''}"? This cannot be undone.`}
         confirmLabel="Delete"
         loading={del.isPending}
         onCancel={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget?.id && del.mutate(String(deleteTarget.id))}
+        onConfirm={() => deleteTarget?.id && del.mutate(deleteTarget.id)}
       />
     </div>
   );

@@ -12,26 +12,7 @@ import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { QueryError } from '@/components/query-error';
 import { dateTime } from '@/lib/utils';
-
-interface AuditUser {
-  id: string;
-  fullName?: string;
-  username?: string;
-}
-
-interface AuditLog {
-  id: string;
-  action: string;
-  module: string;
-  entity?: string | null;
-  entityId?: string | null;
-  message?: string | null;
-  ipAddress?: string | null;
-  userAgent?: string | null;
-  metadata?: Record<string, unknown> | null;
-  createdAt: string;
-  user?: AuditUser | null;
-}
+import type { AuditEntry, Paginated } from '@/lib/types';
 
 const ACTION_OPTIONS = ['CREATE', 'UPDATE', 'DELETE', 'POST', 'CANCEL', 'LOGIN', 'LOGIN_FAILED', 'LOGOUT'];
 
@@ -42,9 +23,9 @@ export default function AuditLogsPage() {
   const [search, setSearch] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [selected, setSelected] = useState<AuditLog | null>(null);
+  const [selected, setSelected] = useState<AuditEntry | null>(null);
 
-  const { data, isLoading, isError, refetch } = useQuery<{ items: AuditLog[]; total: number }>({
+  const { data, isLoading, isError, refetch } = useQuery<Paginated<AuditEntry>>({
     queryKey: ['audit-logs', page, module, action, search, from, to],
     queryFn: () =>
       apiFetch(
@@ -79,7 +60,7 @@ export default function AuditLogsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const columns: Column<AuditLog>[] = [
+  const columns: Column<AuditEntry>[] = [
     { key: 'createdAt', header: 'Date', render: (r) => <span className="whitespace-nowrap text-xs text-slate-600">{dateTime(r.createdAt)}</span> },
     { key: 'module', header: 'Module', render: (r) => <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{r.module}</span> },
     {
@@ -156,7 +137,7 @@ export default function AuditLogsPage() {
 
         {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
 
-        <DataTable<AuditLog>
+        <DataTable<AuditEntry>
           columns={columns}
           data={items}
           loading={isLoading}

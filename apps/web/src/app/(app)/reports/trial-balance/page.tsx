@@ -11,13 +11,12 @@ import { ReportActions } from '@/components/report-actions';
 import { QueryError } from '@/components/query-error';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { money } from '@/lib/utils';
-
-type Row = Record<string, unknown>;
+import type { TrialBalanceRow } from '@/lib/types';
 
 export default function TrialBalancePage() {
   const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
 
-  const { data, isLoading, isError, refetch } = useQuery<{ rows: Row[]; totalDebit: number; totalCredit: number; balanced: boolean }>({
+  const { data, isLoading, isError, refetch } = useQuery<{ rows: TrialBalanceRow[]; totalDebit: number; totalCredit: number; balanced: boolean }>({
     queryKey: ['trial-balance', asOf],
     queryFn: () => apiFetch('/reports/trial-balance' + (asOf ? `?asOf=${asOf}` : '')),
   });
@@ -67,15 +66,15 @@ export default function TrialBalancePage() {
             </thead>
             <tbody>
               {rows.map((r) => {
-                const net = Number(r.debit ?? 0) - Number(r.credit ?? 0);
+                const net = (r.debit ?? 0) - (r.credit ?? 0);
                 return (
-                  <tr key={String(r.accountId ?? r.code)} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-4 py-2 font-mono font-semibold text-slate-800">{String(r.code)}</td>
-                    <td className="px-4 py-2 text-slate-700">{String(r.name)}</td>
-                    <td className="px-4 py-2 text-xs text-slate-500">{String(r.head ?? r.subHead ?? '')}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{Number(r.debit) ? money(r.debit, 'PKR') : ''}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{Number(r.credit) ? money(r.credit, 'PKR') : ''}</td>
-                    <td className={`px-4 py-2 text-right tabular-nums font-medium ${net >= 0 ? 'text-teal-600' : 'text-red-600'}`}>{money(Number(r.balance ?? net), 'PKR')}</td>
+                  <tr key={r.accountId ?? r.code} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                    <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.code}</td>
+                    <td className="px-4 py-2 text-slate-700">{r.name}</td>
+                    <td className="px-4 py-2 text-xs text-slate-500">{r.head ?? r.subHead ?? ''}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{r.debit ? money(r.debit, 'PKR') : ''}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{r.credit ? money(r.credit, 'PKR') : ''}</td>
+                    <td className={`px-4 py-2 text-right tabular-nums font-medium ${net >= 0 ? 'text-teal-600' : 'text-red-600'}`}>{money(r.balance ?? net, 'PKR')}</td>
                   </tr>
                 );
               })}

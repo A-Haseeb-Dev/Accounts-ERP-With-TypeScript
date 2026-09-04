@@ -352,6 +352,16 @@ export interface Role {
   _count?: { users: number };
 }
 
+export interface Permission {
+  id: string;
+  name: string;
+  module: string;
+  action: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AuditEntry {
   id: string;
   userId?: string;
@@ -417,6 +427,48 @@ export interface DocumentRows<T> {
   totalStockValue?: number;
 }
 
+export interface LedgerRow {
+  id?: string;
+  date?: string;
+  voucherNumber?: string;
+  description?: string;
+  debit?: number;
+  credit?: number;
+  balance: number;
+}
+
+export interface ProductLedgerRow {
+  date?: string;
+  transactionType?: string;
+  referenceType?: string;
+  referenceId?: string;
+  unitCost?: number;
+  stockIn?: number;
+  stockOut?: number;
+  balance?: number;
+}
+
+export interface StockReportRow {
+  itemId?: string;
+  itemCode: string;
+  itemName: string;
+  itemType?: string;
+  brand?: string;
+  quantity?: number;
+  stockValue?: number;
+}
+
+export interface TrialBalanceRow {
+  accountId?: string;
+  code: string;
+  name: string;
+  head?: string;
+  subHead?: string;
+  debit?: number;
+  credit?: number;
+  balance?: number;
+}
+
 export interface DocLine {
   id: string;
   itemId: string;
@@ -424,6 +476,18 @@ export interface DocLine {
   unitCost?: number;
   unitPrice?: number;
   item?: { id: string; code?: string; name?: string } | null;
+}
+
+export interface CashBookRow {
+  id?: string;
+  date: string;
+  voucherDate?: string;
+  voucher?: { id: string; number: string } | null;
+  reference?: string;
+  description?: string;
+  debit?: number;
+  credit?: number;
+  runningBalance: number;
 }
 
 export interface TransactionDoc {

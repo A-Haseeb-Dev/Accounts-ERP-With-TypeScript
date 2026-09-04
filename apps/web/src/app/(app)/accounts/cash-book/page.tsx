@@ -10,17 +10,7 @@ import { Modal } from '@/components/ui/modal';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { money } from '@/lib/utils';
-
-type Row = Record<string, unknown>;
-
-interface Entry {
-  key: string;
-  mainAccountId: string;
-  accountName?: string;
-  debit: number;
-  credit: number;
-  narration?: string;
-}
+import type { CashBookRow, Paginated, Voucher, VoucherEntry } from '@/lib/types';
 
 export default function CashBookPage() {
   const [from, setFrom] = useState('');
@@ -28,19 +18,19 @@ export default function CashBookPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
-  const { data, isLoading } = useQuery<{ items: Row[]; total: number; totalRunning: number }>({
+  const { data, isLoading } = useQuery<Paginated<CashBookRow> & { totalRunning?: number }>({
     queryKey: ['cashbook', page, from, to, search],
     queryFn: () => apiFetch('/vouchers/cash-book' + qs({ page, pageSize: 20, from: from || undefined, to: to || undefined, search: search || undefined })),
   });
 
-  const voucherIdOf = (r: Row): string | null => {
-    const v = (r.voucher as Row | null) ?? r;
-    return v?.id ? String(v.id) : null;
+  const voucherIdOf = (r: CashBookRow): string | null => {
+    const v = r.voucher ?? r;
+    return v.id ?? null;
   };
 
   const [detailId, setDetailId] = useState<string | null>(null);
 
-  const { data: detail, isLoading: detailLoading } = useQuery<Row>({
+  const { data: detail, isLoading: detailLoading } = useQuery<Voucher | null>({
     queryKey: ['voucher', detailId],
     queryFn: () => apiFetch(`/vouchers/${detailId}`),
     enabled: !!detailId,
@@ -58,15 +48,14 @@ export default function CashBookPage() {
           <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search voucher…" className="max-w-xs" />
         </div>
 
-        <DataTable<Row>
+        <DataTable<CashBookRow>
           columns={[
             { key: 'date', header: 'Date', render: (r) => <span className="text-slate-600">{new Date(String(r.date ?? r.voucherDate)).toLocaleDateString('en-GB')}</span> },
             { key: 'voucher', header: 'Voucher', render: (r) => {
-              const v = (r.voucher as Row | null) ?? r;
-              return <span className="font-mono font-semibold text-slate-800">{String(v.number ?? '')}</span>;
+              return <span className="font-mono font-semibold text-slate-800">{r.voucher?.number ?? ''}</span>;
             } },
-            { key: 'reference', header: 'Reference', render: (r) => <span className="text-slate-600">{r.reference ? String(r.reference) : '—'}</span> },
-            { key: 'description', header: 'Description', render: (r) => <span className="text-slate-600">{(r.description as string) ?? '—'}</span> },
+            { key: 'reference', header: 'Reference', render: (r) => <span className="text-slate-600">{r.reference ?? '—'}</span> },
+            { key: 'description', header: 'Description', render: (r) => <span className="text-slate-600">{r.description ?? '—'}</span> },
             { key: 'debit', header: 'Receipts', align: 'right', render: (r) => <span className="tabular-nums text-teal-600">{r.debit ? money(r.debit, 'PKR') : ''}</span> },
             { key: 'credit', header: 'Payments', align: 'right', render: (r) => <span className="tabular-nums text-red-600">{r.credit ? money(r.credit, 'PKR') : ''}</span> },
             { key: 'runningBalance', header: 'Balance', align: 'right', render: (r) => <span className="font-medium tabular-nums text-slate-800">{money(r.runningBalance, 'PKR')}</span> },
@@ -74,14 +63,14 @@ export default function CashBookPage() {
               key: 'actions', header: 'Actions',
               render: (r) => (
                 <div className="flex items-center gap-0.5">
-                  <button onClick={() => voucherIdOf(r) && setDetailId(voucherIdOf(r))} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View voucher"><Eye className="h-4 w-4" /></button>
+                  <button onClick={() => { const id = voucherIdOf(r); if (id) setDetailId(id); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View voucher"><Eye className="h-4 w-4" /></button>
                 </div>
               ),
             },
           ]}
           data={data?.items ?? []}
           loading={isLoading}
-          rowKey={(r) => String(r.id ?? JSON.stringify(r))}
+          rowKey={(r) => r.id ?? JSON.stringify(r)}
           page={page}
           pageSize={20}
           total={data?.total}
@@ -107,10 +96,10 @@ function VoucherDetailModal({
 }: {
   open: boolean;
   loading: boolean;
-  detail: Row | null | undefined;
+  detail: Voucher | null | undefined;
   onClose: () => void;
 }) {
-  const entries = (detail?.entries as unknown as (Entry & { mainAccount: { code: string; name: string } })[] | undefined) ?? [];
+  const entries: VoucherEntry[] = detail?.entries ?? [];
   const tDebit = entries.reduce((s, en) => s + (en.debit ?? 0), 0);
   const tCredit = entries.reduce((s, en) => s + (en.credit ?? 0), 0);
 
@@ -119,10 +108,10 @@ function VoucherDetailModal({
       {loading || !detail ? null : (
         <div>
           <div className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-            <KV label="Date" value={new Date(String(detail.voucherDate)).toLocaleDateString('en-GB')} />
-            <KV label="Type" value={String(detail.voucherType)} />
-            <KV label="Reference" value={detail.reference ? String(detail.reference) : '—'} />
-            <KV label="Status" value={String(detail.status)} />
+            <KV label="Date" value={new Date(detail.voucherDate).toLocaleDateString('en-GB')} />
+            <KV label="Type" value={detail.voucherType} />
+            <KV label="Reference" value={detail.reference ?? '—'} />
+            <KV label="Status" value={detail.status} />
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -156,7 +145,7 @@ function VoucherDetailModal({
             </table>
           </div>
 
-          {!!detail.description && <p className="mt-3 text-xs text-slate-500">Description: {String(detail.description)}</p>}
+          {!!detail.description && <p className="mt-3 text-xs text-slate-500">Description: {detail.description}</p>}
         </div>
       )}
     </Modal>

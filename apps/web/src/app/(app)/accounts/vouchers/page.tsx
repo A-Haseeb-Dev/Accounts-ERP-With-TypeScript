@@ -18,8 +18,7 @@ import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { StatusBadge } from '@/components/ui/badge';
 import { dateTime, money } from '@/lib/utils';
-
-type Row = Record<string, unknown>;
+import type { Paginated, Voucher, VoucherEntry } from '@/lib/types';
 
 interface Entry {
   key: string;
@@ -47,18 +46,18 @@ export default function VouchersPage() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [error, setError] = useState('');
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [cancelTarget, setCancelTarget] = useState<Row | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Voucher | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Row | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Voucher | null>(null);
   const [deleteError, setDeleteError] = useState('');
 
-  const { data, isLoading } = useQuery<{ items: Row[]; total: number }>({
+  const { data, isLoading } = useQuery<Paginated<Voucher>>({
     queryKey: ['vouchers', page, search, status, voucherType],
     queryFn: () => apiFetch('/vouchers' + qs({ page, pageSize: 20, search: search || undefined, status: status || undefined, voucherType: voucherType || undefined })),
   });
 
-  const { data: detail, isLoading: detailLoading } = useQuery<Row>({
+  const { data: detail, isLoading: detailLoading } = useQuery<Voucher | null>({
     queryKey: ['voucher', detailId],
     queryFn: () => apiFetch(`/vouchers/${detailId}`),
     enabled: !!detailId,
@@ -111,15 +110,15 @@ export default function VouchersPage() {
     },
   });
 
-  const openEdit = (r: Row) => {
+  const openEdit = (r: Voucher) => {
     setDeleteError('');
-    setEditId(String(r.id));
-    setDate(String(r.voucherDate).slice(0, 10));
-    setType(String(r.voucherType) as 'JOURNAL' | 'CREDIT' | 'DEBIT');
-    setReference(String(r.reference ?? ''));
-    setDescription(String(r.description ?? ''));
+    setEditId(r.id);
+    setDate(r.voucherDate.slice(0, 10));
+    setType(r.voucherType);
+    setReference(r.reference ?? '');
+    setDescription(r.description ?? '');
     setEntries(
-      ((r.entries as unknown as Entry[]) ?? []).map((en) => ({
+      (r.entries ?? []).map((en) => ({
         key: crypto.randomUUID?.() ?? String(Date.now()) + Math.random(),
         mainAccountId: en.mainAccountId,
         debit: en.debit ?? 0,
@@ -168,8 +167,6 @@ export default function VouchersPage() {
   const updateEntry = (key: string, patch: Partial<Entry>) => setEntries((es) => es.map((en) => (en.key === key ? { ...en, ...patch } : en)));
   const removeEntry = (key: string) => setEntries((es) => es.filter((en) => en.key !== key));
 
-  const detailEntries = (detail?.entries as unknown as (Entry & { mainAccount: { code: string; name: string } })[] | undefined) ?? [];
-
   return (
     <div>
       <PageHeader
@@ -202,25 +199,25 @@ export default function VouchersPage() {
           </Select>
         </div>
 
-        <DataTable<Row>
+        <DataTable<Voucher>
           columns={[
-            { key: 'number', header: 'Number', render: (r) => <span className="font-mono font-semibold text-slate-800">{String(r.number)}</span> },
-            { key: 'voucherDate', header: 'Date', render: (r) => <span className="text-slate-600">{new Date(String(r.voucherDate)).toLocaleDateString('en-GB')}</span> },
-            { key: 'voucherType', header: 'Type', render: (r) => <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{String(r.voucherType)}</span> },
-            { key: 'reference', header: 'Reference', render: (r) => <span className="text-slate-600">{r.reference ? String(r.reference) : '—'}</span> },
-            { key: 'entries', header: 'Entries', align: 'right', render: (r) => <span className="text-slate-600">{(r.entries as unknown[])?.length ?? 0}</span> },
-            { key: 'status', header: 'Status', render: (r) => <StatusBadge status={String(r.status)} /> },
+            { key: 'number', header: 'Number', render: (r) => <span className="font-mono font-semibold text-slate-800">{r.number}</span> },
+            { key: 'voucherDate', header: 'Date', render: (r) => <span className="text-slate-600">{new Date(r.voucherDate).toLocaleDateString('en-GB')}</span> },
+            { key: 'voucherType', header: 'Type', render: (r) => <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{r.voucherType}</span> },
+            { key: 'reference', header: 'Reference', render: (r) => <span className="text-slate-600">{r.reference ?? '—'}</span> },
+            { key: 'entries', header: 'Entries', align: 'right', render: (r) => <span className="text-slate-600">{r.entries.length}</span> },
+            { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'createdAt', header: 'Created', render: (r) => <span className="text-xs text-slate-400">{dateTime(r.createdAt)}</span> },
             {
               key: 'actions', header: 'Actions',
               render: (r) => (
                 <div className="flex items-center gap-0.5">
-                  <button onClick={() => setDetailId(String(r.id))} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
-                  {String(r.status) === 'draft' && (
+                  <button onClick={() => setDetailId(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
+                  {r.status === 'draft' && (
                     <>
                       <button onClick={() => openEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="Edit"><Pencil className="h-4 w-4" /></button>
                       <button onClick={() => { setDeleteTarget(r); setDeleteError(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>
-                      <button onClick={() => post.mutate(String(r.id))} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
+                      <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
                       <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
                     </>
                   )}
@@ -230,7 +227,7 @@ export default function VouchersPage() {
           ]}
           data={data?.items ?? []}
           loading={isLoading}
-          rowKey={(r) => String(r.id)}
+          rowKey={(r) => r.id}
           page={page}
           pageSize={20}
           total={data?.total}
@@ -338,7 +335,7 @@ export default function VouchersPage() {
         confirmLabel="Cancel voucher"
         loading={cancel.isPending}
         onCancel={() => setCancelTarget(null)}
-        onConfirm={() => cancelTarget?.id && cancel.mutate({ id: String(cancelTarget.id), reason: cancelReason || 'Cancelled from UI' })}
+        onConfirm={() => cancelTarget?.id && cancel.mutate({ id: cancelTarget.id, reason: cancelReason || 'Cancelled from UI' })}
       >
         <div className="mt-3">
           <Field label="Reason">
@@ -351,11 +348,11 @@ export default function VouchersPage() {
         open={!!deleteTarget}
         danger
         title="Delete Voucher"
-        message={`Delete voucher "${String(deleteTarget?.number ?? '')}"? This permanently removes the draft and its entries and cannot be undone.`}
+        message={`Delete voucher "${deleteTarget?.number ?? ''}"? This permanently removes the draft and its entries and cannot be undone.`}
         confirmLabel="Delete voucher"
         loading={remove.isPending}
         onCancel={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget?.id && remove.mutate(String(deleteTarget.id))}
+        onConfirm={() => deleteTarget?.id && remove.mutate(deleteTarget.id)}
       >
         {deleteError && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{deleteError}</div>}
       </ConfirmDialog>
@@ -371,10 +368,10 @@ function VoucherDetailModal({
 }: {
   open: boolean;
   loading: boolean;
-  detail: Row | null | undefined;
+  detail: Voucher | null | undefined;
   onClose: () => void;
 }) {
-  const entries = (detail?.entries as unknown as (Entry & { mainAccount: { code: string; name: string } })[] | undefined) ?? [];
+  const entries: VoucherEntry[] = detail?.entries ?? [];
   const tDebit = entries.reduce((s, en) => s + (en.debit ?? 0), 0);
   const tCredit = entries.reduce((s, en) => s + (en.credit ?? 0), 0);
 
@@ -383,10 +380,10 @@ function VoucherDetailModal({
       {loading || !detail ? null : (
         <div>
           <div className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-            <KV label="Date" value={new Date(String(detail.voucherDate)).toLocaleDateString('en-GB')} />
-            <KV label="Type" value={String(detail.voucherType)} />
-            <KV label="Reference" value={detail.reference ? String(detail.reference) : '—'} />
-            <KV label="Status" value={String(detail.status)} />
+            <KV label="Date" value={new Date(detail.voucherDate).toLocaleDateString('en-GB')} />
+            <KV label="Type" value={detail.voucherType} />
+            <KV label="Reference" value={detail.reference ?? '—'} />
+            <KV label="Status" value={detail.status} />
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -420,7 +417,7 @@ function VoucherDetailModal({
             </table>
           </div>
 
-          {!!detail.description && <p className="mt-3 text-xs text-slate-500">Description: {String(detail.description)}</p>}
+          {!!detail.description && <p className="mt-3 text-xs text-slate-500">Description: {detail.description}</p>}
         </div>
       )}
     </Modal>

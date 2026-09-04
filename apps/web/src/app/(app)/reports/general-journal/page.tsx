@@ -10,15 +10,14 @@ import { ReportActions } from '@/components/report-actions';
 import { QueryError } from '@/components/query-error';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { money } from '@/lib/utils';
-
-type Row = Record<string, unknown>;
+import type { Voucher } from '@/lib/types';
 
 export default function GeneralJournalPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
 
-  const { data, isLoading, isError, refetch } = useQuery<{ vouchers: Row[]; total: number }>({
+  const { data, isLoading, isError, refetch } = useQuery<{ vouchers: Voucher[]; total: number }>({
     queryKey: ['general-journal', from, to, page],
     queryFn: () => apiFetch('/reports/general-journal' + qs({ from: from || undefined, to: to || undefined, page, pageSize: 30 })),
   });
@@ -63,13 +62,13 @@ export default function GeneralJournalPage() {
               </tr>
             </thead>
             <tbody>
-              {(vouchers ?? []).flatMap((voucher) =>
-                (voucher.entries as unknown as Row[] | undefined ?? []).map((entry, j) => (
-                  <tr key={`${String(voucher.id)}-${j}`} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    {j === 0 && <td rowSpan={Math.max((voucher.entries as unknown[] | undefined)?.length ?? 1, 1)} className="px-4 py-2 text-slate-600">{new Date(String(voucher.voucherDate)).toLocaleDateString('en-GB')}</td>}
-                    {j === 0 && <td rowSpan={Math.max((voucher.entries as unknown[] | undefined)?.length ?? 1, 1)} className="px-4 py-2 font-mono font-semibold text-slate-800">{String(voucher.number)}</td>}
-                    <td className="px-4 py-2 text-slate-700">{String((entry.mainAccount as Row)?.name ?? entry.mainAccountId ?? '')}</td>
-                    <td className="max-w-[250px] truncate px-4 py-2 text-slate-600">{String(entry.narration ?? voucher.description ?? '')}</td>
+              {vouchers.flatMap((voucher) =>
+                voucher.entries.map((entry, j) => (
+                  <tr key={`${voucher.id}-${j}`} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                    {j === 0 && <td rowSpan={Math.max(voucher.entries.length, 1)} className="px-4 py-2 text-slate-600">{new Date(voucher.voucherDate).toLocaleDateString('en-GB')}</td>}
+                    {j === 0 && <td rowSpan={Math.max(voucher.entries.length, 1)} className="px-4 py-2 font-mono font-semibold text-slate-800">{voucher.number}</td>}
+                    <td className="px-4 py-2 text-slate-700">{entry.mainAccount?.name ?? entry.mainAccountId}</td>
+                    <td className="max-w-[250px] truncate px-4 py-2 text-slate-600">{entry.narration ?? voucher.description ?? ''}</td>
                     <td className="px-4 py-2 text-right tabular-nums text-teal-600">{entry.debit ? money(entry.debit, 'PKR') : ''}</td>
                     <td className="px-4 py-2 text-right tabular-nums text-red-600">{entry.credit ? money(entry.credit, 'PKR') : ''}</td>
                   </tr>

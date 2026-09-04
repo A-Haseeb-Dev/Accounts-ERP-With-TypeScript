@@ -4,8 +4,9 @@
 // plus a 1-digit sequence, e.g. A1. A sub head extends it with a 3-digit
 // number, e.g. A1-001. A leaf (main) account extends with a 4-digit serial,
 // e.g. A1-001-0001.
+import type { ItemTypeName } from './types';
 
-export const ACCOUNT_LETTERS: Record<string, string> = {
+export const ACCOUNT_LETTERS: Record<ItemTypeName, string> = {
   ASSET: 'A',
   LIABILITY: 'L',
   EQUITY: 'P',
@@ -13,7 +14,7 @@ export const ACCOUNT_LETTERS: Record<string, string> = {
   EXPENSE: 'E',
 };
 
-export const LETTER_TO_TYPE: Record<string, string> = {
+export const LETTER_TO_TYPE: Record<string, ItemTypeName> = {
   A: 'ASSET',
   L: 'LIABILITY',
   E: 'EXPENSE',
@@ -23,7 +24,7 @@ export const LETTER_TO_TYPE: Record<string, string> = {
 
 export const ACCOUNT_TYPES = ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'] as const;
 
-export const ACCOUNT_TYPE_LABELS: Record<string, string> = {
+export const ACCOUNT_TYPE_LABELS: Record<ItemTypeName, string> = {
   ASSET: 'Assets',
   LIABILITY: 'Liabilities',
   EQUITY: 'Proprietorship',
@@ -32,10 +33,10 @@ export const ACCOUNT_TYPE_LABELS: Record<string, string> = {
 };
 
 export function letterForType(type: string): string {
-  return ACCOUNT_LETTERS[type] ?? 'A';
+  return ACCOUNT_LETTERS[type as ItemTypeName] ?? 'A';
 }
 
-export function typeForLetter(letter: string): string {
+export function typeForLetter(letter: string): ItemTypeName {
   return LETTER_TO_TYPE[letter.toUpperCase()] ?? 'ASSET';
 }
 
