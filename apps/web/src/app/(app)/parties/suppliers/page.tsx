@@ -114,7 +114,7 @@ export default function SuppliersPage() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Supplier' : 'New Supplier'} size="lg">
         <form onSubmit={(e) => { e.preventDefault(); setError(''); save.mutate(form); }} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Code" required><Input value={form.code ?? ''} onChange={(e) => set('code', e.target.value)} placeholder="e.g. S-001" required /></Field>
+            <Field label="Code" hint="Leave blank to auto-generate."><Input value={form.code ?? ''} onChange={(e) => set('code', e.target.value)} placeholder="Auto-generated" /></Field>
             <Field label="Name" required><Input value={form.name ?? ''} onChange={(e) => set('name', e.target.value)} required /></Field>
           </div>
           <div className="grid grid-cols-2 gap-4">

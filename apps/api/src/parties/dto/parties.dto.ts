@@ -43,8 +43,9 @@ export class UpdateTownDto {
 
 export class CreateCustomerDto {
   @IsString()
+  @IsOptional()
   @MaxLength(50)
-  code: string;
+  code?: string;
 
   @IsString()
   @MaxLength(150)
@@ -135,8 +136,9 @@ export class UpdateCustomerDto {
 
 export class CreateSupplierDto {
   @IsString()
+  @IsOptional()
   @MaxLength(50)
-  code: string;
+  code?: string;
 
   @IsString()
   @MaxLength(150)

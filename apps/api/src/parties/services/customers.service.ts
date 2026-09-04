@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { ApiException } from '../../common/exceptions/api.exception';
+import { NumberingService } from '../../common/services/numbering.service';
 import { CreateCustomerDto, UpdateCustomerDto } from '../dto/parties.dto';
 
 @Injectable()
@@ -9,11 +10,16 @@ export class CustomersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly numbering: NumberingService,
   ) {}
 
   async create(dto: CreateCustomerDto, actorId?: string) {
-    const existing = await this.prisma.customer.findUnique({ where: { code: dto.code } });
-    if (existing) throw ApiException.duplicateCode('Customer code');
+    const requestedCode = dto.code?.trim();
+    if (requestedCode) {
+      const existing = await this.prisma.customer.findUnique({ where: { code: requestedCode } });
+      if (existing) throw ApiException.duplicateCode('Customer code');
+    }
+    const code = requestedCode || (await this.numbering.next('customer', 'CST'));
     if (dto.townId) {
       const town = await this.prisma.town.findUnique({ where: { id: dto.townId } });
       if (!town) throw ApiException.notFound('Town');
@@ -22,7 +28,7 @@ export class CustomersService {
 
     const item = await this.prisma.customer.create({
       data: {
-        code: dto.code,
+        code,
         name: dto.name,
         phone: dto.phone ?? null,
         address: dto.address ?? null,

@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Auto-generated customer and supplier codes** — the create forms now accept a
+  blank Code field. When omitted, the API generates a sequential
+  `CST-000001` / `SUP-000001` style code using the same collision-safe
+  `SystemSetting` counter as invoices and vouchers. An explicit code is still
+  accepted (and duplicate-checked); codes are immutable once assigned.
+
 ### Changed
 - **API now type-checks clean** — fixed every remaining `tsc --noEmit` error in the
   controller/service unit specs: typed the Prisma mocks in `users` and
