@@ -10,17 +10,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { money, dateTime } from '@/lib/utils';
-
-interface PrintLine {
-  item?: { code?: string; name?: string } | null;
-  quantity: number;
-  unitPrice: number;
-  unitCost: number;
-}
+import type { BrandingSetting, TransactionDoc, DocLine } from '@/lib/types';
 
 export interface PrintableDocumentProps {
   open: boolean;
-  detail: Record<string, unknown> | null | undefined;
+  detail: TransactionDoc | null | undefined;
   title: string;
   partyLabel: string;
   dateField: string;
@@ -37,7 +31,7 @@ export function PrintableDocument({
   priceKey,
   showAmountPaid,
 }: PrintableDocumentProps) {
-  const { data: branding } = useQuery<Record<string, unknown> | null>({
+  const { data: branding } = useQuery<BrandingSetting | null>({
     queryKey: ['branding'],
     queryFn: () => apiFetch('/system/branding'),
     staleTime: Infinity,
@@ -45,10 +39,10 @@ export function PrintableDocument({
 
   if (!open || !detail) return null;
 
-  const items = (detail.items as unknown as PrintLine[] | undefined) ?? [];
-  const unit = (l: PrintLine) => (priceKey === 'unitCost' ? l.unitCost : l.unitPrice);
-  const party = (detail.party ?? detail.customer ?? detail.supplier) as Record<string, unknown> | null | undefined;
-  const location = (detail.stockLocation ?? detail.location) as Record<string, unknown> | null | undefined;
+  const items = detail.items ?? [];
+  const unit = (l: DocLine) => (priceKey === 'unitCost' ? l.unitCost ?? 0 : l.unitPrice ?? 0);
+  const party = detail.supplier ?? detail.customer ?? detail.party ?? null;
+  const location = detail.stockLocation ?? detail.location ?? null;
 
   const sub = items.reduce((s, l) => s + l.quantity * unit(l), 0);
   const discount = Number(detail.discount ?? 0);
@@ -92,18 +86,18 @@ export function PrintableDocument({
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16 }}>
         <div>
           <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: '#94a3b8', fontWeight: 600 }}>{partyLabel}</div>
-          <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{party ? String((party as Record<string, unknown>).name ?? '') : '—'}</div>
-          {party && (party as Record<string, unknown>).phone && (
-            <div style={{ color: '#475569', marginTop: 2 }}>{String((party as Record<string, unknown>).phone)}</div>
+          <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{party?.name || '—'}</div>
+          {party?.phone && (
+            <div style={{ color: '#475569', marginTop: 2 }}>{party.phone}</div>
           )}
-          {party && (party as Record<string, unknown>).address && (
-            <div style={{ color: '#64748b', marginTop: 1 }}>{String((party as Record<string, unknown>).address)}</div>
+          {party?.address && (
+            <div style={{ color: '#64748b', marginTop: 1 }}>{party.address}</div>
           )}
         </div>
         {location && (
           <div style={{ textAlign: 'right', color: '#64748b' }}>
             <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: '#94a3b8', fontWeight: 600 }}>Location</div>
-            <div style={{ marginTop: 2, color: '#334155', fontWeight: 600 }}>{String((location as Record<string, unknown>).name ?? '')}</div>
+            <div style={{ marginTop: 2, color: '#334155', fontWeight: 600 }}>{location.name}</div>
           </div>
         )}
       </div>
@@ -123,7 +117,7 @@ export function PrintableDocument({
             <tr key={i} style={{ borderBottom: '1px solid #e2e8f0' }}>
               <td style={{ padding: '7px 6px' }}>
                 <span style={{ fontWeight: 600 }}>{l.item?.name ?? '—'}</span>
-                {l.item?.code && <span style={{ color: '#94a3b8', fontSize: 11 }}> ({(l.item as { code?: string }).code})</span>}
+                {l.item?.code && <span style={{ color: '#94a3b8', fontSize: 11 }}> ({l.item.code})</span>}
               </td>
               <td style={{ padding: '7px 6px', textAlign: 'right' }}>{l.quantity}</td>
               <td style={{ padding: '7px 6px', textAlign: 'right' }}>{money(unit(l), 'PKR')}</td>

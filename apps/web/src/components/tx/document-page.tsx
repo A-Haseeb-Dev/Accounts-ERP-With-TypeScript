@@ -20,15 +20,7 @@ import { toast } from 'sonner';
 import { printElement } from '@/lib/report-export';
 import { PrintableDocument } from '@/components/tx/printable-document';
 import type { Option } from '@/hooks/use-options';
-
-type Row = Record<string, unknown>;
-
-export interface DocLine {
-  item: { code: string; name: string };
-  quantity: number;
-  unitCost: number;
-  unitPrice: number;
-}
+import type { Paginated, TransactionDoc, DocLine } from '@/lib/types';
 
 export interface DocumentConfig {
   resource: string;
@@ -63,15 +55,15 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
   const [lines, setLines] = useState<LineItem[]>([]);
   const [error, setError] = useState('');
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [cancelTarget, setCancelTarget] = useState<Row | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<TransactionDoc | null>(null);
   const [cancelReason, setCancelReason] = useState('');
 
-  const { data, isLoading } = useQuery<{ items: Row[]; total: number }>({
+  const { data, isLoading } = useQuery<Paginated<TransactionDoc>>({
     queryKey: [resource, page, search, status],
     queryFn: () => apiFetch(`/${resource}` + qs({ page, pageSize: 20, search: search || undefined, status: status || undefined })),
   });
 
-  const { data: detail, isLoading: detailLoading } = useQuery<Record<string, unknown> | null>({
+  const { data: detail, isLoading: detailLoading } = useQuery<TransactionDoc | null>({
     queryKey: [resource, 'detail', detailId],
     queryFn: () => apiFetch(`/${resource}/${detailId}`),
     enabled: !!detailId,
@@ -157,26 +149,26 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
           </Select>
         </div>
 
-        <DataTable<Row>
+        <DataTable<TransactionDoc>
           columns={[
-            { key: 'number', header: 'Number', render: (r) => <span className="font-mono font-semibold text-slate-800">{String(r.number)}</span> },
+            { key: 'number', header: 'Number', render: (r) => <span className="font-mono font-semibold text-slate-800">{r.number}</span> },
             { key: dateField, header: 'Date', render: (r) => <span className="text-slate-600">{new Date(String(r[dateField])).toLocaleDateString('en-GB')}</span> },
             { key: 'party', header: partyLabel, render: (r) => {
-              const raw = r[partyField] ?? r.customer ?? r.supplier;
-              return <span className="text-slate-700">{typeof raw === 'object' && raw ? String((raw as Row).name) : '-'}</span>;
+              const party = r.supplier ?? r.customer;
+              return <span className="text-slate-700">{party?.name ?? '-'}</span>;
             } },
             { key: 'grandTotal', header: 'Total', align: 'right', render: (r) => <span className="font-medium text-slate-800">{money(r.grandTotal, 'PKR')}</span> },
-            ...(showAmountPaid ? [{ key: 'amountPaid', header: 'Paid', align: 'right' as const, render: (r: Row) => <span className="text-slate-500">{money(r.amountPaid, 'PKR')}</span> }] : []),
-            { key: 'status', header: 'Status', render: (r) => <StatusBadge status={String(r.status)} /> },
+            ...(showAmountPaid ? [{ key: 'amountPaid', header: 'Paid', align: 'right' as const, render: (r: TransactionDoc) => <span className="text-slate-500">{money(r.amountPaid ?? 0, 'PKR')}</span> }] : []),
+            { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'createdAt', header: 'Created', render: (r) => <span className="text-xs text-slate-400">{dateTime(r.createdAt)}</span> },
             {
               key: 'actions', header: 'Actions',
               render: (r) => (
                 <div className="flex items-center gap-0.5">
-                  <button onClick={() => setDetailId(String(r.id))} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
-                  {String(r.status) === 'draft' && (
+                  <button onClick={() => setDetailId(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
+                  {r.status === 'draft' && (
                     <>
-                      <button onClick={() => post.mutate(String(r.id))} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
+                      <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
                       <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
                     </>
                   )}
@@ -186,7 +178,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
           ]}
           data={data?.items ?? []}
           loading={isLoading}
-          rowKey={(r) => String(r.id)}
+          rowKey={(r) => r.id}
           page={page}
           pageSize={20}
           total={data?.total}
@@ -267,7 +259,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
         confirmLabel={`Cancel ${title.replace(/s$/, '')}`}
         loading={cancel.isPending}
         onCancel={() => setCancelTarget(null)}
-        onConfirm={() => cancelTarget?.id && cancel.mutate({ id: String(cancelTarget.id), reason: cancelReason || 'Cancelled from UI' })}
+        onConfirm={() => cancelTarget?.id && cancel.mutate({ id: cancelTarget.id, reason: cancelReason || 'Cancelled from UI' })}
       >
         <div className="mt-3">
           <Field label="Reason">
@@ -277,10 +269,6 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
       </ConfirmDialog>
     </div>
   );
-}
-
-function kvName(obj: unknown): string {
-  return obj && typeof obj === 'object' ? String((obj as Row).name ?? '') : '';
 }
 
 function DocumentDetailModal({
@@ -296,7 +284,7 @@ function DocumentDetailModal({
 }: {
   open: boolean;
   loading: boolean;
-  detail: Record<string, unknown> | null | undefined;
+  detail: TransactionDoc | null | undefined;
   priceKey: 'unitCost' | 'unitPrice';
   itemLineField: string;
   dateField: string;
@@ -304,7 +292,7 @@ function DocumentDetailModal({
   showAmountPaid: boolean;
   onClose: () => void;
 }) {
-  const items = (detail?.items as unknown as DocLine[] | undefined) ?? [];
+  const items = detail?.items ?? [];
   return (
     <>
       <PrintableDocument
@@ -322,9 +310,9 @@ function DocumentDetailModal({
             <div className="mb-4 flex items-center justify-between gap-3">
               <div className="grid flex-1 grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                 <Facts label="Date" value={new Date(String(detail[dateField])).toLocaleDateString('en-GB')} />
-                <Facts label={partyLabel} value={kvName(detail.party ?? detail.customer ?? detail.supplier)} />
-                <Facts label="Location" value={kvName(detail.stockLocation ?? detail.location)} />
-                <Facts label="Status" value={String(detail.status)} />
+                <Facts label={partyLabel} value={detail.supplier?.name ?? detail.customer?.name ?? '-'} />
+                <Facts label="Location" value={detail.stockLocation?.name ?? detail.location?.name ?? '-'} />
+                <Facts label="Status" value={detail.status} />
               </div>
               <Button variant="outline" size="md" onClick={() => printElement('printable-document', partyLabel === 'Supplier' ? 'Purchase Bill' : 'Sales Invoice')}>
                 <Printer className="h-4 w-4" /> Print
@@ -343,11 +331,10 @@ function DocumentDetailModal({
               </thead>
               <tbody>
                 {items.map((it) => {
-                  const unit = priceKey === 'unitCost' ? it.unitCost : it.unitPrice;
-                  const item = (it.item as Row | null) ?? ({} as Row);
+                  const unit = priceKey === 'unitCost' ? it.unitCost ?? 0 : it.unitPrice ?? 0;
                   return (
-                    <tr key={String((item.code as string) ?? it.id ?? 'line')} className="border-b border-slate-100">
-                      <td className="px-3 py-2 text-slate-800">{String((item.name as string) ?? it.itemId ?? '—')} <span className="text-xs text-slate-400">({String((item.code as string) ?? '')})</span></td>
+                    <tr key={it.id ?? it.itemId ?? 'line'} className="border-b border-slate-100">
+                      <td className="px-3 py-2 text-slate-800">{it.item?.name ?? it.itemId ?? '—'} <span className="text-xs text-slate-400">({it.item?.code ?? ''})</span></td>
                       <td className="px-3 py-2 text-right text-slate-700">{it.quantity}</td>
                       <td className="px-3 py-2 text-right text-slate-700">{money(unit, 'PKR')}</td>
                       <td className="px-3 py-2 text-right font-medium text-slate-800">{money(it.quantity * unit, 'PKR')}</td>
@@ -371,8 +358,8 @@ function DocumentDetailModal({
             </div>
           </div>
 
-          {!!detail.reference && <p className="mt-3 text-xs text-slate-500">Reference: {String(detail.reference)}</p>}
-          {!!detail.note && <p className="mt-1 text-xs text-slate-500">Note: {String(detail.note)}</p>}
+          {!!detail.reference && <p className="mt-3 text-xs text-slate-500">Reference: {detail.reference}</p>}
+          {!!detail.note && <p className="mt-1 text-xs text-slate-500">Note: {detail.note}</p>}
         </div>
       )}
       </Modal>

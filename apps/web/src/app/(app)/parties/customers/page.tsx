@@ -15,8 +15,7 @@ import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { dateTime, money } from '@/lib/utils';
-
-type Row = Record<string, unknown>;
+import type { Customer, Paginated } from '@/lib/types';
 
 export default function CustomersPage() {
   const qc = useQueryClient();
@@ -26,20 +25,20 @@ export default function CustomersPage() {
   const [townFilter, setTownFilter] = useState('');
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<Row | null>(null);
-  const [form, setForm] = useState<Record<string, unknown>>({});
-  const [deleteTarget, setDeleteTarget] = useState<Row | null>(null);
-  const [detail, setDetail] = useState<Row | null>(null);
+  const [editing, setEditing] = useState<Customer | null>(null);
+  const [form, setForm] = useState<Partial<Customer>>({});
+  const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
+  const [detail, setDetail] = useState<Customer | null>(null);
   const [detailTab, setDetailTab] = useState<'ledger' | 'sales' | 'returns'>('ledger');
   const [error, setError] = useState('');
 
-  const { data, isLoading } = useQuery<{ items: Row[]; total: number }>({
+  const { data, isLoading } = useQuery<Paginated<Customer>>({
     queryKey: ['customers', page, search, townFilter],
     queryFn: () => apiFetch('/customers' + qs({ page, pageSize: 20, search: search || undefined, townId: townFilter || undefined })),
   });
 
   const save = useMutation({
-    mutationFn: (payload: Row) =>
+    mutationFn: (payload: Partial<Customer>) =>
       editing?.id
         ? apiFetch(`/customers/${editing.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
         : apiFetch('/customers', { method: 'POST', body: JSON.stringify(payload) }),
@@ -62,7 +61,7 @@ export default function CustomersPage() {
     },
   });
 
-  const set = (name: string, value: unknown) => setForm((f) => ({ ...f, [name]: value }));
+  const set = (name: keyof Customer | string, value: string | number | undefined) => setForm((f) => ({ ...f, [name]: value }));
 
   return (
     <div>
@@ -87,14 +86,14 @@ export default function CustomersPage() {
             {townOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </Select>
         </div>
-        <DataTable<Row>
+        <DataTable<Customer>
           columns={[
-            { key: 'code', header: 'Code', render: (r) => <span className="font-mono font-semibold text-slate-800">{String(r.code)}</span> },
-            { key: 'name', header: 'Name', render: (r) => <span className="font-medium text-slate-800">{String(r.name)}</span> },
-            { key: 'phone', header: 'Phone', render: (r) => <span className="text-slate-500">{r.phone ? String(r.phone) : '-'}</span> },
-            { key: 'town', header: 'Town', render: (r) => <span className="text-slate-500">{String((r.town as Row | null)?.name ?? '-')}</span> },
+            { key: 'code', header: 'Code', render: (r) => <span className="font-mono font-semibold text-slate-800">{r.code}</span> },
+            { key: 'name', header: 'Name', render: (r) => <span className="font-medium text-slate-800">{r.name}</span> },
+            { key: 'phone', header: 'Phone', render: (r) => <span className="text-slate-500">{r.phone || '-'}</span> },
+            { key: 'town', header: 'Town', render: (r) => <span className="text-slate-500">{r.town?.name ?? '-'}</span> },
             { key: 'creditLimit', header: 'Credit Limit', align: 'right', render: (r) => <span className="text-slate-600">{money(r.creditLimit, 'PKR')}</span> },
-            { key: 'status', header: 'Status', render: (r) => <StatusBadge status={String(r.status)} /> },
+            { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'updatedAt', header: 'Updated', render: (r) => <span className="text-xs text-slate-400">{dateTime(r.updatedAt)}</span> },
             {
               key: 'actions', header: 'Actions',
@@ -109,7 +108,7 @@ export default function CustomersPage() {
           ]}
           data={data?.items ?? []}
           loading={isLoading}
-          rowKey={(r) => String(r.id)}
+          rowKey={(r) => r.id}
           page={page}
           pageSize={20}
           total={data?.total}
@@ -121,43 +120,43 @@ export default function CustomersPage() {
         <form onSubmit={(e) => { e.preventDefault(); setError(''); save.mutate(form); }} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Field label="Code" required>
-              <Input value={String(form.code ?? '')} onChange={(e) => set('code', e.target.value)} placeholder="e.g. C-001" required />
+              <Input value={form.code ?? ''} onChange={(e) => set('code', e.target.value)} placeholder="e.g. C-001" required />
             </Field>
             <Field label="Name" required>
-              <Input value={String(form.name ?? '')} onChange={(e) => set('name', e.target.value)} required />
+              <Input value={form.name ?? ''} onChange={(e) => set('name', e.target.value)} required />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Phone">
-              <Input value={String(form.phone ?? '')} onChange={(e) => set('phone', e.target.value)} />
+              <Input value={form.phone ?? ''} onChange={(e) => set('phone', e.target.value)} />
             </Field>
             <Field label="Town">
-              <Select value={String(form.townId ?? '')} onChange={(e) => set('townId', e.target.value)}>
+              <Select value={form.townId ?? ''} onChange={(e) => set('townId', e.target.value)}>
                 <option value="">—</option>
                 {townOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </Select>
             </Field>
           </div>
           <Field label="Address">
-            <Textarea value={String(form.address ?? '')} onChange={(e) => set('address', e.target.value)} />
+            <Textarea value={form.address ?? ''} onChange={(e) => set('address', e.target.value)} />
           </Field>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Receivable Account" hint="Defaults to the shared receivable control account.">
-              <Select value={String(form.mainAccountId ?? '')} onChange={(e) => set('mainAccountId', e.target.value)}>
+              <Select value={form.mainAccountId ?? ''} onChange={(e) => set('mainAccountId', e.target.value)}>
                 <option value="">—</option>
                 {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </Select>
             </Field>
             <Field label="Credit Limit">
-              <Input type="number" step="0.01" value={String(form.creditLimit ?? '')} onChange={(e) => set('creditLimit', e.target.value === '' ? undefined : Number(e.target.value))} />
+              <Input type="number" step="0.01" value={form.creditLimit ?? ''} onChange={(e) => set('creditLimit', e.target.value === '' ? undefined : Number(e.target.value))} />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Opening Balance">
-              <Input type="number" step="0.01" value={String(form.openingBalance ?? 0)} onChange={(e) => set('openingBalance', e.target.value === '' ? 0 : Number(e.target.value))} />
+              <Input type="number" step="0.01" value={form.openingBalance ?? 0} onChange={(e) => set('openingBalance', e.target.value === '' ? 0 : Number(e.target.value))} />
             </Field>
             <Field label="Status">
-              <Select value={String(form.status ?? 'active')} onChange={(e) => set('status', e.target.value)}>
+              <Select value={form.status ?? 'active'} onChange={(e) => set('status', e.target.value)}>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </Select>
@@ -179,11 +178,11 @@ export default function CustomersPage() {
         open={!!deleteTarget}
         danger
         title="Delete Customer"
-        message={`This will permanently delete "${String(deleteTarget?.name ?? '')}". This action cannot be undone.`}
+        message={`This will permanently delete "${deleteTarget?.name ?? ''}". This action cannot be undone.`}
         confirmLabel="Delete"
         loading={del.isPending}
         onCancel={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget?.id && del.mutate(String(deleteTarget.id))}
+        onConfirm={() => deleteTarget?.id && del.mutate(deleteTarget.id)}
       />
     </div>
   );
@@ -195,12 +194,12 @@ function CustomerDetail({
   onTab,
   onClose,
 }: {
-  customer: Row | null;
+  customer: Customer | null;
   tab: 'ledger' | 'sales' | 'returns';
   onTab: (t: 'ledger' | 'sales' | 'returns') => void;
   onClose: () => void;
 }) {
-  const customerId = customer?.id ? String(customer.id) : '';
+  const customerId = customer?.id ?? '';
 
   const { data: ledger, isLoading: ledgerLoading } = useQuery<{ items: { id: string; date: string; voucherNumber: string; debit: number; credit: number; balance: number; description: string }[] }>({
     queryKey: ['customer-ledger', customerId],
@@ -215,13 +214,13 @@ function CustomerDetail({
   });
 
   return (
-    <Modal open={!!customer} onClose={onClose} title={`Customer: ${String(customer?.name ?? '')}`} size="lg">
+    <Modal open={!!customer} onClose={onClose} title={`Customer: ${customer?.name ?? ''}`} size="lg">
       {!customer ? null : (
         <div>
           <div className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-            <LabelValue label="Code" value={String(customer.code)} />
-            <LabelValue label="Phone" value={customer.phone ? String(customer.phone) : '-'} />
-            <LabelValue label="Town" value={String((customer.town as Row | null)?.name ?? '-')} />
+            <LabelValue label="Code" value={customer.code} />
+            <LabelValue label="Phone" value={customer.phone || '-'} />
+            <LabelValue label="Town" value={customer.town?.name ?? '-'} />
             <LabelValue label="Credit Limit" value={money(customer.creditLimit, 'PKR')} />
           </div>
 

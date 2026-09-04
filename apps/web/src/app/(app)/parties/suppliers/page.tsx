@@ -15,8 +15,7 @@ import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { dateTime, money } from '@/lib/utils';
-
-type Row = Record<string, unknown>;
+import type { Supplier, Paginated } from '@/lib/types';
 
 export default function SuppliersPage() {
   const qc = useQueryClient();
@@ -26,20 +25,20 @@ export default function SuppliersPage() {
   const [townFilter, setTownFilter] = useState('');
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<Row | null>(null);
-  const [form, setForm] = useState<Record<string, unknown>>({});
-  const [deleteTarget, setDeleteTarget] = useState<Row | null>(null);
-  const [detail, setDetail] = useState<Row | null>(null);
+  const [editing, setEditing] = useState<Supplier | null>(null);
+  const [form, setForm] = useState<Partial<Supplier>>({});
+  const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
+  const [detail, setDetail] = useState<Supplier | null>(null);
   const [detailTab, setDetailTab] = useState<'ledger' | 'purchases' | 'returns'>('ledger');
   const [error, setError] = useState('');
 
-  const { data, isLoading } = useQuery<{ items: Row[]; total: number }>({
+  const { data, isLoading } = useQuery<Paginated<Supplier>>({
     queryKey: ['suppliers', page, search, townFilter],
     queryFn: () => apiFetch('/suppliers' + qs({ page, pageSize: 20, search: search || undefined, townId: townFilter || undefined })),
   });
 
   const save = useMutation({
-    mutationFn: (payload: Row) =>
+    mutationFn: (payload: Partial<Supplier>) =>
       editing?.id
         ? apiFetch(`/suppliers/${editing.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
         : apiFetch('/suppliers', { method: 'POST', body: JSON.stringify(payload) }),
@@ -62,7 +61,7 @@ export default function SuppliersPage() {
     },
   });
 
-  const set = (name: string, value: unknown) => setForm((f) => ({ ...f, [name]: value }));
+  const set = (name: keyof Supplier | string, value: string | number | undefined) => setForm((f) => ({ ...f, [name]: value }));
 
   return (
     <div>
@@ -83,13 +82,13 @@ export default function SuppliersPage() {
             {townOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </Select>
         </div>
-        <DataTable<Row>
+        <DataTable<Supplier>
           columns={[
-            { key: 'code', header: 'Code', render: (r) => <span className="font-mono font-semibold text-slate-800">{String(r.code)}</span> },
-            { key: 'name', header: 'Name', render: (r) => <span className="font-medium text-slate-800">{String(r.name)}</span> },
-            { key: 'phone', header: 'Phone', render: (r) => <span className="text-slate-500">{r.phone ? String(r.phone) : '-'}</span> },
-            { key: 'town', header: 'Town', render: (r) => <span className="text-slate-500">{String((r.town as Row | null)?.name ?? '-')}</span> },
-            { key: 'status', header: 'Status', render: (r) => <StatusBadge status={String(r.status)} /> },
+            { key: 'code', header: 'Code', render: (r) => <span className="font-mono font-semibold text-slate-800">{r.code}</span> },
+            { key: 'name', header: 'Name', render: (r) => <span className="font-medium text-slate-800">{r.name}</span> },
+            { key: 'phone', header: 'Phone', render: (r) => <span className="text-slate-500">{r.phone || '-'}</span> },
+            { key: 'town', header: 'Town', render: (r) => <span className="text-slate-500">{r.town?.name ?? '-'}</span> },
+            { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'updatedAt', header: 'Updated', render: (r) => <span className="text-xs text-slate-400">{dateTime(r.updatedAt)}</span> },
             {
               key: 'actions', header: 'Actions',
@@ -104,7 +103,7 @@ export default function SuppliersPage() {
           ]}
           data={data?.items ?? []}
           loading={isLoading}
-          rowKey={(r) => String(r.id)}
+          rowKey={(r) => r.id}
           page={page}
           pageSize={20}
           total={data?.total}
@@ -115,33 +114,33 @@ export default function SuppliersPage() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Supplier' : 'New Supplier'} size="lg">
         <form onSubmit={(e) => { e.preventDefault(); setError(''); save.mutate(form); }} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Code" required><Input value={String(form.code ?? '')} onChange={(e) => set('code', e.target.value)} placeholder="e.g. S-001" required /></Field>
-            <Field label="Name" required><Input value={String(form.name ?? '')} onChange={(e) => set('name', e.target.value)} required /></Field>
+            <Field label="Code" required><Input value={form.code ?? ''} onChange={(e) => set('code', e.target.value)} placeholder="e.g. S-001" required /></Field>
+            <Field label="Name" required><Input value={form.name ?? ''} onChange={(e) => set('name', e.target.value)} required /></Field>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Phone"><Input value={String(form.phone ?? '')} onChange={(e) => set('phone', e.target.value)} /></Field>
+            <Field label="Phone"><Input value={form.phone ?? ''} onChange={(e) => set('phone', e.target.value)} /></Field>
             <Field label="Town">
-              <Select value={String(form.townId ?? '')} onChange={(e) => set('townId', e.target.value)}>
+              <Select value={form.townId ?? ''} onChange={(e) => set('townId', e.target.value)}>
                 <option value="">—</option>
                 {townOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </Select>
             </Field>
           </div>
-          <Field label="Address"><Textarea value={String(form.address ?? '')} onChange={(e) => set('address', e.target.value)} /></Field>
+          <Field label="Address"><Textarea value={form.address ?? ''} onChange={(e) => set('address', e.target.value)} /></Field>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Payable Account" hint="Defaults to the shared payable control account.">
-              <Select value={String(form.mainAccountId ?? '')} onChange={(e) => set('mainAccountId', e.target.value)}>
+              <Select value={form.mainAccountId ?? ''} onChange={(e) => set('mainAccountId', e.target.value)}>
                 <option value="">—</option>
                 {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </Select>
             </Field>
             <Field label="Opening Balance">
-              <Input type="number" step="0.01" value={String(form.openingBalance ?? 0)} onChange={(e) => set('openingBalance', e.target.value === '' ? 0 : Number(e.target.value))} />
+              <Input type="number" step="0.01" value={form.openingBalance ?? 0} onChange={(e) => set('openingBalance', e.target.value === '' ? 0 : Number(e.target.value))} />
             </Field>
           </div>
-          <Field label="Description"><Textarea value={String(form.description ?? '')} onChange={(e) => set('description', e.target.value)} /></Field>
+          <Field label="Description"><Textarea value={form.description ?? ''} onChange={(e) => set('description', e.target.value)} /></Field>
           <Field label="Status">
-            <Select value={String(form.status ?? 'active')} onChange={(e) => set('status', e.target.value)}>
+            <Select value={form.status ?? 'active'} onChange={(e) => set('status', e.target.value)}>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
             </Select>
@@ -160,11 +159,11 @@ export default function SuppliersPage() {
         open={!!deleteTarget}
         danger
         title="Delete Supplier"
-        message={`This will permanently delete "${String(deleteTarget?.name ?? '')}". This action cannot be undone.`}
+        message={`This will permanently delete "${deleteTarget?.name ?? ''}". This action cannot be undone.`}
         confirmLabel="Delete"
         loading={del.isPending}
         onCancel={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget?.id && del.mutate(String(deleteTarget.id))}
+        onConfirm={() => deleteTarget?.id && del.mutate(deleteTarget.id)}
       />
     </div>
   );
@@ -176,12 +175,12 @@ function SupplierDetail({
   onTab,
   onClose,
 }: {
-  supplier: Row | null;
+  supplier: Supplier | null;
   tab: 'ledger' | 'purchases' | 'returns';
   onTab: (t: 'ledger' | 'purchases' | 'returns') => void;
   onClose: () => void;
 }) {
-  const id = supplier?.id ? String(supplier.id) : '';
+  const id = supplier?.id ?? '';
 
   const { data: ledger, isLoading: ledgerLoading } = useQuery<{ items: { id: string; date: string; voucherNumber: string; debit: number; credit: number; balance: number; description: string }[] }>({
     queryKey: ['supplier-ledger', id],
@@ -196,13 +195,13 @@ function SupplierDetail({
   });
 
   return (
-    <Modal open={!!supplier} onClose={onClose} title={`Supplier: ${String(supplier?.name ?? '')}`} size="lg">
+    <Modal open={!!supplier} onClose={onClose} title={`Supplier: ${supplier?.name ?? ''}`} size="lg">
       {!supplier ? null : (
         <div>
           <div className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-            <LabelValue label="Code" value={String(supplier.code)} />
-            <LabelValue label="Phone" value={supplier.phone ? String(supplier.phone) : '-'} />
-            <LabelValue label="Town" value={String((supplier.town as Row | null)?.name ?? '-')} />
+            <LabelValue label="Code" value={supplier.code} />
+            <LabelValue label="Phone" value={supplier.phone || '-'} />
+            <LabelValue label="Town" value={supplier.town?.name ?? '-'} />
             <LabelValue label="Opening" value={money(supplier.openingBalance, 'PKR')} />
           </div>
 

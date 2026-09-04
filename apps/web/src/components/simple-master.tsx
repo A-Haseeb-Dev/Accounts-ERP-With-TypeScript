@@ -15,6 +15,7 @@ import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { dateTime } from '@/lib/utils';
 import { toast } from 'sonner';
+import type { Paginated } from '@/lib/types';
 
 export interface FieldDef {
   name: string;
@@ -25,43 +26,41 @@ export interface FieldDef {
   placeholder?: string;
 }
 
-interface SimpleMasterConfig {
+export interface SimpleMasterConfig<TRecord extends { id: string }> {
   apiPath: string;
   title: string;
   description: string;
   singular: string;
   permission: string;
-  columns: Column<Record<string, unknown>>[];
+  columns: Column<TRecord>[];
   fields: FieldDef[];
   allowStatusFilter?: boolean;
 }
 
-type Row = Record<string, unknown>;
-
-export function SimpleMaster({ config }: { config: SimpleMasterConfig }) {
+export function SimpleMaster<TRecord extends { id: string }>({ config }: { config: SimpleMasterConfig<TRecord> }) {
   const { can } = useAuth();
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<Row | null>(null);
-  const [form, setForm] = useState<Record<string, unknown>>({});
-  const [deleteTarget, setDeleteTarget] = useState<Row | null>(null);
+  const [editing, setEditing] = useState<TRecord | null>(null);
+  const [form, setForm] = useState<Partial<TRecord> & Record<string, unknown>>({});
+  const [deleteTarget, setDeleteTarget] = useState<TRecord | null>(null);
   const [formError, setFormError] = useState('');
 
   const canCreate = can(config.permission.replace('view', 'create'));
   const canUpdate = can(config.permission.replace('view', 'update'));
   const canDelete = can(config.permission.replace('view', 'delete'));
 
-  const { data, isLoading } = useQuery<{ items: Row[]; total: number; page: number }>({
+  const { data, isLoading } = useQuery<Paginated<TRecord>>({
     queryKey: [config.apiPath, page, search, status],
     queryFn: () =>
       apiFetch(config.apiPath + qs({ page, pageSize: 20, search: search || undefined, status: status || undefined })),
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (payload: Row) => {
+    mutationFn: async (payload: unknown) => {
       if (editing?.id) {
         return apiFetch(`${config.apiPath}/${editing.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
       }
@@ -97,7 +96,7 @@ export function SimpleMaster({ config }: { config: SimpleMasterConfig }) {
     setModalOpen(true);
   };
 
-  const openEdit = (row: Row) => {
+  const openEdit = (row: TRecord) => {
     setEditing(row);
     setForm(row);
     setFormError('');
@@ -114,19 +113,19 @@ export function SimpleMaster({ config }: { config: SimpleMasterConfig }) {
     saveMutation.mutate(form);
   };
 
-  const columns = useMemo<Column<Row>[]>(() => {
-    const base: Column<Row>[] = [...config.columns];
+  const columns = useMemo<Column<TRecord>[]>(() => {
+    const base: Column<TRecord>[] = [...config.columns];
     if (config.allowStatusFilter !== false) {
       base.push({
         key: 'status',
         header: 'Status',
-        render: (r) => <StatusBadge status={String(r.status ?? '')} />,
+        render: (r) => <StatusBadge status={String((r as Record<string, unknown>).status ?? '')} />,
       });
     }
     base.push({
       key: 'updatedAt',
       header: 'Updated',
-      render: (r) => <span className="text-xs text-slate-400">{dateTime(r.updatedAt)}</span>,
+      render: (r) => <span className="text-xs text-slate-400">{dateTime((r as Record<string, unknown>).updatedAt)}</span>,
     });
     if (canUpdate || canDelete) {
       base.push({
@@ -153,6 +152,9 @@ export function SimpleMaster({ config }: { config: SimpleMasterConfig }) {
   }, [config.columns, config.allowStatusFilter, canUpdate, canDelete]);
 
   const optionsFor = (field: FieldDef) => field.options ?? [];
+  const targetLabel = deleteTarget
+    ? String((deleteTarget as Record<string, unknown>).name ?? (deleteTarget as Record<string, unknown>).code ?? '')
+    : '';
 
   return (
     <div>
@@ -181,11 +183,11 @@ export function SimpleMaster({ config }: { config: SimpleMasterConfig }) {
             </Select>
           )}
         </div>
-        <DataTable<Row>
+        <DataTable<TRecord>
           columns={columns}
           data={data?.items ?? []}
           loading={isLoading}
-          rowKey={(r) => String(r.id ?? '')}
+          rowKey={(r) => r.id}
           page={page}
           pageSize={20}
           total={data?.total}
@@ -256,11 +258,11 @@ export function SimpleMaster({ config }: { config: SimpleMasterConfig }) {
         open={!!deleteTarget}
         danger
         title={`Delete ${config.singular}`}
-        message={`This will permanently delete "${String(deleteTarget?.name ?? deleteTarget?.code ?? '')}". This action cannot be undone.`}
+        message={`This will permanently delete "${targetLabel}". This action cannot be undone.`}
         confirmLabel="Delete"
         loading={deleteMutation.isPending}
         onCancel={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget?.id && deleteMutation.mutate(String(deleteTarget.id))}
+        onConfirm={() => deleteTarget?.id && deleteMutation.mutate(deleteTarget.id)}
       />
     </div>
   );

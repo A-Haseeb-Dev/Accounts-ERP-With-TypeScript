@@ -21,9 +21,9 @@ import {
   regenerateHeadCode,
   typeForLetter,
 } from '@/lib/accounts';
+import type { HeadAccount, SubHead } from '@/lib/types';
 
-type Head = { id: string; code: string; name: string; description?: string | null; status: string };
-type SubHead = { id: string; code: string; name: string; headAccountId: string; headAccount: Head; status: string };
+type Head = HeadAccount;
 
 interface HeadForm {
   name: string;
@@ -33,6 +33,21 @@ interface HeadForm {
 interface SubForm {
   name: string;
   description: string;
+}
+
+interface HeadPayload {
+  code: string;
+  name: string;
+  description?: string;
+  status: string;
+}
+
+interface SubPayload {
+  code: string;
+  name: string;
+  headAccountId: string;
+  description?: string;
+  status: string;
 }
 
 export default function ChartOfAccountsPage() {
@@ -116,7 +131,7 @@ export default function ChartOfAccountsPage() {
       const code = editingHead
         ? regenerateHeadCode(editingHead.code, headForm.type, heads.map((h) => h.code))
         : nextHeadCode(headForm.type, heads.map((h) => h.code));
-      const payload: Record<string, unknown> = {
+      const payload: HeadPayload = {
         code,
         name: headForm.name.trim(),
         description: headForm.description.trim() || undefined,
@@ -158,7 +173,7 @@ export default function ChartOfAccountsPage() {
       const code = editingSub
         ? editingSub.code
         : nextSubHeadCode(subParentHead.code, siblings.map((s) => s.code));
-      const payload: Record<string, unknown> = {
+      const payload: SubPayload = {
         code,
         name: subForm.name.trim(),
         headAccountId: subParentHead.id,

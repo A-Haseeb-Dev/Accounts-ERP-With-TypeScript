@@ -15,8 +15,7 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { dateTime } from '@/lib/utils';
-
-type Row = Record<string, unknown>;
+import type { Paginated, StockTransfer } from '@/lib/types';
 
 interface TransferLine {
   key: string;
@@ -42,15 +41,15 @@ export default function StockTransfersPage() {
   const [lines, setLines] = useState<TransferLine[]>([]);
   const [error, setError] = useState('');
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [cancelTarget, setCancelTarget] = useState<Row | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<StockTransfer | null>(null);
   const [cancelReason, setCancelReason] = useState('');
 
-  const { data, isLoading } = useQuery<{ items: Row[]; total: number }>({
+  const { data, isLoading } = useQuery<Paginated<StockTransfer>>({
     queryKey: ['stock-transfers', page, search, status],
     queryFn: () => apiFetch('/stock-transfers' + qs({ page, pageSize: 20, search: search || undefined, status: status || undefined })),
   });
 
-  const { data: detail, isLoading: detailLoading } = useQuery<Row>({
+  const { data: detail, isLoading: detailLoading } = useQuery<StockTransfer | null>({
     queryKey: ['stock-transfer', detailId],
     queryFn: () => apiFetch(`/stock-transfers/${detailId}`),
     enabled: !!detailId,
@@ -93,7 +92,7 @@ export default function StockTransfersPage() {
   const update = (key: string, patch: Partial<TransferLine>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const remove = (key: string) => setLines((ls) => ls.filter((l) => l.key !== key));
 
-  const detailLines = (detail?.items as unknown as { item: { code: string; name: string }; quantity: number }[] | undefined) ?? [];
+  const detailLines = detail?.items ?? [];
 
   return (
     <div>
@@ -121,23 +120,23 @@ export default function StockTransfersPage() {
           </Select>
         </div>
 
-        <DataTable<Row>
+        <DataTable<StockTransfer>
           columns={[
-            { key: 'number', header: 'Number', render: (r) => <span className="font-mono font-semibold text-slate-800">{String(r.number)}</span> },
+            { key: 'number', header: 'Number', render: (r) => <span className="font-mono font-semibold text-slate-800">{r.number}</span> },
             { key: 'transferDate', header: 'Date', render: (r) => <span className="text-slate-600">{new Date(String(r.transferDate)).toLocaleDateString('en-GB')}</span> },
-            { key: 'fromLocation', header: 'From', render: (r) => <span className="text-slate-700">{String((r.fromLocation as Row)?.name ?? '-')}</span> },
-            { key: 'toLocation', header: 'To', render: (r) => <span className="text-slate-700">{String((r.toLocation as Row)?.name ?? '-')}</span> },
-            { key: 'items', header: 'Lines', align: 'right', render: (r) => <span className="text-slate-600">{(r.items as unknown[] | undefined)?.length ?? 0}</span> },
-            { key: 'status', header: 'Status', render: (r) => <StatusBadge status={String(r.status)} /> },
+            { key: 'fromLocation', header: 'From', render: (r) => <span className="text-slate-700">{r.fromLocation?.name ?? '-'}</span> },
+            { key: 'toLocation', header: 'To', render: (r) => <span className="text-slate-700">{r.toLocation?.name ?? '-'}</span> },
+            { key: 'items', header: 'Lines', align: 'right', render: (r) => <span className="text-slate-600">{r.items.length}</span> },
+            { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'createdAt', header: 'Created', render: (r) => <span className="text-xs text-slate-400">{dateTime(r.createdAt)}</span> },
             {
               key: 'actions', header: 'Actions',
               render: (r) => (
                 <div className="flex items-center gap-0.5">
-                  <button onClick={() => setDetailId(String(r.id))} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
-                  {String(r.status) === 'draft' && (
+                  <button onClick={() => setDetailId(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
+                  {r.status === 'draft' && (
                     <>
-                      <button onClick={() => post.mutate(String(r.id))} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
+                      <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
                       <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
                     </>
                   )}
@@ -147,7 +146,7 @@ export default function StockTransfersPage() {
           ]}
           data={data?.items ?? []}
           loading={isLoading}
-          rowKey={(r) => String(r.id)}
+          rowKey={(r) => r.id}
           page={page}
           pageSize={20}
           total={data?.total}
@@ -230,9 +229,9 @@ export default function StockTransfersPage() {
           <div>
             <div className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
               <KV label="Date" value={new Date(String(detail.transferDate)).toLocaleDateString('en-GB')} />
-              <KV label="From" value={String((detail.fromLocation as Row)?.name ?? '-')} />
-              <KV label="To" value={String((detail.toLocation as Row)?.name ?? '-')} />
-              <KV label="Status" value={String(detail.status)} />
+              <KV label="From" value={detail.fromLocation?.name ?? '-'} />
+              <KV label="To" value={detail.toLocation?.name ?? '-'} />
+              <KV label="Status" value={detail.status} />
             </div>
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full text-sm">
@@ -244,8 +243,8 @@ export default function StockTransfersPage() {
                 </thead>
                 <tbody>
                   {detailLines.map((it) => (
-                    <tr key={String((it.item as Row | null)?.code ?? it.id ?? 'line')} className="border-b border-slate-100">
-                      <td className="px-3 py-2 text-slate-800">{String((it.item as Row | null)?.name ?? it.itemId ?? '—')} <span className="text-xs text-slate-400">({String((it.item as Row | null)?.code ?? '')})</span></td>
+                    <tr key={it.id ?? it.itemId ?? 'line'} className="border-b border-slate-100">
+                      <td className="px-3 py-2 text-slate-800">{it.item?.name ?? it.itemId ?? '—'} <span className="text-xs text-slate-400">({it.item?.code ?? ''})</span></td>
                       <td className="px-3 py-2 text-right font-medium text-slate-800">{it.quantity}</td>
                     </tr>
                   ))}
@@ -253,7 +252,7 @@ export default function StockTransfersPage() {
                 </tbody>
               </table>
             </div>
-            {!!detail.note && <p className="mt-3 text-xs text-slate-500">Note: {String(detail.note)}</p>}
+            {!!detail.note && <p className="mt-3 text-xs text-slate-500">Note: {detail.note}</p>}
           </div>
         )}
       </Modal>
@@ -266,7 +265,7 @@ export default function StockTransfersPage() {
         confirmLabel="Cancel transfer"
         loading={cancel.isPending}
         onCancel={() => setCancelTarget(null)}
-        onConfirm={() => cancelTarget?.id && cancel.mutate({ id: String(cancelTarget.id), reason: cancelReason || 'Cancelled from UI' })}
+        onConfirm={() => cancelTarget?.id && cancel.mutate({ id: cancelTarget.id, reason: cancelReason || 'Cancelled from UI' })}
       >
         <div className="mt-3">
           <Field label="Reason">

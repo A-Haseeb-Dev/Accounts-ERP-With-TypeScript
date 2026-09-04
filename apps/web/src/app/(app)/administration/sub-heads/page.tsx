@@ -14,8 +14,7 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { dateTime } from '@/lib/utils';
-
-type Row = Record<string, unknown>;
+import type { SubHead, Paginated } from '@/lib/types';
 
 export default function SubHeadsPage() {
   const qc = useQueryClient();
@@ -23,18 +22,18 @@ export default function SubHeadsPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<Row | null>(null);
-  const [form, setForm] = useState<Record<string, unknown>>({});
-  const [deleteTarget, setDeleteTarget] = useState<Row | null>(null);
+  const [editing, setEditing] = useState<SubHead | null>(null);
+  const [form, setForm] = useState<Partial<SubHead>>({});
+  const [deleteTarget, setDeleteTarget] = useState<SubHead | null>(null);
   const [error, setError] = useState('');
 
-  const { data, isLoading } = useQuery<{ items: Row[]; total: number }>({
+  const { data, isLoading } = useQuery<Paginated<SubHead>>({
     queryKey: ['sub-heads', page, search],
     queryFn: () => apiFetch('/sub-heads' + qs({ page, pageSize: 20, search: search || undefined })),
   });
 
   const save = useMutation({
-    mutationFn: (payload: Row) =>
+    mutationFn: (payload: Partial<SubHead>) =>
       editing?.id
         ? apiFetch(`/sub-heads/${editing.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
         : apiFetch('/sub-heads', { method: 'POST', body: JSON.stringify(payload) }),
@@ -55,7 +54,7 @@ export default function SubHeadsPage() {
     },
   });
 
-  const set = (name: string, value: unknown) => setForm((f) => ({ ...f, [name]: value }));
+  const set = (name: keyof SubHead | string, value: string | number | undefined) => setForm((f) => ({ ...f, [name]: value }));
 
   return (
     <div>
@@ -76,12 +75,12 @@ export default function SubHeadsPage() {
             <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search…" className="pl-9" />
           </div>
         </div>
-        <DataTable<Row>
+        <DataTable<SubHead>
           columns={[
-            { key: 'code', header: 'Code', render: (r) => <span className="font-mono font-semibold text-slate-800">{String(r.code)}</span> },
-            { key: 'name', header: 'Name', render: (r) => <span className="font-medium text-slate-800">{String(r.name)}</span> },
-            { key: 'head', header: 'Head Account', render: (r) => <span className="text-slate-500">{String((r.headAccount as Row | null)?.name ?? '-')}</span> },
-            { key: 'status', header: 'Status', render: (r) => <StatusBadge status={String(r.status)} /> },
+            { key: 'code', header: 'Code', render: (r) => <span className="font-mono font-semibold text-slate-800">{r.code}</span> },
+            { key: 'name', header: 'Name', render: (r) => <span className="font-medium text-slate-800">{r.name}</span> },
+            { key: 'head', header: 'Head Account', render: (r) => <span className="text-slate-500">{r.headAccount?.name ?? '-'}</span> },
+            { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'updatedAt', header: 'Updated', render: (r) => <span className="text-xs text-slate-400">{dateTime(r.updatedAt)}</span> },
             {
               key: 'actions', header: 'Actions',
@@ -95,7 +94,7 @@ export default function SubHeadsPage() {
           ]}
           data={data?.items ?? []}
           loading={isLoading}
-          rowKey={(r) => String(r.id)}
+          rowKey={(r) => r.id}
           page={page}
           pageSize={20}
           total={data?.total}
@@ -109,22 +108,22 @@ export default function SubHeadsPage() {
           className="space-y-4"
         >
           <Field label="Code" required>
-            <Input value={String(form.code ?? '')} onChange={(e) => set('code', e.target.value)} placeholder="e.g. 03" required />
+            <Input value={form.code ?? ''} onChange={(e) => set('code', e.target.value)} placeholder="e.g. 03" required />
           </Field>
           <Field label="Name" required>
-            <Input value={String(form.name ?? '')} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Current Assets" required />
+            <Input value={form.name ?? ''} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Current Assets" required />
           </Field>
           <Field label="Head Account" required>
-            <Select value={String(form.headAccountId ?? '')} onChange={(e) => set('headAccountId', e.target.value)} disabled={headsLoading} required>
+            <Select value={form.headAccountId ?? ''} onChange={(e) => set('headAccountId', e.target.value)} disabled={headsLoading} required>
               <option value="">Select head account…</option>
               {headOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
           </Field>
           <Field label="Description">
-            <Textarea value={String(form.description ?? '')} onChange={(e) => set('description', e.target.value)} />
+            <Textarea value={form.description ?? ''} onChange={(e) => set('description', e.target.value)} />
           </Field>
           <Field label="Status">
-            <Select value={String(form.status ?? 'active')} onChange={(e) => set('status', e.target.value)}>
+            <Select value={form.status ?? 'active'} onChange={(e) => set('status', e.target.value)}>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
             </Select>
@@ -143,11 +142,11 @@ export default function SubHeadsPage() {
         open={!!deleteTarget}
         danger
         title="Delete Sub Head"
-        message={`This will permanently delete "${String(deleteTarget?.name ?? '')}". This action cannot be undone.`}
+        message={`This will permanently delete "${deleteTarget?.name ?? ''}". This action cannot be undone.`}
         confirmLabel="Delete"
         loading={del.isPending}
         onCancel={() => setDeleteTarget(null)}
-        onConfirm={() => deleteTarget?.id && del.mutate(String(deleteTarget.id))}
+        onConfirm={() => deleteTarget?.id && del.mutate(deleteTarget.id)}
       />
     </div>
   );

@@ -1,10 +1,11 @@
 'use client';
 
 import { SimpleMaster } from '@/components/simple-master';
+import type { Brand } from '@/lib/types';
 
 export default function BrandsPage() {
   return (
-    <SimpleMaster
+    <SimpleMaster<Brand>
       config={{
         apiPath: '/brands',
         title: 'Brands',
@@ -12,8 +13,8 @@ export default function BrandsPage() {
         singular: 'Brand',
         permission: 'administration.brands.view',
         columns: [
-          { key: 'name', header: 'Name', render: (r) => <span className="font-medium text-slate-800">{String(r.name)}</span> },
-          { key: 'description', header: 'Description', render: (r) => r.description ? <span className="text-slate-500">{String(r.description)}</span> : '-' },
+          { key: 'name', header: 'Name', render: (r) => <span className="font-medium text-slate-800">{r.name}</span> },
+          { key: 'description', header: 'Description', render: (r) => r.description ? <span className="text-slate-500">{r.description}</span> : '-' },
         ],
         fields: [
           { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Nestlé' },

@@ -73,7 +73,6 @@ export function Sidebar({
             href="/"
             active={pathname === '/'}
             onNavigate={close}
-            title="Dashboard"
             icon={<Home className="h-4 w-4 shrink-0" />}
           >
             Dashboard

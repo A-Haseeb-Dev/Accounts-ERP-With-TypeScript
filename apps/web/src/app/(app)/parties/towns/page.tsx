@@ -1,10 +1,11 @@
 'use client';
 
 import { SimpleMaster } from '@/components/simple-master';
+import type { Town } from '@/lib/types';
 
 export default function TownsPage() {
   return (
-    <SimpleMaster
+    <SimpleMaster<Town>
       config={{
         apiPath: '/towns',
         title: 'Towns',
@@ -12,9 +13,9 @@ export default function TownsPage() {
         singular: 'Town',
         permission: 'administration.towns.view',
         columns: [
-          { key: 'name', header: 'Name', render: (r) => <span className="font-medium text-slate-800">{String(r.name)}</span> },
-          { key: 'city', header: 'City', render: (r) => <span className="text-slate-500">{r.city ? String(r.city) : '-'}</span> },
-          { key: 'description', header: 'Description', render: (r) => r.description ? <span className="text-slate-500">{String(r.description)}</span> : '-' },
+          { key: 'name', header: 'Name', render: (r) => <span className="font-medium text-slate-800">{r.name}</span> },
+          { key: 'city', header: 'City', render: (r) => <span className="text-slate-500">{r.city || '-'}</span> },
+          { key: 'description', header: 'Description', render: (r) => r.description ? <span className="text-slate-500">{r.description}</span> : '-' },
         ],
         fields: [
           { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Sadar Bazaar' },

@@ -15,8 +15,7 @@ import { Card } from '@/components/ui/card';
 import { StatusBadge, Badge } from '@/components/ui/badge';
 import { dateTime, num } from '@/lib/utils';
 import { nextMainAccountCode } from '@/lib/accounts';
-
-type Row = Record<string, unknown>;
+import type { MainAccount, SubHead, Paginated } from '@/lib/types';
 
 const ACCOUNT_TYPES = [
   { value: 'ASSET', label: 'Asset' },
@@ -28,26 +27,26 @@ const ACCOUNT_TYPES = [
 
 export default function MainAccountsPage() {
   const qc = useQueryClient();
-  const { options: subHeadOptions, data: subHeadData, isLoading: subHeadsLoading } = useFlatOptions('sub-heads');
-  const { data: allAccounts } = useFlatOptions('main-accounts');
+  const { options: subHeadOptions, data: subHeadData, isLoading: subHeadsLoading } = useFlatOptions<SubHead>('sub-heads');
+  const { data: allAccounts } = useFlatOptions<MainAccount>('main-accounts');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<Row | null>(null);
-  const [form, setForm] = useState<Record<string, unknown>>({});
-  const [deleteTarget, setDeleteTarget] = useState<Row | null>(null);
+  const [editing, setEditing] = useState<MainAccount | null>(null);
+  const [form, setForm] = useState<Partial<MainAccount>>({});
+  const [deleteTarget, setDeleteTarget] = useState<MainAccount | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [error, setError] = useState('');
 
-  const { data, isLoading } = useQuery<{ items: Row[]; total: number }>({
+  const { data, isLoading } = useQuery<Paginated<MainAccount>>({
     queryKey: ['main-accounts', page, search, typeFilter],
     queryFn: () => apiFetch('/main-accounts' + qs({ page, pageSize: 20, search: search || undefined, accountType: typeFilter || undefined })),
   });
 
   const save = useMutation({
-    mutationFn: (payload: Row) => {
-      const merged: Row = { ...payload };
+    mutationFn: (payload: Partial<MainAccount>) => {
+      const merged: Partial<MainAccount> = { ...payload };
       if (!editing?.id) merged.code = generatedCode || payload.code;
       return editing?.id
         ? apiFetch(`/main-accounts/${editing.id}`, { method: 'PATCH', body: JSON.stringify(merged) })
@@ -74,15 +73,15 @@ export default function MainAccountsPage() {
     onError: (e: Error) => setDeleteError(e.message),
   });
 
-  const set = (name: string, value: unknown) => setForm((f) => ({ ...f, [name]: value }));
+  const set = (name: keyof MainAccount | string, value: string | number | undefined) => setForm((f) => ({ ...f, [name]: value }));
 
   const selectedSubHead = subHeadData.find((s) => s.id === form.subHeadId);
   const accountCodesUnderSub = allAccounts
-    .filter((a) => (a as Record<string, unknown>).subHeadId === form.subHeadId)
-    .map((a) => String((a as Record<string, unknown>).code ?? ''));
+    .filter((a) => a.subHeadId === form.subHeadId)
+    .map((a) => a.code ?? '');
   const generatedCode =
     editing || !selectedSubHead
-      ? (form.code as string | undefined) ?? ''
+      ? form.code ?? ''
       : nextMainAccountCode(selectedSubHead.code, accountCodesUnderSub);
 
   return (
@@ -108,14 +107,14 @@ export default function MainAccountsPage() {
             {ACCOUNT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </Select>
         </div>
-        <DataTable<Row>
+        <DataTable<MainAccount>
           columns={[
-            { key: 'code', header: 'Code', render: (r) => <span className="font-mono font-semibold text-slate-800">{String(r.code)}</span> },
-            { key: 'name', header: 'Name', render: (r) => <span className="font-medium text-slate-800">{String(r.name)}</span> },
-            { key: 'accountType', header: 'Type', render: (r) => <Badge tone={typeTone(String(r.accountType))}>{String(r.accountType)}</Badge> },
-            { key: 'subHead', header: 'Sub Head', render: (r) => <span className="text-slate-500">{String((r.subHead as Row | null)?.name ?? '-')}</span> },
-            { key: 'openingBalance', header: 'Opening', align: 'right', render: (r) => <span className="text-slate-600">{num(r.openingBalance)}</span> },
-            { key: 'status', header: 'Status', render: (r) => <StatusBadge status={String(r.status)} /> },
+            { key: 'code', header: 'Code', render: (r) => <span className="font-mono font-semibold text-slate-800">{r.code}</span> },
+            { key: 'name', header: 'Name', render: (r) => <span className="font-medium text-slate-800">{r.name}</span> },
+            { key: 'accountType', header: 'Type', render: (r) => <Badge tone={typeTone(r.accountType ?? '')}>{r.accountType ?? ''}</Badge> },
+            { key: 'subHead', header: 'Sub Head', render: (r) => <span className="text-slate-500">{r.subHead?.name ?? '-'}</span> },
+            { key: 'openingBalance', header: 'Opening', align: 'right', render: (r) => <span className="text-slate-600">{num(r.openingBalance ?? 0)}</span> },
+            { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'updatedAt', header: 'Updated', render: (r) => <span className="text-xs text-slate-400">{dateTime(r.updatedAt)}</span> },
             {
               key: 'actions', header: 'Actions',
@@ -129,7 +128,7 @@ export default function MainAccountsPage() {
           ]}
           data={data?.items ?? []}
           loading={isLoading}
-          rowKey={(r) => String(r.id)}
+          rowKey={(r) => r.id}
           page={page}
           pageSize={20}
           total={data?.total}
@@ -156,28 +155,28 @@ export default function MainAccountsPage() {
             )}
           </Field>
             <Field label="Name" required>
-              <Input value={String(form.name ?? '')} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Petty Cash" required />
+              <Input value={form.name ?? ''} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Petty Cash" required />
             </Field>
           </div>
           <Field label="Sub Head">
-            <Select value={String(form.subHeadId ?? '')} onChange={(e) => set('subHeadId', e.target.value)} disabled={subHeadsLoading}>
+            <Select value={form.subHeadId ?? ''} onChange={(e) => set('subHeadId', e.target.value)} disabled={subHeadsLoading}>
               <option value="">—</option>
               {subHeadOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
           </Field>
           <Field label="Account Type" required>
-            <Select value={String(form.accountType ?? 'ASSET')} onChange={(e) => set('accountType', e.target.value)}>
+            <Select value={form.accountType ?? 'ASSET'} onChange={(e) => set('accountType', e.target.value)}>
               {ACCOUNT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </Select>
           </Field>
           <Field label="Opening Balance" hint="Used in trial balance as the starting balance.">
-            <Input type="number" step="0.01" value={String(form.openingBalance ?? 0)} onChange={(e) => set('openingBalance', e.target.value === '' ? 0 : Number(e.target.value))} />
+            <Input type="number" step="0.01" value={form.openingBalance ?? 0} onChange={(e) => set('openingBalance', e.target.value === '' ? 0 : Number(e.target.value))} />
           </Field>
           <Field label="Description">
-            <Input value={String(form.description ?? '')} onChange={(e) => set('description', e.target.value)} />
+            <Input value={form.description ?? ''} onChange={(e) => set('description', e.target.value)} />
           </Field>
           <Field label="Status">
-            <Select value={String(form.status ?? 'active')} onChange={(e) => set('status', e.target.value)}>
+            <Select value={form.status ?? 'active'} onChange={(e) => set('status', e.target.value)}>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
             </Select>
@@ -196,11 +195,11 @@ export default function MainAccountsPage() {
         open={!!deleteTarget}
         danger
         title="Delete Main Account"
-        message={`Delete "${String(deleteTarget?.name ?? '')}"? Accounts with posting activity cannot be deleted.`}
+        message={`Delete "${deleteTarget?.name ?? ''}"? Accounts with posting activity cannot be deleted.`}
         confirmLabel="Delete"
         loading={del.isPending}
         onCancel={() => { setDeleteTarget(null); setDeleteError(''); }}
-        onConfirm={() => { setDeleteError(''); deleteTarget?.id && del.mutate(String(deleteTarget.id)); }}
+        onConfirm={() => { setDeleteError(''); deleteTarget?.id && del.mutate(deleteTarget.id); }}
       >
         {deleteError && (
           <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{deleteError}</div>
