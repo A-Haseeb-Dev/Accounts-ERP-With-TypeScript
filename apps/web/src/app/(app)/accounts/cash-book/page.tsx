@@ -50,7 +50,7 @@ export default function CashBookPage() {
 
         <DataTable<CashBookRow>
           columns={[
-            { key: 'date', header: 'Date', render: (r) => <span className="text-slate-600">{new Date(String(r.date ?? r.voucherDate)).toLocaleDateString('en-GB')}</span> },
+            { key: 'date', header: 'Date', render: (r) => <span className="text-slate-600">{new Date(r.date ?? r.voucherDate).toLocaleDateString('en-GB')}</span> },
             { key: 'voucher', header: 'Voucher', render: (r) => {
               return <span className="font-mono font-semibold text-slate-800">{r.voucher?.number ?? ''}</span>;
             } },

@@ -123,7 +123,7 @@ export default function StockTransfersPage() {
         <DataTable<StockTransfer>
           columns={[
             { key: 'number', header: 'Number', render: (r) => <span className="font-mono font-semibold text-slate-800">{r.number}</span> },
-            { key: 'transferDate', header: 'Date', render: (r) => <span className="text-slate-600">{new Date(String(r.transferDate)).toLocaleDateString('en-GB')}</span> },
+            { key: 'transferDate', header: 'Date', render: (r) => <span className="text-slate-600">{new Date(r.transferDate).toLocaleDateString('en-GB')}</span> },
             { key: 'fromLocation', header: 'From', render: (r) => <span className="text-slate-700">{r.fromLocation?.name ?? '-'}</span> },
             { key: 'toLocation', header: 'To', render: (r) => <span className="text-slate-700">{r.toLocation?.name ?? '-'}</span> },
             { key: 'items', header: 'Lines', align: 'right', render: (r) => <span className="text-slate-600">{r.items.length}</span> },
