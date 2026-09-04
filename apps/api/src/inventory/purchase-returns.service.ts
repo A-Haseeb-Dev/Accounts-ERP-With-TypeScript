@@ -5,6 +5,7 @@ import { NumberingService } from '../common/services/numbering.service';
 import { InventoryService } from '../common/services/inventory.service';
 import { AccountingService } from '../common/services/accounting.service';
 import { DefaultAccountsService } from '../common/services/default-accounts.service';
+import { FiscalPeriodGuard } from '../common/services/fiscal-period.guard';
 import { ApiException } from '../common/exceptions/api.exception';
 import { CreatePurchaseReturnDto } from './dto/inventory.dto';
 
@@ -19,9 +20,11 @@ export class PurchaseReturnsService {
     private readonly inventory: InventoryService,
     private readonly accounting: AccountingService,
     private readonly defaultAccounts: DefaultAccountsService,
+    private readonly fiscal: FiscalPeriodGuard,
   ) {}
 
   async create(dto: CreatePurchaseReturnDto, actorId?: string) {
+    await this.fiscal.assertOpen(dto.returnDate, 'Cannot create a purchase return');
     const supplier = await this.prisma.supplier.findUnique({ where: { id: dto.supplierId } });
     if (!supplier) throw ApiException.notFound('Supplier');
     const location = await this.prisma.stockLocation.findUnique({ where: { id: dto.stockLocationId } });
@@ -130,6 +133,7 @@ export class PurchaseReturnsService {
     if (pr.status === 'cancelled') {
       throw ApiException.invalidTransaction('A cancelled purchase return cannot be posted');
     }
+    await this.fiscal.assertOpen(pr.returnDate, 'Cannot post a purchase return');
 
     const inventoryAccountId =
       (await this.defaultAccounts.resolveAccount('accounting.inventory_account', 'Inventory')) ??
@@ -224,6 +228,7 @@ export class PurchaseReturnsService {
   async cancel(id: string, reason: string, actorId?: string) {
     const pr = await this.prisma.purchaseReturn.findUnique({ where: { id } });
     if (!pr) throw ApiException.notFound('Purchase return');
+    await this.fiscal.assertOpen(pr.returnDate, 'Cannot cancel a purchase return');
     if (pr.status === 'posted') {
       throw ApiException.invalidTransaction(
         'Posted purchase returns cannot be cancelled. Create a reversal instead.',

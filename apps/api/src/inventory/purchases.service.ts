@@ -5,6 +5,7 @@ import { NumberingService } from '../common/services/numbering.service';
 import { InventoryService } from '../common/services/inventory.service';
 import { AccountingService, VoucherEntryInput } from '../common/services/accounting.service';
 import { DefaultAccountsService } from '../common/services/default-accounts.service';
+import { FiscalPeriodGuard } from '../common/services/fiscal-period.guard';
 import { ApiException } from '../common/exceptions/api.exception';
 import { Prisma } from '@prisma/client';
 import { CreatePurchaseDto } from './dto/inventory.dto';
@@ -20,9 +21,11 @@ export class PurchasesService {
     private readonly inventory: InventoryService,
     private readonly accounting: AccountingService,
     private readonly defaultAccounts: DefaultAccountsService,
+    private readonly fiscal: FiscalPeriodGuard,
   ) {}
 
   async create(dto: CreatePurchaseDto, actorId?: string) {
+    await this.fiscal.assertOpen(dto.purchaseDate, 'Cannot create a purchase');
     const supplier = await this.prisma.supplier.findUnique({ where: { id: dto.supplierId } });
     if (!supplier) throw ApiException.notFound('Supplier');
     const location = await this.prisma.stockLocation.findUnique({ where: { id: dto.stockLocationId } });
@@ -94,6 +97,7 @@ export class PurchasesService {
     if (purchase.status === 'cancelled') {
       throw ApiException.invalidTransaction('A cancelled purchase cannot be posted');
     }
+    await this.fiscal.assertOpen(purchase.purchaseDate, 'Cannot post a purchase');
 
     // Resolve accounting accounts.
     const inventoryAccountId =
@@ -185,6 +189,7 @@ export class PurchasesService {
     const purchase = await this.prisma.purchase.findUnique({ where: { id } });
     if (!purchase) throw ApiException.notFound('Purchase');
     if (purchase.status === 'cancelled') return purchase;
+    await this.fiscal.assertOpen(purchase.purchaseDate, 'Cannot cancel a purchase');
     if (purchase.status === 'posted') {
       throw ApiException.invalidTransaction(
         'Posted purchases cannot be cancelled. Use a purchase return to reverse the stock and liability.',

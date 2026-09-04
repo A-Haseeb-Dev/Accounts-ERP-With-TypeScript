@@ -5,6 +5,7 @@ import { NumberingService } from '../common/services/numbering.service';
 import { InventoryService } from '../common/services/inventory.service';
 import { AccountingService } from '../common/services/accounting.service';
 import { DefaultAccountsService } from '../common/services/default-accounts.service';
+import { FiscalPeriodGuard } from '../common/services/fiscal-period.guard';
 import { ApiException } from '../common/exceptions/api.exception';
 import { CreateSaleDto } from './dto/sales.dto';
 
@@ -19,9 +20,11 @@ export class SalesService {
     private readonly inventory: InventoryService,
     private readonly accounting: AccountingService,
     private readonly defaultAccounts: DefaultAccountsService,
+    private readonly fiscal: FiscalPeriodGuard,
   ) {}
 
   async create(dto: CreateSaleDto, actorId?: string) {
+    await this.fiscal.assertOpen(dto.saleDate, 'Cannot create a sales invoice');
     const customer = await this.prisma.customer.findUnique({ where: { id: dto.customerId } });
     if (!customer) throw ApiException.notFound('Customer');
     const location = await this.prisma.stockLocation.findUnique({ where: { id: dto.stockLocationId } });
@@ -97,6 +100,7 @@ export class SalesService {
     if (sale.status === 'cancelled') {
       throw ApiException.invalidTransaction('A cancelled invoice cannot be posted');
     }
+    await this.fiscal.assertOpen(sale.saleDate, 'Cannot post a sales invoice');
 
     const revenueAccountId =
       (await this.defaultAccounts.resolveAccount('accounting.revenue_account', 'Sales Revenue')) ??
@@ -232,6 +236,7 @@ export class SalesService {
     const sale = await this.prisma.sale.findUnique({ where: { id } });
     if (!sale) throw ApiException.notFound('Sales invoice');
     if (sale.status === 'cancelled') return sale;
+    await this.fiscal.assertOpen(sale.saleDate, 'Cannot cancel a sales invoice');
     if (sale.status === 'posted') {
       throw ApiException.invalidTransaction(
         'Posted invoices cannot be cancelled. Use a sales return to reverse the stock and receivable.',

@@ -10,8 +10,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ### Added
 - **Fiscal period lock** — admins can set a "Lock Vouchers Up To" date under
   Settings → Fiscal Period. The API then rejects creating, editing, deleting,
-  posting, or cancelling any voucher whose date falls on or before that boundary,
-  protecting closed accounting periods from accidental changes.
+  posting, or cancelling any transaction (sales invoices, purchases, sales and
+  purchase returns, stock transfers, and accounting vouchers) whose date falls
+  on or before that boundary, protecting closed accounting periods from
+  accidental changes.
 - **Atomic, concurrency-safe document numbering** — voucher/sales/purchase
   numbers are now reserved via a single `INSERT … ON CONFLICT DO UPDATE …
   RETURNING` upsert against `SystemSetting`, so concurrent requests never receive

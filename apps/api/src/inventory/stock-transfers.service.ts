@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NumberingService } from '../common/services/numbering.service';
 import { InventoryService } from '../common/services/inventory.service';
+import { FiscalPeriodGuard } from '../common/services/fiscal-period.guard';
 import { ApiException } from '../common/exceptions/api.exception';
 import { CreateStockTransferDto } from './dto/inventory.dto';
 
@@ -15,9 +16,11 @@ export class StockTransfersService {
     private readonly audit: AuditService,
     private readonly numbering: NumberingService,
     private readonly inventory: InventoryService,
+    private readonly fiscal: FiscalPeriodGuard,
   ) {}
 
   async create(dto: CreateStockTransferDto, actorId?: string) {
+    await this.fiscal.assertOpen(dto.transferDate, 'Cannot create a stock transfer');
     this.validateLocations(dto);
 
     const number = await this.numbering.next('transfer', 'ST');
@@ -65,6 +68,7 @@ export class StockTransfersService {
     if (transfer.status === 'cancelled') {
       throw ApiException.invalidTransaction('A cancelled transfer cannot be posted');
     }
+    await this.fiscal.assertOpen(transfer.transferDate, 'Cannot post a stock transfer');
     if (transfer.fromLocationId === transfer.toLocationId) {
       throw ApiException.invalidTransaction('Source and destination locations cannot be the same');
     }
@@ -140,6 +144,7 @@ export class StockTransfersService {
   async cancel(id: string, reason: string, actorId?: string) {
     const transfer = await this.prisma.stockTransfer.findUnique({ where: { id } });
     if (!transfer) throw ApiException.notFound('Stock transfer');
+    await this.fiscal.assertOpen(transfer.transferDate, 'Cannot cancel a stock transfer');
     if (transfer.status === 'posted') {
       throw ApiException.invalidTransaction('Posted transfers cannot be cancelled. Create a reverse transfer.');
     }

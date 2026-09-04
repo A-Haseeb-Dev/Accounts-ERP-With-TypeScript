@@ -5,6 +5,7 @@ import { NumberingService } from '../common/services/numbering.service';
 import { InventoryService } from '../common/services/inventory.service';
 import { AccountingService } from '../common/services/accounting.service';
 import { DefaultAccountsService } from '../common/services/default-accounts.service';
+import { FiscalPeriodGuard } from '../common/services/fiscal-period.guard';
 import { ApiException } from '../common/exceptions/api.exception';
 import { CreateSalesReturnDto } from './dto/sales.dto';
 
@@ -19,9 +20,11 @@ export class SalesReturnsService {
     private readonly inventory: InventoryService,
     private readonly accounting: AccountingService,
     private readonly defaultAccounts: DefaultAccountsService,
+    private readonly fiscal: FiscalPeriodGuard,
   ) {}
 
   async create(dto: CreateSalesReturnDto, actorId?: string) {
+    await this.fiscal.assertOpen(dto.returnDate, 'Cannot create a sales return');
     const customer = await this.prisma.customer.findUnique({ where: { id: dto.customerId } });
     if (!customer) throw ApiException.notFound('Customer');
     const location = await this.prisma.stockLocation.findUnique({ where: { id: dto.stockLocationId } });
@@ -116,6 +119,7 @@ export class SalesReturnsService {
     if (sr.status === 'cancelled') {
       throw ApiException.invalidTransaction('A cancelled sales return cannot be posted');
     }
+    await this.fiscal.assertOpen(sr.returnDate, 'Cannot post a sales return');
 
     const salesReturnAccountId =
       (await this.defaultAccounts.resolveAccount('accounting.sales_return_account', 'Sales Returns')) ??
@@ -186,6 +190,7 @@ export class SalesReturnsService {
   async cancel(id: string, reason: string, actorId?: string) {
     const sr = await this.prisma.salesReturn.findUnique({ where: { id } });
     if (!sr) throw ApiException.notFound('Sales return');
+    await this.fiscal.assertOpen(sr.returnDate, 'Cannot cancel a sales return');
     if (sr.status === 'posted') {
       throw ApiException.invalidTransaction(
         'Posted sales returns cannot be cancelled. Create a reversal instead.',
