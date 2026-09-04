@@ -8,6 +8,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
+- **API now type-checks clean** — fixed every remaining `tsc --noEmit` error in the
+  controller/service unit specs: typed the Prisma mocks in `users` and
+  `inventory` service specs against local delegate interfaces (replacing
+  `Record<string, unknown>`), added the missing `fiscal` mock to the vouchers
+  spec, typed the Express `Response` cookie mocks in the auth spec, and made
+  the crypto `randomUUID` spy return a UUID-shaped value so it satisfies the
+  strict UUID template type. `pnpm --filter @has-erp/api typecheck` and
+  `pnpm --filter @has-erp/api test` (95 tests) both pass.
 - **Fully typed legacy web layer** — replaced every remaining `Row =
   Record<string, unknown>` + `String()` runtime cast in the Next.js app with
   Prisma-schema-aligned shared types from `lib/types.ts`. This covers parties

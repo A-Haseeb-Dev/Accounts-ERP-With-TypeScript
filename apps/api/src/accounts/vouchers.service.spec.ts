@@ -40,6 +40,7 @@ function buildService(overrides?: {
   prisma?: Record<string, unknown>;
   audit?: { record: ReturnType<typeof vi.fn> };
   numbering?: { next: ReturnType<typeof vi.fn> };
+  fiscal?: { assertOpen: ReturnType<typeof vi.fn> };
 }) {
   const prisma = overrides?.prisma ?? {
     voucher: { findUnique: vi.fn(), findMany: vi.fn() },

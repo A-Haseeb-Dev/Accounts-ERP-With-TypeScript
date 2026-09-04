@@ -1,22 +1,28 @@
 import { describe, it, expect, vi } from 'vitest';
 import { InventoryService } from './inventory.service';
 
-function buildService(overrides?: { prisma?: Record<string, unknown> }) {
-  const prisma = overrides?.prisma ?? {
+type MockFn = ReturnType<typeof vi.fn>;
+
+interface MockInventoryPrisma {
+  inventoryTransaction: { aggregate?: MockFn; groupBy?: MockFn; create?: MockFn };
+  item?: { findMany?: MockFn };
+}
+
+function buildService(overrides?: { prisma?: Partial<MockInventoryPrisma> }) {
+  const prisma: MockInventoryPrisma = {
     inventoryTransaction: {
       aggregate: vi.fn(),
       groupBy: vi.fn(),
       create: vi.fn(),
     },
-    item: {
-      findMany: vi.fn(),
-    },
-  };
+    item: { findMany: vi.fn() },
+    ...(overrides?.prisma ?? {}),
+  } as MockInventoryPrisma;
   const svc = new InventoryService(prisma as never);
   return { svc, prisma };
 }
 
-function buildTx(prisma: Record<string, unknown>) {
+function buildTx(prisma: MockInventoryPrisma) {
   return prisma as never;
 }
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthService } from './auth.service';
 import { ApiException } from '../common/exceptions/api.exception';
+import type { Response } from 'express';
 
 vi.mock('argon2', () => ({
   verify: vi.fn(),
@@ -155,7 +156,7 @@ describe('AuthService.setAuthCookies / clearAuthCookies', () => {
     const { svc } = buildService();
     const res = {
       cookie: vi.fn(),
-    } as never;
+    } as unknown as Response;
 
     svc.setAuthCookies(res, { accessToken: 'at', refreshToken: 'rt' });
 
@@ -168,7 +169,7 @@ describe('AuthService.setAuthCookies / clearAuthCookies', () => {
     const { svc } = buildService();
     const res = {
       clearCookie: vi.fn(),
-    } as never;
+    } as unknown as Response;
 
     svc.clearAuthCookies(res);
 

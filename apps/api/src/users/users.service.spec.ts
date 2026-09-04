@@ -37,8 +37,15 @@ async function extractError(p: Promise<unknown>): Promise<{ status: number; code
   }
 }
 
-function buildService(overrides?: { prisma?: Record<string, unknown> }) {
-  const prisma = overrides?.prisma ?? {
+type MockFn = ReturnType<typeof vi.fn>;
+
+interface MockUsersPrisma {
+  user: { findUnique?: MockFn; findMany?: MockFn; count?: MockFn; create?: MockFn; update?: MockFn };
+  userRole: { deleteMany?: MockFn; createMany?: MockFn };
+}
+
+function buildService(overrides?: { prisma?: Partial<MockUsersPrisma> }) {
+  const prisma: MockUsersPrisma = {
     user: {
       findUnique: vi.fn(),
       findMany: vi.fn().mockResolvedValue([]),
@@ -50,7 +57,8 @@ function buildService(overrides?: { prisma?: Record<string, unknown> }) {
       deleteMany: vi.fn(),
       createMany: vi.fn(),
     },
-  };
+    ...(overrides?.prisma ?? {}),
+  } as MockUsersPrisma;
   const audit = { record: vi.fn() };
   const svc = new UsersService(prisma as never, audit as never);
   return { svc, prisma, audit };

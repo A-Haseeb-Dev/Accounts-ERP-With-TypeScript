@@ -12,7 +12,7 @@ function buildService() {
 describe('NumberingService.next', () => {
   beforeEach(() => {
     // Ensure a stable crypto.randomUUID in tests.
-    vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValueOnce('test-id');
+    vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValueOnce('00000000-0000-4000-8000-000000000000');
   });
 
   it('generates the first number (1) when no row exists yet', async () => {
