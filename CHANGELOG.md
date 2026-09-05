@@ -8,6 +8,11 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Print & download on every report page** — the Product Ledger and General
+  Ledger pages now keep the Print / Download toolbar visible at all times
+  (disabled until an item or account is selected, so the option is never
+  hidden). Their printed output also gains a report heading with the selected
+  item/account and date period, next to the opening/closing balance line.
 - **Professional invoice print layout** — the printable invoice/bill now shows
   the company logo, business address/phone/email/NTN (new Branding settings
   fields), a payment-status badge, line numbering, per-line Discount and Tax

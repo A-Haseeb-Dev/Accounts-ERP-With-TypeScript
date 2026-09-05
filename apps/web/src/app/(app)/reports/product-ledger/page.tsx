@@ -33,13 +33,12 @@ export default function ProductLedgerPage() {
         title="Product Ledger"
         description="Item-wise stock movement history."
         actions={
-          itemId && (
-            <ReportActions
-              tableId="pl-report"
-              filename="product-ledger"
-              title={`Product Ledger — ${data?.item?.name ?? ''}`}
-            />
-          )
+          <ReportActions
+            tableId="pl-report"
+            filename="product-ledger"
+            title={`Product Ledger — ${data?.item?.name ?? ''}`}
+            disabled={!itemId || isLoading}
+          />
         }
       />
 
@@ -69,6 +68,18 @@ export default function ProductLedgerPage() {
           <>
             {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
             <div id="pl-report" className="overflow-x-auto">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2 text-sm">
+              <span className="text-slate-700">
+                <span className="font-semibold text-slate-900">Product Ledger</span>
+                {data?.item?.name && <span className="text-slate-500"> — {data.item.name}</span>}
+              </span>
+              <span className="text-slate-500">
+                {[
+                  locationOptions.find((o) => o.value === locationId)?.label,
+                  from ? `Period: ${from}${to ? ` to ${to}` : ''}` : undefined,
+                ].filter(Boolean).join(' · ') || 'All dates'}
+              </span>
+            </div>
             {isLoading ? (
               <TableSkeleton rows={6} columns={7} />
             ) : (

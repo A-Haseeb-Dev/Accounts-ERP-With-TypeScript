@@ -32,13 +32,12 @@ export default function GeneralLedgerPage() {
         title="General Ledger"
         description="Account-wise posted voucher entries with running balance."
         actions={
-          accountId && (
-            <ReportActions
-              tableId="gl-report"
-              filename="general-ledger"
-              title={`General Ledger — ${data?.account?.name ?? ''} ${from ? `(${from} to ${to || from})` : ''}`}
-            />
-          )
+          <ReportActions
+            tableId="gl-report"
+            filename="general-ledger"
+            title={`General Ledger — ${data?.account?.name ?? ''} ${from ? `(${from} to ${to || from})` : ''}`}
+            disabled={!accountId || isLoading}
+          />
         }
       />
 
@@ -62,6 +61,15 @@ export default function GeneralLedgerPage() {
           <>
             {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
             <div id="gl-report" className="overflow-x-auto">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2 text-sm">
+              <span className="text-slate-700">
+                <span className="font-semibold text-slate-900">General Ledger</span>
+                {data?.account?.name && <span className="text-slate-500"> — {data.account.name}</span>}
+              </span>
+              <span className="text-slate-500">
+                {from ? `Period: ${from}${to ? ` to ${to}` : ''}` : 'All dates'}
+              </span>
+            </div>
             <div className="flex flex-wrap justify-between gap-2 border-b border-slate-100 px-4 py-2 text-sm">
               <span className="text-slate-600">Opening balance: <span className="font-semibold text-slate-800">{money(data?.openingBalance ?? 0, 'PKR')}</span></span>
               <span className="text-slate-600">Closing balance: <span className="font-semibold text-slate-800">{money(data?.closingBalance ?? 0, 'PKR')}</span></span>
