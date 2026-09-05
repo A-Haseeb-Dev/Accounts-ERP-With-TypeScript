@@ -385,6 +385,10 @@ export interface BrandingSetting {
   faviconUrl?: string;
   primaryColor: string;
   secondaryColor: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  ntn?: string;
   invoiceFooter?: string;
   invoiceTerms?: string;
   reportFooter?: string;
@@ -475,6 +479,9 @@ export interface DocLine {
   quantity: number;
   unitCost?: number;
   unitPrice?: number;
+  discount?: number;
+  tax?: number;
+  lineTotal?: number;
   item?: { id: string; code?: string; name?: string } | null;
 }
 

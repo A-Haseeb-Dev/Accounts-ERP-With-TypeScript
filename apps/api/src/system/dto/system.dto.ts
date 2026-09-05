@@ -29,6 +29,22 @@ export class UpdateBrandingDto {
 
   @IsString()
   @IsOptional()
+  address?: string;
+
+  @IsString()
+  @IsOptional()
+  phone?: string;
+
+  @IsString()
+  @IsOptional()
+  email?: string;
+
+  @IsString()
+  @IsOptional()
+  ntn?: string;
+
+  @IsString()
+  @IsOptional()
   invoiceFooter?: string;
 
   @IsString()

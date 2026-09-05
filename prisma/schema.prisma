@@ -729,6 +729,10 @@ model BrandingSetting {
   faviconUrl     String?
   primaryColor   String   @default("#2563eb")
   secondaryColor String   @default("#0f172a")
+  address        String?
+  phone          String?
+  email          String?
+  ntn            String?
   invoiceFooter  String?
   invoiceTerms   String?
   reportFooter   String?

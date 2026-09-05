@@ -33,7 +33,7 @@ export default function BrandingPage() {
     e.preventDefault();
     setError('');
     const payload: Record<string, string> = {};
-    for (const k of ['businessName', 'shortName', 'logoUrl', 'faviconUrl', 'primaryColor', 'secondaryColor', 'invoiceFooter', 'invoiceTerms', 'reportFooter'] as const) {
+    for (const k of ['businessName', 'shortName', 'logoUrl', 'faviconUrl', 'primaryColor', 'secondaryColor', 'address', 'phone', 'email', 'ntn', 'invoiceFooter', 'invoiceTerms', 'reportFooter'] as const) {
       const v = merged[k];
       if (v !== undefined && v.trim() !== '') payload[k] = v;
     }
@@ -59,6 +59,13 @@ export default function BrandingPage() {
             </div>
             <Field label="Logo URL"><Input value={merged.logoUrl ?? ''} onChange={(e) => set('logoUrl', e.target.value)} placeholder="https://…" /></Field>
             <Field label="Favicon URL"><Input value={merged.faviconUrl ?? ''} onChange={(e) => set('faviconUrl', e.target.value)} placeholder="https://…" /></Field>
+            <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Company Contact (printed on invoices)</p>
+            <Field label="Address"><Input value={merged.address ?? ''} onChange={(e) => set('address', e.target.value)} placeholder="Street, City" /></Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Phone"><Input value={merged.phone ?? ''} onChange={(e) => set('phone', e.target.value)} placeholder="+92 300 0000000" /></Field>
+              <Field label="NTN"><Input value={merged.ntn ?? ''} onChange={(e) => set('ntn', e.target.value)} placeholder="1234567-8" /></Field>
+            </div>
+            <Field label="Email"><Input value={merged.email ?? ''} onChange={(e) => set('email', e.target.value)} placeholder="sales@…" /></Field>
             <Field label="Invoice Footer"><Textarea value={merged.invoiceFooter ?? ''} onChange={(e) => set('invoiceFooter', e.target.value)} /></Field>
             <Field label="Invoice Terms"><Textarea value={merged.invoiceTerms ?? ''} onChange={(e) => set('invoiceTerms', e.target.value)} /></Field>
             <Field label="Report Footer"><Textarea value={merged.reportFooter ?? ''} onChange={(e) => set('reportFooter', e.target.value)} /></Field>

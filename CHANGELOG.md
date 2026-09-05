@@ -8,6 +8,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Professional invoice print layout** — the printable invoice/bill now shows
+  the company logo, business address/phone/email/NTN (new Branding settings
+  fields), a payment-status badge, line numbering, per-line Discount and Tax
+  amounts, stored line totals instead of recomputed `qty × unit`, amount in
+  words, and Prepared by / Received by signature lines. Line rows, the totals
+  block, and the header are kept together on page breaks so long invoices print
+  cleanly. A matching `BrandingSetting` migration adds the company contact
+  fields.
 - **Auto-generated customer and supplier codes** — the create forms now accept a
   blank Code field. When omitted, the API generates a sequential
   `CST-000001` / `SUP-000001` style code using the same collision-safe
