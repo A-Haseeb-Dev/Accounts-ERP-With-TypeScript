@@ -14,12 +14,23 @@ async function errorMessage(p: Promise<unknown>): Promise<string> {
   throw new Error('Expected an ApiException but none was thrown');
 }
 
+async function errorBody(p: Promise<unknown>): Promise<{ code?: string; message?: string; details?: string[] }> {
+  try {
+    await p;
+  } catch (err) {
+    const e = err as { getResponse?: () => unknown };
+    const resp = (e.getResponse?.() ?? {}) as { error?: { code?: string; message?: string; details?: string[] } };
+    return resp.error ?? {};
+  }
+  throw new Error('Expected an ApiException but none was thrown');
+}
+
 interface MockCustomersPrisma {
-  customer?: { findUnique?: MockFn; create?: MockFn; findMany?: MockFn; count?: MockFn; update?: MockFn };
+  customer?: { findUnique?: MockFn; create?: MockFn; findMany?: MockFn; count?: MockFn; update?: MockFn; delete?: MockFn };
   town?: { findUnique?: MockFn };
   voucherEntry?: { findMany?: MockFn };
-  sale?: { aggregate?: MockFn };
-  salesReturn?: { aggregate?: MockFn };
+  sale?: { aggregate?: MockFn; count?: MockFn; deleteMany?: MockFn };
+  salesReturn?: { aggregate?: MockFn; count?: MockFn; deleteMany?: MockFn };
 }
 
 function buildService(overrides?: { prisma?: Partial<MockCustomersPrisma> }) {
@@ -30,11 +41,12 @@ function buildService(overrides?: { prisma?: Partial<MockCustomersPrisma> }) {
       findMany: vi.fn(),
       count: vi.fn(),
       update: vi.fn(),
+      delete: vi.fn(),
     },
     town: { findUnique: vi.fn() },
     voucherEntry: { findMany: vi.fn() },
-    sale: { aggregate: vi.fn() },
-    salesReturn: { aggregate: vi.fn() },
+    sale: { aggregate: vi.fn(), count: vi.fn(), deleteMany: vi.fn() },
+    salesReturn: { aggregate: vi.fn(), count: vi.fn(), deleteMany: vi.fn() },
     ...(overrides?.prisma ?? {}),
   } as MockCustomersPrisma;
   const audit = { record: vi.fn() };
@@ -83,5 +95,60 @@ describe('CustomersService.create code generation', () => {
     expect(msg).toBe('Customer code already exists');
     expect(numbering.next).not.toHaveBeenCalled();
     expect(prisma.customer?.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('CustomersService.remove', () => {
+  function stubBalanceCalls(prisma: MockCustomersPrisma) {
+    (prisma.customer?.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(created);
+    (prisma.voucherEntry?.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (prisma.sale?.aggregate as ReturnType<typeof vi.fn>).mockResolvedValue({ _sum: { grandTotal: 0, amountPaid: 0 } });
+    (prisma.salesReturn?.aggregate as ReturnType<typeof vi.fn>).mockResolvedValue({ _sum: { grandTotal: 0 } });
+  }
+
+  it('warns with reference counts and blocks unless forced', async () => {
+    const { svc, prisma } = buildService();
+    stubBalanceCalls(prisma);
+    (prisma.sale?.count as ReturnType<typeof vi.fn>).mockResolvedValue(3);
+    (prisma.salesReturn?.count as ReturnType<typeof vi.fn>).mockResolvedValue(1);
+
+    const body = await errorBody(svc.remove('c1', 'u1'));
+
+    expect(body.code).toBe('REFERENCES_EXIST');
+    expect(body.details).toEqual(['3 sale invoices', '1 sales return']);
+    expect(prisma.customer?.delete).not.toHaveBeenCalled();
+  });
+
+  it('cascades sales and returns when forced', async () => {
+    const { svc, prisma, audit } = buildService();
+    stubBalanceCalls(prisma);
+    (prisma.sale?.count as ReturnType<typeof vi.fn>).mockResolvedValue(3);
+    (prisma.salesReturn?.count as ReturnType<typeof vi.fn>).mockResolvedValue(1);
+    (prisma.salesReturn?.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 1 });
+    (prisma.sale?.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 3 });
+    (prisma.customer?.delete as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'c1' });
+
+    const result = await svc.remove('c1', 'u1', true);
+
+    expect(prisma.salesReturn?.deleteMany).toHaveBeenCalledWith({ where: { customerId: 'c1' } });
+    expect(prisma.sale?.deleteMany).toHaveBeenCalledWith({ where: { customerId: 'c1' } });
+    expect(prisma.customer?.delete).toHaveBeenCalledWith({ where: { id: 'c1' } });
+    expect(audit.record).toHaveBeenCalled();
+    expect(result).toEqual({ id: 'c1', deleted: true });
+  });
+
+  it('deletes directly when there are no references', async () => {
+    const { svc, prisma } = buildService();
+    stubBalanceCalls(prisma);
+    (prisma.sale?.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+    (prisma.salesReturn?.count as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+    (prisma.customer?.delete as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'c1' });
+
+    const result = await svc.remove('c1', 'u1');
+
+    expect(prisma.sale?.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.salesReturn?.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.customer?.delete).toHaveBeenCalledWith({ where: { id: 'c1' } });
+    expect(result).toEqual({ id: 'c1', deleted: true });
   });
 });

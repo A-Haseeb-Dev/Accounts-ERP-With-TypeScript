@@ -13,6 +13,16 @@ and this project follows [Semantic Versioning](https://semver.org/).
   `CST-000001` / `SUP-000001` style code using the same collision-safe
   `SystemSetting` counter as invoices and vouchers. An explicit code is still
   accepted (and duplicate-checked); codes are immutable once assigned.
+- **Related-data warnings before delete** — deleting a record now always warns
+  with exact reference counts first. Customers, suppliers, towns, item types,
+  and brands can then be hard-deleted after confirmation (customer/supplier
+  delete cascades their invoices and returns; towns/types/brands just unlink,
+  thanks to `SET NULL`). Accounting-critical records — main accounts with
+  ledger entries, items with movement or document lines, stock locations in
+  use, head/sub heads with active main accounts — show the same warning but
+  still refuse deletion to protect the books (deactivate them instead).
+  Backed by new `REFERENCES_EXIST` (409) and `DELETE_BLOCKED` (422) errors
+  whose `details` list the related record counts.
 
 ### Changed
 - **API now type-checks clean** — fixed every remaining `tsc --noEmit` error in the

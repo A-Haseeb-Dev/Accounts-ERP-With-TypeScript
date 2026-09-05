@@ -104,11 +104,17 @@ export class MainAccountsService {
 
   async remove(id: string, actorId?: string) {
     const item = await this.ensureExists(id);
-    const entryCount = await this.prisma.voucherEntry.count({ where: { mainAccountId: id } });
-    if (entryCount > 0) {
-      throw ApiException.invalidTransaction(
-        `Main account "${item.name}" has ${entryCount} voucher entr${entryCount === 1 ? 'y' : 'ies'} and cannot be deleted. Deactivate it instead.`,
-      );
+    const [entryCount, customers, suppliers] = await Promise.all([
+      this.prisma.voucherEntry.count({ where: { mainAccountId: id } }),
+      this.prisma.customer.count({ where: { mainAccountId: id } }),
+      this.prisma.supplier.count({ where: { mainAccountId: id } }),
+    ]);
+    const references: string[] = [];
+    if (entryCount > 0) references.push(`${entryCount} voucher entr${entryCount === 1 ? 'y' : 'ies'}`);
+    if (customers > 0) references.push(`${customers} linked customer${customers === 1 ? '' : 's'}`);
+    if (suppliers > 0) references.push(`${suppliers} linked supplier${suppliers === 1 ? '' : 's'}`);
+    if (references.length > 0) {
+      throw ApiException.deleteBlocked(`Main account "${item.name}"`, references);
     }
     await this.prisma.mainAccount.delete({ where: { id } });
     this.audit.record({

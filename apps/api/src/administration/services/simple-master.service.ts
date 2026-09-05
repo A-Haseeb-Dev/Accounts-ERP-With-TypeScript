@@ -111,29 +111,56 @@ export class SimpleMasterService {
     return item;
   }
 
-  async remove(model: 'itemType' | 'brand' | 'stockLocation', id: string, actorId?: string) {
+  async remove(model: 'itemType' | 'brand' | 'stockLocation', id: string, actorId?: string, force = false) {
     const delegate = this.resolveDelegate(model) as any;
     const item = await delegate.findUnique({ where: { id } });
     if (!item) throw ApiException.notFound(this.entityLabel(model));
+    const label = this.entityLabel(model);
 
-    const usage: Record<string, [string, string]> = {
-      itemType: ['item', 'itemTypeId'],
-      brand: ['item', 'brandId'],
-      stockLocation: ['item', 'defaultLocationId'],
-    };
-    const [table, column] = usage[model];
-    const count = await (this.prisma as any)[table].count({ where: { [column]: id } });
-    if (count > 0) {
-      throw ApiException.invalidTransaction(
-        `${this.entityLabel(model)} "${item.name}" is used by ${count} item(s) and cannot be deleted`,
-      );
+    if (model === 'stockLocation') {
+      const references = await this.stockLocationReferences(id);
+      if (references.length > 0) {
+        throw ApiException.deleteBlocked(`Stock location "${item.name}"`, references);
+      }
+    } else {
+      const column = model === 'itemType' ? 'itemTypeId' : 'brandId';
+      const count = await this.prisma.item.count({ where: { [column]: id } });
+      if (count > 0 && !force) {
+        throw ApiException.referencesExist(`${label} "${item.name}"`, [
+          `${count} item${count === 1 ? '' : 's'}`,
+        ]);
+      }
     }
 
-    await delegate.update({ where: { id }, data: { status: 'inactive' } });
+    await delegate.delete({ where: { id } });
     this.audit.record({
-      userId: actorId, action: 'DEACTIVATE', module: model.toUpperCase(), entity: this.entityLabel(model),
-      entityId: id, message: `${this.entityLabel(model)} ${item.name} deactivated`,
+      userId: actorId, action: 'DELETE', module: model.toUpperCase(), entity: label,
+      entityId: id, message: `${label} ${item.name} deleted`,
     });
-    return { id, status: 'inactive' };
+    return { id, deleted: true };
+  }
+
+  private async stockLocationReferences(id: string): Promise<string[]> {
+    const [items, purchases, sales, purchaseReturns, salesReturns, transfers, transactions] =
+      await Promise.all([
+        this.prisma.item.count({ where: { defaultLocationId: id } }),
+        this.prisma.purchase.count({ where: { stockLocationId: id } }),
+        this.prisma.sale.count({ where: { stockLocationId: id } }),
+        this.prisma.purchaseReturn.count({ where: { stockLocationId: id } }),
+        this.prisma.salesReturn.count({ where: { stockLocationId: id } }),
+        this.prisma.stockTransfer.count({
+          where: { OR: [{ fromLocationId: id }, { toLocationId: id }] },
+        }),
+        this.prisma.inventoryTransaction.count({ where: { locationId: id } }),
+      ]);
+    const references: string[] = [];
+    if (items) references.push(`${items} linked item${items === 1 ? '' : 's'}`);
+    if (purchases) references.push(`${purchases} purchase${purchases === 1 ? '' : 's'}`);
+    if (sales) references.push(`${sales} sale${sales === 1 ? '' : 's'}`);
+    if (purchaseReturns) references.push(`${purchaseReturns} purchase return${purchaseReturns === 1 ? '' : 's'}`);
+    if (salesReturns) references.push(`${salesReturns} sales return${salesReturns === 1 ? '' : 's'}`);
+    if (transfers) references.push(`${transfers} stock transfer${transfers === 1 ? '' : 's'}`);
+    if (transactions) references.push(`${transactions} inventory movement${transactions === 1 ? '' : 's'}`);
+    return references;
   }
 }

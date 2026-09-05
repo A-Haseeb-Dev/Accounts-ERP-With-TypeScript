@@ -212,18 +212,36 @@ export class ItemsService {
 
   async remove(id: string, actorId?: string) {
     const item = await this.findItem(id);
-    const txnCount = await this.prisma.inventoryTransaction.count({ where: { itemId: id } });
-    if (txnCount > 0) {
-      throw ApiException.invalidTransaction(
-        `Item "${item.name}" has inventory movement and cannot be deleted. Deactivate it instead.`,
-      );
+    const references = await this.itemReferences(id);
+    if (references.length > 0) {
+      throw ApiException.deleteBlocked(`Item "${item.name}"`, references);
     }
-    await this.prisma.item.update({ where: { id }, data: { status: 'inactive' } });
+    await this.prisma.item.delete({ where: { id } });
     this.audit.record({
-      userId: actorId, action: 'DEACTIVATE', module: 'ITEM', entity: 'Item',
-      entityId: id, message: `Item ${item.name} deactivated`,
+      userId: actorId, action: 'DELETE', module: 'ITEM', entity: 'Item',
+      entityId: id, message: `Item ${item.name} deleted`,
     });
-    return { id, status: 'inactive' };
+    return { id, deleted: true };
+  }
+
+  private async itemReferences(id: string): Promise<string[]> {
+    const [movements, sales, purchases, salesReturns, purchaseReturns, transfers] =
+      await Promise.all([
+        this.prisma.inventoryTransaction.count({ where: { itemId: id } }),
+        this.prisma.saleItem.count({ where: { itemId: id } }),
+        this.prisma.purchaseItem.count({ where: { itemId: id } }),
+        this.prisma.salesReturnItem.count({ where: { itemId: id } }),
+        this.prisma.purchaseReturnItem.count({ where: { itemId: id } }),
+        this.prisma.stockTransferItem.count({ where: { itemId: id } }),
+      ]);
+    const references: string[] = [];
+    if (movements) references.push(`${movements} inventory movement${movements === 1 ? '' : 's'}`);
+    if (sales) references.push(`${sales} sale line${sales === 1 ? '' : 's'}`);
+    if (purchases) references.push(`${purchases} purchase line${purchases === 1 ? '' : 's'}`);
+    if (salesReturns) references.push(`${salesReturns} sales return line${salesReturns === 1 ? '' : 's'}`);
+    if (purchaseReturns) references.push(`${purchaseReturns} purchase return line${purchaseReturns === 1 ? '' : 's'}`);
+    if (transfers) references.push(`${transfers} transfer line${transfers === 1 ? '' : 's'}`);
+    return references;
   }
 
   private async findItem(id: string) {

@@ -72,6 +72,22 @@ describe('ApiException', () => {
     expect(getErrorResponse(err).error.code).toBe('RATE_LIMITED');
   });
 
+  it('creates a references exist error with 409 status and reference list', () => {
+    const err = ApiException.referencesExist('Customer "ABC"', ['3 sale invoices', '1 sales return']);
+    expect(err.getStatus()).toBe(HttpStatus.CONFLICT);
+    const resp = getErrorResponse(err);
+    expect(resp.error.code).toBe('REFERENCES_EXIST');
+    expect(resp.error.details).toEqual(['3 sale invoices', '1 sales return']);
+  });
+
+  it('creates a delete blocked error with 422 status and reference list', () => {
+    const err = ApiException.deleteBlocked('Main account "Cash"', ['4 voucher entries']);
+    expect(err.getStatus()).toBe(HttpStatus.UNPROCESSABLE_ENTITY);
+    const resp = getErrorResponse(err);
+    expect(resp.error.code).toBe('DELETE_BLOCKED');
+    expect(resp.error.details).toEqual(['4 voucher entries']);
+  });
+
   it('includes details array when provided', () => {
     const err = ApiException.validation('Error', ['field1 is wrong']);
     expect(getErrorResponse(err).error.details).toEqual(['field1 is wrong']);

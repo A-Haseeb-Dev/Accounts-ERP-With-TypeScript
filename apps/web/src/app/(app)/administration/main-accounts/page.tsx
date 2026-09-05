@@ -4,12 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
+import { parseDeleteGuard } from '@/lib/delete-guard';
 import { useFlatOptions } from '@/hooks/use-options';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { DataTable } from '@/components/data-table';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { DeleteWarnDialog } from '@/components/delete-warn-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge, Badge } from '@/components/ui/badge';
@@ -37,6 +39,7 @@ export default function MainAccountsPage() {
   const [form, setForm] = useState<Partial<MainAccount>>({});
   const [deleteTarget, setDeleteTarget] = useState<MainAccount | null>(null);
   const [deleteError, setDeleteError] = useState('');
+  const [delWarn, setDelWarn] = useState<{ target: MainAccount; labels: string[] } | null>(null);
   const [error, setError] = useState('');
 
   const { data, isLoading } = useQuery<Paginated<MainAccount>>({
@@ -70,7 +73,16 @@ export default function MainAccountsPage() {
       setDeleteTarget(null);
       setDeleteError('');
     },
-    onError: (e: Error) => setDeleteError(e.message),
+    onError: (e: Error) => {
+      const info = parseDeleteGuard(e);
+      if (info && deleteTarget) {
+        setDeleteTarget(null);
+        setDeleteError('');
+        setDelWarn({ target: deleteTarget, labels: info.labels });
+      } else {
+        setDeleteError(e.message);
+      }
+    },
   });
 
   const set = (name: keyof MainAccount | string, value: string | number | undefined) => setForm((f) => ({ ...f, [name]: value }));
@@ -205,6 +217,15 @@ export default function MainAccountsPage() {
           <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{deleteError}</div>
         )}
       </ConfirmDialog>
+
+      <DeleteWarnDialog
+        open={!!delWarn}
+        recordName={delWarn?.target.name ?? ''}
+        labels={delWarn?.labels ?? []}
+        forceable={false}
+        onClose={() => setDelWarn(null)}
+        onForce={() => setDelWarn(null)}
+      />
     </div>
   );
 }

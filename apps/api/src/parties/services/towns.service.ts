@@ -64,18 +64,23 @@ export class TownsService {
     return item;
   }
 
-  async remove(id: string, actorId?: string) {
+  async remove(id: string, actorId?: string, force = false) {
     const item = await this.findOne(id);
-    const customerCount = await this.prisma.customer.count({ where: { townId: id } });
-    const supplierCount = await this.prisma.supplier.count({ where: { townId: id } });
-    if (customerCount + supplierCount > 0) {
-      throw ApiException.invalidTransaction(`Town "${item.name}" is used by parties and cannot be deleted`);
+    const [customerCount, supplierCount] = await Promise.all([
+      this.prisma.customer.count({ where: { townId: id } }),
+      this.prisma.supplier.count({ where: { townId: id } }),
+    ]);
+    const references: string[] = [];
+    if (customerCount > 0) references.push(`${customerCount} customer${customerCount === 1 ? '' : 's'}`);
+    if (supplierCount > 0) references.push(`${supplierCount} supplier${supplierCount === 1 ? '' : 's'}`);
+    if (references.length > 0 && !force) {
+      throw ApiException.referencesExist(`Town "${item.name}"`, references);
     }
-    await this.prisma.town.update({ where: { id }, data: { status: 'inactive' } });
+    await this.prisma.town.delete({ where: { id } });
     this.audit.record({
-      userId: actorId, action: 'DEACTIVATE', module: 'TOWN', entity: 'Town',
-      entityId: id, message: `Town ${item.name} deactivated`,
+      userId: actorId, action: 'DELETE', module: 'TOWN', entity: 'Town',
+      entityId: id, message: `Town ${item.name} deleted`,
     });
-    return { id, status: 'inactive' };
+    return { id, deleted: true };
   }
 }

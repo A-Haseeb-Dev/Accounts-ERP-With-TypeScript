@@ -33,7 +33,7 @@ export class TownsController {
   @Patch(':id') @Permissions('administration.towns.update') @ApiOperation({ summary: 'Update a town' })
   update(@Param('id') id: string, @Body() dto: UpdateTownDto, @CurrentUser() actor: any) { return this.service.update(id, dto, actor?.id); }
   @Delete(':id') @Permissions('administration.towns.delete') @ApiOperation({ summary: 'Deactivate a town' })
-  remove(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.remove(id, actor?.id); }
+  remove(@Param('id') id: string, @CurrentUser() actor: any, @Query('force') force?: string) { return this.service.remove(id, actor?.id, force === 'true'); }
 }
 
 @ApiTags('Customers')
@@ -67,7 +67,7 @@ export class CustomersController {
   @Patch(':id') @Permissions('administration.customers.update') @ApiOperation({ summary: 'Update a customer' })
   update(@Param('id') id: string, @Body() dto: UpdateCustomerDto, @CurrentUser() actor: any) { return this.service.update(id, dto, actor?.id); }
   @Delete(':id') @Permissions('administration.customers.delete') @ApiOperation({ summary: 'Deactivate a customer' })
-  remove(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.remove(id, actor?.id); }
+  remove(@Param('id') id: string, @CurrentUser() actor: any, @Query('force') force?: string) { return this.service.remove(id, actor?.id, force === 'true'); }
 }
 
 @ApiTags('Suppliers')
@@ -101,5 +101,5 @@ export class SuppliersController {
   @Patch(':id') @Permissions('administration.suppliers.update') @ApiOperation({ summary: 'Update a supplier' })
   update(@Param('id') id: string, @Body() dto: UpdateSupplierDto, @CurrentUser() actor: any) { return this.service.update(id, dto, actor?.id); }
   @Delete(':id') @Permissions('administration.suppliers.delete') @ApiOperation({ summary: 'Deactivate a supplier' })
-  remove(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.remove(id, actor?.id); }
+  remove(@Param('id') id: string, @CurrentUser() actor: any, @Query('force') force?: string) { return this.service.remove(id, actor?.id, force === 'true'); }
 }

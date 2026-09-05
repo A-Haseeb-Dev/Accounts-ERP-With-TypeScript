@@ -4,10 +4,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Landmark, Pencil, Plus, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { parseDeleteGuard } from '@/lib/delete-guard';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { DeleteWarnDialog } from '@/components/delete-warn-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -89,6 +91,7 @@ export default function ChartOfAccountsPage() {
   const [subSaving, setSubSaving] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'head' | 'sub'; id: string; name: string } | null>(null);
+  const [delWarn, setDelWarn] = useState<{ name: string; labels: string[] } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const openNewHead = () => {
@@ -208,7 +211,13 @@ export default function ChartOfAccountsPage() {
       }
       setDeleteTarget(null);
     } catch (e) {
-      alert((e as Error).message);
+      const info = parseDeleteGuard(e);
+      if (info && deleteTarget) {
+        setDeleteTarget(null);
+        setDelWarn({ name: deleteTarget.name, labels: info.labels });
+      } else {
+        alert((e as Error).message);
+      }
     } finally {
       setDeleting(false);
     }
@@ -372,6 +381,15 @@ export default function ChartOfAccountsPage() {
         loading={deleting}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
+      />
+
+      <DeleteWarnDialog
+        open={!!delWarn}
+        recordName={delWarn?.name ?? ''}
+        labels={delWarn?.labels ?? []}
+        forceable={false}
+        onClose={() => setDelWarn(null)}
+        onForce={() => setDelWarn(null)}
       />
     </div>
   );

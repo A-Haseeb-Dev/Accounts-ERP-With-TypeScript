@@ -130,11 +130,7 @@ export class SubHeadsService {
     }
 
     if (blockers.length > 0) {
-      await this.prisma.subHead.update({ where: { id }, data: { status: 'inactive' } });
-      throw ApiException.invalidTransaction(
-        `Sub head "${item.name}" is referenced by main account(s) with activity and cannot be deleted. ` +
-          `Deactivate or remove them first: ${blockers.join('; ')}`,
-      );
+      throw ApiException.deleteBlocked(`Sub head "${item.name}"`, blockers);
     }
 
     if (deletableAccountIds.length > 0) {

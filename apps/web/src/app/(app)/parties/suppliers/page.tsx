@@ -4,12 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Check, Eye, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
+import { parseDeleteGuard } from '@/lib/delete-guard';
 import { useFlatOptions } from '@/hooks/use-options';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { DataTable } from '@/components/data-table';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { DeleteWarnDialog } from '@/components/delete-warn-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
@@ -28,6 +30,7 @@ export default function SuppliersPage() {
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [form, setForm] = useState<Partial<Supplier>>({});
   const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
+  const [delWarn, setDelWarn] = useState<{ target: Supplier; forceable: boolean; labels: string[] } | null>(null);
   const [detail, setDetail] = useState<Supplier | null>(null);
   const [detailTab, setDetailTab] = useState<'ledger' | 'purchases' | 'returns'>('ledger');
   const [error, setError] = useState('');
@@ -59,6 +62,23 @@ export default function SuppliersPage() {
       qc.invalidateQueries({ queryKey: ['flat', 'suppliers'] });
       setDeleteTarget(null);
     },
+    onError: (e: Error) => {
+      const info = parseDeleteGuard(e);
+      if (info && deleteTarget) {
+        setDeleteTarget(null);
+        setDelWarn({ target: deleteTarget, forceable: info.forceable, labels: info.labels });
+      }
+    },
+  });
+
+  const delForce = useMutation({
+    mutationFn: (id: string) => apiFetch(`/suppliers/${id}?force=true`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['suppliers'] });
+      qc.invalidateQueries({ queryKey: ['flat', 'suppliers'] });
+      setDelWarn(null);
+    },
+    onError: () => setDelWarn(null),
   });
 
   const set = (name: keyof Supplier | string, value: string | number | undefined) => setForm((f) => ({ ...f, [name]: value }));
@@ -164,6 +184,16 @@ export default function SuppliersPage() {
         loading={del.isPending}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => deleteTarget?.id && del.mutate(deleteTarget.id)}
+      />
+
+      <DeleteWarnDialog
+        open={!!delWarn}
+        recordName={delWarn?.target.name ?? ''}
+        labels={delWarn?.labels ?? []}
+        forceable={delWarn?.forceable ?? false}
+        loading={delForce.isPending}
+        onClose={() => setDelWarn(null)}
+        onForce={() => delWarn?.target.id && delForce.mutate(delWarn.target.id)}
       />
     </div>
   );

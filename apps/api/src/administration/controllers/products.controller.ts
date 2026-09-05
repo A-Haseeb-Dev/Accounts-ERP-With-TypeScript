@@ -37,7 +37,7 @@ export class ItemTypesController {
   @Patch(':id') @Permissions('administration.item-types.update') @ApiOperation({ summary: 'Update an item type' })
   update(@Param('id') id: string, @Body() dto: UpdateItemTypeDto, @CurrentUser() actor: any) { return this.service.update(this.model, id, dto, actor?.id); }
   @Delete(':id') @Permissions('administration.item-types.delete') @ApiOperation({ summary: 'Deactivate an item type' })
-  remove(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.remove(this.model, id, actor?.id); }
+  remove(@Param('id') id: string, @CurrentUser() actor: any, @Query('force') force?: string) { return this.service.remove(this.model, id, actor?.id, force === 'true'); }
 }
 
 @ApiTags('Brands')
@@ -60,7 +60,7 @@ export class BrandsController {
   @Patch(':id') @Permissions('administration.brands.update') @ApiOperation({ summary: 'Update a brand' })
   update(@Param('id') id: string, @Body() dto: UpdateBrandDto, @CurrentUser() actor: any) { return this.service.update(this.model, id, dto, actor?.id); }
   @Delete(':id') @Permissions('administration.brands.delete') @ApiOperation({ summary: 'Deactivate a brand' })
-  remove(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.remove(this.model, id, actor?.id); }
+  remove(@Param('id') id: string, @CurrentUser() actor: any, @Query('force') force?: string) { return this.service.remove(this.model, id, actor?.id, force === 'true'); }
 }
 
 @ApiTags('Stock Locations')

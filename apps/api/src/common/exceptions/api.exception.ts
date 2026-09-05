@@ -10,6 +10,8 @@ export type ErrorCode =
   | 'UNBALANCED_VOUCHER'
   | 'DUPLICATE_CODE'
   | 'INVALID_TRANSACTION'
+  | 'REFERENCES_EXIST'
+  | 'DELETE_BLOCKED'
   | 'BAD_REQUEST'
   | 'DATABASE_ERROR'
   | 'INTERNAL_ERROR'
@@ -73,6 +75,24 @@ export class ApiException extends HttpException {
 
   static invalidTransaction(message: string): ApiException {
     return new ApiException(message, 'INVALID_TRANSACTION', HttpStatus.UNPROCESSABLE_ENTITY);
+  }
+
+  static referencesExist(entity: string, references: string[]): ApiException {
+    return new ApiException(
+      `${entity} has related records. Review them before deleting, or confirm to delete them together.`,
+      'REFERENCES_EXIST',
+      HttpStatus.CONFLICT,
+      references,
+    );
+  }
+
+  static deleteBlocked(entity: string, references: string[]): ApiException {
+    return new ApiException(
+      `${entity} cannot be deleted because ${references.length} related record${references.length === 1 ? '' : 's'} exist. Deactivate it instead.`,
+      'DELETE_BLOCKED',
+      HttpStatus.UNPROCESSABLE_ENTITY,
+      references,
+    );
   }
 
   static rateLimited(message = 'Too many requests, please try again later'): ApiException {

@@ -4,12 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
+import { parseDeleteGuard } from '@/lib/delete-guard';
 import { useAuth } from '@/context/auth-context';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { DataTable, type Column } from '@/components/data-table';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { DeleteWarnDialog } from '@/components/delete-warn-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
@@ -47,6 +49,7 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
   const [editing, setEditing] = useState<TRecord | null>(null);
   const [form, setForm] = useState<Partial<TRecord> & Record<string, unknown>>({});
   const [deleteTarget, setDeleteTarget] = useState<TRecord | null>(null);
+  const [delWarn, setDelWarn] = useState<{ target: TRecord; forceable: boolean; labels: string[] } | null>(null);
   const [formError, setFormError] = useState('');
 
   const canCreate = can(config.permission.replace('view', 'create'));
@@ -86,7 +89,28 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
       setDeleteTarget(null);
       toast.success(`${config.singular} deleted`);
     },
-    onError: (e: Error) => toast.error(e.message || 'Delete failed'),
+    onError: (e: Error) => {
+      const info = parseDeleteGuard(e);
+      if (info && deleteTarget) {
+        setDeleteTarget(null);
+        setDelWarn({ target: deleteTarget, forceable: info.forceable, labels: info.labels });
+      } else {
+        toast.error(e.message || 'Delete failed');
+      }
+    },
+  });
+
+  const deleteForceMutation = useMutation({
+    mutationFn: (id: string) => apiFetch(`${config.apiPath}/${id}?force=true`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [config.apiPath] });
+      setDelWarn(null);
+      toast.success(`${config.singular} deleted`);
+    },
+    onError: (e: Error) => {
+      setDelWarn(null);
+      toast.error(e.message || 'Delete failed');
+    },
   });
 
   const openCreate = () => {
@@ -152,9 +176,10 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
   }, [config.columns, config.allowStatusFilter, canUpdate, canDelete]);
 
   const optionsFor = (field: FieldDef) => field.options ?? [];
-  const targetLabel = deleteTarget
-    ? String((deleteTarget as Record<string, unknown>).name ?? (deleteTarget as Record<string, unknown>).code ?? '')
-    : '';
+  const nameOf = (r: TRecord | null) =>
+    r ? String((r as Record<string, unknown>).name ?? (r as Record<string, unknown>).code ?? '') : '';
+  const targetLabel = nameOf(deleteTarget);
+  const warnLabel = nameOf(delWarn?.target ?? null);
 
   return (
     <div>
@@ -263,6 +288,16 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
         loading={deleteMutation.isPending}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => deleteTarget?.id && deleteMutation.mutate(deleteTarget.id)}
+      />
+
+      <DeleteWarnDialog
+        open={!!delWarn}
+        recordName={warnLabel}
+        labels={delWarn?.labels ?? []}
+        forceable={delWarn?.forceable ?? false}
+        loading={deleteForceMutation.isPending}
+        onClose={() => setDelWarn(null)}
+        onForce={() => delWarn?.target.id && deleteForceMutation.mutate(delWarn.target.id)}
       />
     </div>
   );

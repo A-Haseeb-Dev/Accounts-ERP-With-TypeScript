@@ -4,12 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Eye, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
+import { parseDeleteGuard } from '@/lib/delete-guard';
 import { useFlatOptions } from '@/hooks/use-options';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { DataTable } from '@/components/data-table';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { DeleteWarnDialog } from '@/components/delete-warn-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
@@ -28,6 +30,7 @@ export default function CustomersPage() {
   const [editing, setEditing] = useState<Customer | null>(null);
   const [form, setForm] = useState<Partial<Customer>>({});
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
+  const [delWarn, setDelWarn] = useState<{ target: Customer; forceable: boolean; labels: string[] } | null>(null);
   const [detail, setDetail] = useState<Customer | null>(null);
   const [detailTab, setDetailTab] = useState<'ledger' | 'sales' | 'returns'>('ledger');
   const [error, setError] = useState('');
@@ -59,6 +62,23 @@ export default function CustomersPage() {
       qc.invalidateQueries({ queryKey: ['flat', 'customers'] });
       setDeleteTarget(null);
     },
+    onError: (e: Error) => {
+      const info = parseDeleteGuard(e);
+      if (info && deleteTarget) {
+        setDeleteTarget(null);
+        setDelWarn({ target: deleteTarget, forceable: info.forceable, labels: info.labels });
+      }
+    },
+  });
+
+  const delForce = useMutation({
+    mutationFn: (id: string) => apiFetch(`/customers/${id}?force=true`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['customers'] });
+      qc.invalidateQueries({ queryKey: ['flat', 'customers'] });
+      setDelWarn(null);
+    },
+    onError: () => setDelWarn(null),
   });
 
   const set = (name: keyof Customer | string, value: string | number | undefined) => setForm((f) => ({ ...f, [name]: value }));
@@ -183,6 +203,16 @@ export default function CustomersPage() {
         loading={del.isPending}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => deleteTarget?.id && del.mutate(deleteTarget.id)}
+      />
+
+      <DeleteWarnDialog
+        open={!!delWarn}
+        recordName={delWarn?.target.name ?? ''}
+        labels={delWarn?.labels ?? []}
+        forceable={delWarn?.forceable ?? false}
+        loading={delForce.isPending}
+        onClose={() => setDelWarn(null)}
+        onForce={() => delWarn?.target.id && delForce.mutate(delWarn.target.id)}
       />
     </div>
   );

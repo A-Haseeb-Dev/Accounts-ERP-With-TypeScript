@@ -204,17 +204,27 @@ export class CustomersService {
     return item;
   }
 
-  async remove(id: string, actorId?: string) {
+  async remove(id: string, actorId?: string, force = false) {
     const item = await this.findOne(id);
-    const saleCount = await this.prisma.sale.count({ where: { customerId: id } });
-    if (saleCount > 0) {
-      throw ApiException.invalidTransaction(`Customer "${item.name}" has ${saleCount} sale(s) and cannot be deleted. Deactivate instead.`);
+    const [saleCount, salesReturnCount] = await Promise.all([
+      this.prisma.sale.count({ where: { customerId: id } }),
+      this.prisma.salesReturn.count({ where: { customerId: id } }),
+    ]);
+    const references: string[] = [];
+    if (saleCount > 0) references.push(`${saleCount} sale invoice${saleCount === 1 ? '' : 's'}`);
+    if (salesReturnCount > 0) references.push(`${salesReturnCount} sales return${salesReturnCount === 1 ? '' : 's'}`);
+    if (references.length > 0 && !force) {
+      throw ApiException.referencesExist(`Customer "${item.name}"`, references);
     }
-    await this.prisma.customer.update({ where: { id }, data: { status: 'inactive' } });
+    if (references.length > 0) {
+      await this.prisma.salesReturn.deleteMany({ where: { customerId: id } });
+      await this.prisma.sale.deleteMany({ where: { customerId: id } });
+    }
+    await this.prisma.customer.delete({ where: { id } });
     this.audit.record({
-      userId: actorId, action: 'DEACTIVATE', module: 'CUSTOMER', entity: 'Customer',
-      entityId: id, message: `Customer ${item.name} deactivated`,
+      userId: actorId, action: 'DELETE', module: 'CUSTOMER', entity: 'Customer',
+      entityId: id, message: `Customer ${item.name} deleted with ${saleCount} sale(s)`,
     });
-    return { id, status: 'inactive' };
+    return { id, deleted: true };
   }
 }

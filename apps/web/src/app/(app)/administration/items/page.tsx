@@ -4,12 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
+import { parseDeleteGuard } from '@/lib/delete-guard';
 import { useFlatOptions } from '@/hooks/use-options';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { DataTable } from '@/components/data-table';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { DeleteWarnDialog } from '@/components/delete-warn-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge, Badge } from '@/components/ui/badge';
@@ -27,6 +29,7 @@ export default function ItemsPage() {
   const [editing, setEditing] = useState<Item | null>(null);
   const [form, setForm] = useState<Partial<Item>>({});
   const [deleteTarget, setDeleteTarget] = useState<Item | null>(null);
+  const [delWarn, setDelWarn] = useState<{ target: Item; labels: string[] } | null>(null);
   const [error, setError] = useState('');
 
   const { data, isLoading } = useQuery<Paginated<Item>>({
@@ -55,6 +58,13 @@ export default function ItemsPage() {
       qc.invalidateQueries({ queryKey: ['items'] });
       qc.invalidateQueries({ queryKey: ['flat', 'items'] });
       setDeleteTarget(null);
+    },
+    onError: (e: Error) => {
+      const info = parseDeleteGuard(e);
+      if (info && deleteTarget) {
+        setDeleteTarget(null);
+        setDelWarn({ target: deleteTarget, labels: info.labels });
+      }
     },
   });
 
@@ -190,6 +200,15 @@ export default function ItemsPage() {
         loading={del.isPending}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => deleteTarget?.id && del.mutate(deleteTarget.id)}
+      />
+
+      <DeleteWarnDialog
+        open={!!delWarn}
+        recordName={delWarn?.target.name ?? ''}
+        labels={delWarn?.labels ?? []}
+        forceable={false}
+        onClose={() => setDelWarn(null)}
+        onForce={() => setDelWarn(null)}
       />
     </div>
   );

@@ -202,17 +202,27 @@ export class SuppliersService {
     return item;
   }
 
-  async remove(id: string, actorId?: string) {
+  async remove(id: string, actorId?: string, force = false) {
     const item = await this.findOne(id);
-    const purchaseCount = await this.prisma.purchase.count({ where: { supplierId: id } });
-    if (purchaseCount > 0) {
-      throw ApiException.invalidTransaction(`Supplier "${item.name}" has ${purchaseCount} purchase(s) and cannot be deleted. Deactivate instead.`);
+    const [purchaseCount, purchaseReturnCount] = await Promise.all([
+      this.prisma.purchase.count({ where: { supplierId: id } }),
+      this.prisma.purchaseReturn.count({ where: { supplierId: id } }),
+    ]);
+    const references: string[] = [];
+    if (purchaseCount > 0) references.push(`${purchaseCount} purchase invoice${purchaseCount === 1 ? '' : 's'}`);
+    if (purchaseReturnCount > 0) references.push(`${purchaseReturnCount} purchase return${purchaseReturnCount === 1 ? '' : 's'}`);
+    if (references.length > 0 && !force) {
+      throw ApiException.referencesExist(`Supplier "${item.name}"`, references);
     }
-    await this.prisma.supplier.update({ where: { id }, data: { status: 'inactive' } });
+    if (references.length > 0) {
+      await this.prisma.purchaseReturn.deleteMany({ where: { supplierId: id } });
+      await this.prisma.purchase.deleteMany({ where: { supplierId: id } });
+    }
+    await this.prisma.supplier.delete({ where: { id } });
     this.audit.record({
-      userId: actorId, action: 'DEACTIVATE', module: 'SUPPLIER', entity: 'Supplier',
-      entityId: id, message: `Supplier ${item.name} deactivated`,
+      userId: actorId, action: 'DELETE', module: 'SUPPLIER', entity: 'Supplier',
+      entityId: id, message: `Supplier ${item.name} deleted with ${purchaseCount} purchase(s)`,
     });
-    return { id, status: 'inactive' };
+    return { id, deleted: true };
   }
 }
