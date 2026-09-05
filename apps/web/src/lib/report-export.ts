@@ -10,13 +10,16 @@ export function printElement(id: string, title?: string): void {
   const source = document.getElementById(id);
   if (!source) return;
 
+  // A4 at 96dpi. Using real dimensions (instead of 0×0) avoids blank prints
+  // in browsers that refuse to render zero-sized iframe content.
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
-  frame.style.position = 'fixed';
-  frame.style.right = '0';
-  frame.style.bottom = '0';
-  frame.style.width = '0';
-  frame.style.height = '0';
+  frame.style.position = 'absolute';
+  frame.style.left = '-10000px';
+  frame.style.top = '0';
+  frame.style.width = '794px';
+  frame.style.height = '1123px';
+  frame.style.visibility = 'hidden';
   frame.style.border = '0';
   document.body.appendChild(frame);
 
@@ -34,7 +37,14 @@ export function printElement(id: string, title?: string): void {
         .join('')
     : '';
   const printable = source.cloneNode(true) as HTMLElement;
+  // The source element may be parked off-screen (e.g. position:fixed; left:-200vw)
+  // to keep it out of the app layout. Neutralize those inline styles on the
+  // clone so it renders in-flow inside the print iframe.
+  ['position', 'left', 'top', 'right', 'bottom', 'z-index', 'transform', 'opacity'].forEach((prop) =>
+    printable.style.removeProperty(prop),
+  );
   printable.style.width = '100%';
+  printable.style.height = 'auto';
 
   let bodyHTML = printable.outerHTML;
   if (title) {
@@ -42,7 +52,7 @@ export function printElement(id: string, title?: string): void {
   }
 
   doc.open();
-  doc.write(`<!doctype html><html><head>${headHTML}</head><body style="padding:16px;font-family:Inter,ui-sans-serif,system-ui,sans-serif;">${bodyHTML}</body></html>`);
+  doc.write(`<!doctype html><html><head>${headHTML}<style>@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body style="padding:16px;font-family:Inter,ui-sans-serif,system-ui,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${bodyHTML}</body></html>`);
   doc.close();
 
   // Give the browser a tick to parse styles, then print.

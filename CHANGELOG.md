@@ -24,6 +24,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
   Backed by new `REFERENCES_EXIST` (409) and `DELETE_BLOCKED` (422) errors
   whose `details` list the related record counts.
 
+### Fixed
+- **Blank print output** — printing an invoice, bill, or report produced a blank
+  page because the printable element (parked off-screen with
+  `position: fixed; left: -200vw`) kept those styles when cloned into the print
+  iframe, and the iframe itself was 0×0. The print helper now clones into a
+  hidden A4-sized iframe and strips off-screen/positioning styles from the copy,
+  so the document renders in-flow on paper. Print backgrounds are also forced on.
+
 ### Changed
 - **API now type-checks clean** — fixed every remaining `tsc --noEmit` error in the
   controller/service unit specs: typed the Prisma mocks in `users` and
