@@ -139,3 +139,16 @@ export class UpdateSettingsDto {
   @Matches(/^(true|false)$/, { message: 'Must be true or false' })
   reportShowLogo?: string;
 }
+
+export class ImportSettingsDto {
+  @IsOptional()
+  version?: number;
+
+  @IsObject()
+  @IsOptional()
+  settings?: Record<string, string>;
+
+  @IsObject()
+  @IsOptional()
+  branding?: Record<string, unknown>;
+}

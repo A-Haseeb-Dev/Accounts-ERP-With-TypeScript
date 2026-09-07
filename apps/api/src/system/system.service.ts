@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ApiException } from '../common/exceptions/api.exception';
-import { UpdateBrandingDto, UpdateSettingsDto } from './dto/system.dto';
+import { ImportSettingsDto, UpdateBrandingDto, UpdateSettingsDto } from './dto/system.dto';
 
 const SETTING_KEYS = [
   'currency',
@@ -131,5 +131,71 @@ export class SystemService {
     const setting = await this.prisma.systemSetting.findFirst({ where: { key } });
     if (!setting) throw ApiException.notFound('Setting');
     return setting;
+  }
+
+  /**
+   * Dumps every system setting (including numbering counters) plus the branding
+   * row into a single portable JSON object the owner can download, keep safe,
+   * and restore on this or another machine.
+   */
+  async exportSettings() {
+    const rows = await this.prisma.systemSetting.findMany();
+    const settings: Record<string, string> = {};
+    for (const row of rows) settings[row.key] = row.value ?? '';
+    return {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      settings,
+      branding: await this.getBranding(),
+    };
+  }
+
+  /**
+   * Imports a previously exported backup: upserts every system setting and the
+   * branding row. Existing values are overwritten; unknown keys are created.
+   */
+  async importSettings(dto: ImportSettingsDto, actorId?: string) {
+    if (!dto || typeof dto !== 'object' || typeof dto.settings !== 'object' || dto.settings === null) {
+      throw ApiException.validation('Invalid backup file. Expected an object with a "settings" map.');
+    }
+
+    for (const key of Object.keys(dto.settings)) {
+      await this.prisma.systemSetting.upsert({
+        where: { key_organizationId: { key, organizationId: 'default-org' } },
+        create: { key, value: String(dto.settings[key] ?? ''), organizationId: 'default-org' },
+        update: { value: String(dto.settings[key] ?? '') },
+      });
+    }
+
+    if (dto.branding && typeof dto.branding === 'object') {
+      const source = dto.branding as Record<string, unknown>;
+      const data: Record<string, unknown> = {};
+      const fields = [
+        'businessName', 'shortName', 'logoUrl', 'faviconUrl', 'primaryColor',
+        'secondaryColor', 'address', 'phone', 'email', 'ntn',
+        'invoiceFooter', 'invoiceTerms', 'reportFooter',
+      ] as const;
+      for (const field of fields) {
+        const value = source[field];
+        if (value !== undefined && value !== null) data[field] = String(value);
+      }
+      const existing = await this.getBranding();
+      if (existing) {
+        await this.prisma.brandingSetting.update({ where: { id: existing.id }, data });
+      } else {
+        await this.prisma.brandingSetting.create({ data: { ...data, organizationId: 'default-org' } });
+      }
+    }
+
+    this.audit.record({
+      userId: actorId,
+      action: 'RESTORE',
+      module: 'SYSTEM_SETTINGS',
+      entity: 'SystemSetting',
+      message: 'System settings and branding restored from backup',
+      metadata: { settingKeys: Object.keys(dto.settings) },
+    });
+
+    return { exportedAt: new Date().toISOString(), settings: await this.getSettings(), branding: await this.getBranding() };
   }
 }

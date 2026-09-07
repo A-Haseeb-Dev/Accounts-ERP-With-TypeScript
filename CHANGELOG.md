@@ -8,6 +8,12 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Settings backup & restore** — the Settings page has a new "Backup & Restore"
+  section. "Export Backup (JSON)" downloads every system setting (including
+  numbering counters), print-format configuration and branding as a single
+  portable JSON file; "Restore Backup…" re-imports it on this or another
+  machine. The import validates the payload and records an audit event, giving
+  the software owner a one-click way to move or protect their configuration.
 - **Configurable number format template** — the exact shape of document numbers
   is now fully controllable from the Settings page via a template string with
   the tokens `{prefix}`, `{year}`, `{month}`, `{day}`, `{company}` and `{seq}`

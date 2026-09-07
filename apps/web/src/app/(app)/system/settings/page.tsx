@@ -64,6 +64,44 @@ export default function SettingsPage() {
   const merged: Settings = { ...(data ?? {}), ...form };
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  const importBackup = useMutation({
+    mutationFn: (payload: unknown) => apiFetch('/system/settings/import', { method: 'POST', body: JSON.stringify(payload) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['settings'] });
+      qc.invalidateQueries({ queryKey: ['branding'] });
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  const exportBackup = async () => {
+    setError('');
+    try {
+      const payload = await apiFetch('/system/settings/export') as { exportedAt?: string };
+      const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `has-erp-backup-${(payload.exportedAt ?? new Date().toISOString()).slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Export failed');
+    }
+  };
+
+  const onPickBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setError('');
+    try {
+      await importBackup.mutateAsync(JSON.parse(await file.text()));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Import failed. Make sure the file is a valid JSON backup.');
+    }
+  };
+
   return (
     <div>
       <PageHeader title="Settings" description="Global system configuration." />
@@ -189,6 +227,20 @@ export default function SettingsPage() {
                     onChange={(e) => set('lockedUntil', e.target.value)}
                   />
                 </Field>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-3 text-sm font-semibold text-slate-700">Backup &amp; Restore</p>
+              <p className="mb-3 text-xs text-slate-500">Download all settings, branding and numbering counters as one JSON file, then restore them on this or another machine.</p>
+              <div className="flex items-center gap-3">
+                <Button type="button" variant="outline" onClick={exportBackup}>Export Backup (JSON)</Button>
+                <label className="cursor-pointer">
+                  <span className="inline-flex h-9 items-center justify-center rounded-md border border-slate-300 px-4 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                    {importBackup.isPending ? 'Restoring…' : 'Restore Backup…'}
+                  </span>
+                  <input type="file" accept="application/json,.json" className="hidden" onChange={onPickBackup} />
+                </label>
               </div>
             </div>
 
