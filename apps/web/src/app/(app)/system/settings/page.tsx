@@ -40,7 +40,15 @@ export default function SettingsPage() {
       timezone: form.timezone || undefined,
       invoicePrefix: form.invoicePrefix || undefined,
       purchasePrefix: form.purchasePrefix || undefined,
+      salesReturnPrefix: form.salesReturnPrefix || undefined,
+      purchaseReturnPrefix: form.purchaseReturnPrefix || undefined,
+      stockTransferPrefix: form.stockTransferPrefix || undefined,
       voucherPrefix: form.voucherPrefix || undefined,
+      invoiceShowBalance: form.invoiceShowBalance || undefined,
+      invoiceShowAmountWords: form.invoiceShowAmountWords || undefined,
+      invoiceShowDate: form.invoiceShowDate || undefined,
+      reportShowBranding: form.reportShowBranding || undefined,
+      reportShowLogo: form.reportShowLogo || undefined,
       negativeInventory: form.negativeInventory || undefined,
       defaultStockLocationId: form.defaultStockLocationId || undefined,
       defaultCustomerId: form.defaultCustomerId || undefined,
@@ -70,11 +78,51 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <p className="mb-3 text-sm font-semibold text-slate-700">Numbering Prefixes</p>
-              <div className="grid grid-cols-3 gap-4">
-                <Field label="Invoice"><Input value={merged.invoicePrefix ?? ''} onChange={(e) => set('invoicePrefix', e.target.value)} /></Field>
-                <Field label="Purchase"><Input value={merged.purchasePrefix ?? ''} onChange={(e) => set('purchasePrefix', e.target.value)} /></Field>
-                <Field label="Voucher"><Input value={merged.voucherPrefix ?? ''} onChange={(e) => set('voucherPrefix', e.target.value)} /></Field>
+              <p className="mb-3 text-sm font-semibold text-slate-700">Numbering</p>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Invoice Prefix"><Input value={merged.invoicePrefix ?? ''} onChange={(e) => set('invoicePrefix', e.target.value)} placeholder="SI" /></Field>
+                <Field label="Purchase Prefix"><Input value={merged.purchasePrefix ?? ''} onChange={(e) => set('purchasePrefix', e.target.value)} placeholder="PI" /></Field>
+                <Field label="Sales Return Prefix"><Input value={merged.salesReturnPrefix ?? ''} onChange={(e) => set('salesReturnPrefix', e.target.value)} placeholder="SR" /></Field>
+                <Field label="Purchase Return Prefix"><Input value={merged.purchaseReturnPrefix ?? ''} onChange={(e) => set('purchaseReturnPrefix', e.target.value)} placeholder="PR" /></Field>
+                <Field label="Stock Transfer Prefix"><Input value={merged.stockTransferPrefix ?? ''} onChange={(e) => set('stockTransferPrefix', e.target.value)} placeholder="ST" /></Field>
+                <Field label="Voucher Prefix"><Input value={merged.voucherPrefix ?? ''} onChange={(e) => set('voucherPrefix', e.target.value)} placeholder="JV" /></Field>
+              </div>
+              <p className="mt-2 text-xs text-slate-400">Numbers are generated as PREFIX-YEAR-SEQUENCE, e.g. SI-2026-000123. Leave blank to use the default prefix.</p>
+            </div>
+
+            <div>
+              <p className="mb-3 text-sm font-semibold text-slate-700">Print Format</p>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Invoice — Show Balance Due">
+                  <Select value={merged.invoiceShowBalance ?? 'true'} onChange={(e) => set('invoiceShowBalance', e.target.value)}>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </Select>
+                </Field>
+                <Field label="Invoice — Show Amount in Words">
+                  <Select value={merged.invoiceShowAmountWords ?? 'true'} onChange={(e) => set('invoiceShowAmountWords', e.target.value)}>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </Select>
+                </Field>
+                <Field label="Invoice — Show Date">
+                  <Select value={merged.invoiceShowDate ?? 'true'} onChange={(e) => set('invoiceShowDate', e.target.value)}>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </Select>
+                </Field>
+                <Field label="Reports — Show Company Branding">
+                  <Select value={merged.reportShowBranding ?? 'false'} onChange={(e) => set('reportShowBranding', e.target.value)}>
+                    <option value="false">No</option>
+                    <option value="true">Yes</option>
+                  </Select>
+                </Field>
+                <Field label="Reports — Show Logo">
+                  <Select value={merged.reportShowLogo ?? 'false'} onChange={(e) => set('reportShowLogo', e.target.value)}>
+                    <option value="false">No</option>
+                    <option value="true">Yes</option>
+                  </Select>
+                </Field>
               </div>
             </div>
 

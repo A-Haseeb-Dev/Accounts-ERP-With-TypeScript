@@ -4,6 +4,7 @@ import { NumberingService } from './numbering.service';
 function buildService() {
   const prisma = {
     $queryRawUnsafe: vi.fn(),
+    systemSetting: { findFirst: vi.fn().mockResolvedValue(null) },
   };
   const svc = new NumberingService(prisma as never);
   return { svc, prisma };
@@ -51,6 +52,16 @@ describe('NumberingService.next', () => {
     expect(tx.$queryRawUnsafe.mock.calls[0][0]).toContain('ON CONFLICT ("key", "organizationId")');
     expect(tx.$queryRawUnsafe.mock.calls[0][0]).toContain('RETURNING "value"');
     expect(prisma.$queryRawUnsafe).not.toHaveBeenCalled();
+  });
+
+  it('uses a configured prefix override from SystemSetting', async () => {
+    const { svc, prisma } = buildService();
+    prisma.$queryRawUnsafe.mockResolvedValue([{ value: '3' }]);
+    prisma.systemSetting.findFirst.mockResolvedValue({ key: 'numbering.invoicePrefix', value: 'INV' });
+
+    const number = await svc.next('sale', 'SI');
+    expect(number).toBe(`INV-${year}-000003`);
+    expect(prisma.systemSetting.findFirst).toHaveBeenCalledWith({ where: { key: 'numbering.invoicePrefix' } });
   });
 
   it('scopes the counter by year so each series restarts annually', async () => {

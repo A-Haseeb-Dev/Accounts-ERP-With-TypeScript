@@ -79,6 +79,18 @@ export class UpdateSettingsDto {
 
   @IsString()
   @IsOptional()
+  salesReturnPrefix?: string;
+
+  @IsString()
+  @IsOptional()
+  purchaseReturnPrefix?: string;
+
+  @IsString()
+  @IsOptional()
+  stockTransferPrefix?: string;
+
+  @IsString()
+  @IsOptional()
   voucherPrefix?: string;
 
   @IsString()
@@ -101,4 +113,29 @@ export class UpdateSettingsDto {
   @IsObject()
   @IsOptional()
   values?: Record<string, string>;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  invoiceShowBalance?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  invoiceShowAmountWords?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  invoiceShowDate?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  reportShowBranding?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  reportShowLogo?: string;
 }

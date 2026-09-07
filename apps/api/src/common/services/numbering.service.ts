@@ -14,6 +14,24 @@ import { PrismaService } from '../../prisma/prisma.service';
  */
 @Injectable()
 export class NumberingService {
+  /**
+   * Maps a numbering setting key to the SystemSetting key holding a user-defined
+   * prefix override (set from the Settings page).
+   */
+  private readonly prefixOverrides: Record<string, string> = {
+    sale: 'numbering.invoicePrefix',
+    purchase: 'numbering.purchasePrefix',
+    sales_return: 'numbering.salesReturnPrefix',
+    purchase_return: 'numbering.purchaseReturnPrefix',
+    transfer: 'numbering.stockTransferPrefix',
+    voucher_journal: 'numbering.voucherPrefix',
+    voucher_sale: 'numbering.voucherPrefix',
+    voucher_receipt: 'numbering.voucherPrefix',
+    voucher_purchase: 'numbering.voucherPrefix',
+    voucher_purchase_return: 'numbering.voucherPrefix',
+    voucher_sales_return: 'numbering.voucherPrefix',
+  };
+
   constructor(private readonly prisma: PrismaService) {}
 
   async next(
@@ -47,7 +65,8 @@ export class NumberingService {
     );
 
     const nextValue = Number(rows[0]?.value ?? 1);
-    return this.format(prefix, nextValue, padLength, useYear);
+    const nextPrefix = (await this.configuredPrefix(settingKey)) ?? prefix;
+    return this.format(nextPrefix, nextValue, padLength, useYear);
   }
 
   /**
@@ -69,7 +88,16 @@ export class NumberingService {
       'default-org',
     );
     const current = Number(rows[0]?.value ?? 0);
-    return this.format(prefix, current + 1, padLength, true);
+    const nextPrefix = (await this.configuredPrefix(settingKey)) ?? prefix;
+    return this.format(nextPrefix, current + 1, padLength, true);
+  }
+
+  private async configuredPrefix(settingKey: string): Promise<string | undefined> {
+    const configKey = this.prefixOverrides[settingKey];
+    if (!configKey) return undefined;
+    const row = await this.prisma.systemSetting.findFirst({ where: { key: configKey } });
+    const value = row?.value?.trim();
+    return value ? value : undefined;
   }
 
   private scopedKey(settingKey: string, useYear: boolean): string {

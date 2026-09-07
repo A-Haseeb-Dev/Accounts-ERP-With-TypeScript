@@ -10,11 +10,19 @@ const SETTING_KEYS = [
   'timezone',
   'numbering.invoicePrefix',
   'numbering.purchasePrefix',
+  'numbering.salesReturnPrefix',
+  'numbering.purchaseReturnPrefix',
+  'numbering.stockTransferPrefix',
   'numbering.voucherPrefix',
   'inventory.negative_stock',
   'defaults.stockLocationId',
   'defaults.customerId',
   'defaults.supplierId',
+  'print.invoiceShowBalance',
+  'print.invoiceShowAmountWords',
+  'print.invoiceShowDate',
+  'print.reportShowBranding',
+  'print.reportShowLogo',
 ];
 
 @Injectable()
@@ -82,11 +90,19 @@ export class SystemService {
     if (dto.timezone !== undefined) map['timezone'] = dto.timezone;
     if (dto.invoicePrefix !== undefined) map['numbering.invoicePrefix'] = dto.invoicePrefix;
     if (dto.purchasePrefix !== undefined) map['numbering.purchasePrefix'] = dto.purchasePrefix;
+    if (dto.salesReturnPrefix !== undefined) map['numbering.salesReturnPrefix'] = dto.salesReturnPrefix;
+    if (dto.purchaseReturnPrefix !== undefined) map['numbering.purchaseReturnPrefix'] = dto.purchaseReturnPrefix;
+    if (dto.stockTransferPrefix !== undefined) map['numbering.stockTransferPrefix'] = dto.stockTransferPrefix;
     if (dto.voucherPrefix !== undefined) map['numbering.voucherPrefix'] = dto.voucherPrefix;
     if (dto.negativeInventory !== undefined) map['inventory.negative_stock'] = dto.negativeInventory;
     if (dto.defaultStockLocationId !== undefined) map['defaults.stockLocationId'] = dto.defaultStockLocationId;
     if (dto.defaultCustomerId !== undefined) map['defaults.customerId'] = dto.defaultCustomerId;
     if (dto.defaultSupplierId !== undefined) map['defaults.supplierId'] = dto.defaultSupplierId;
+    if (dto.invoiceShowBalance !== undefined) map['print.invoiceShowBalance'] = dto.invoiceShowBalance;
+    if (dto.invoiceShowAmountWords !== undefined) map['print.invoiceShowAmountWords'] = dto.invoiceShowAmountWords;
+    if (dto.invoiceShowDate !== undefined) map['print.invoiceShowDate'] = dto.invoiceShowDate;
+    if (dto.reportShowBranding !== undefined) map['print.reportShowBranding'] = dto.reportShowBranding;
+    if (dto.reportShowLogo !== undefined) map['print.reportShowLogo'] = dto.reportShowLogo;
     if (dto.values) Object.assign(map, dto.values);
 
     for (const key of Object.keys(map)) {

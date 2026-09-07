@@ -8,6 +8,7 @@ import { Field, Input, Select } from '@/components/ui/field';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { ReportActions } from '@/components/report-actions';
+import { ReportPrintHeader } from '@/components/report-print-header';
 import { QueryError } from '@/components/query-error';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { money } from '@/lib/utils';
@@ -61,6 +62,7 @@ export default function GeneralLedgerPage() {
           <>
             {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
             <div id="gl-report" className="overflow-x-auto">
+            <ReportPrintHeader title="General Ledger" />
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2 text-sm">
               <span className="text-slate-700">
                 <span className="font-semibold text-slate-900">General Ledger</span>

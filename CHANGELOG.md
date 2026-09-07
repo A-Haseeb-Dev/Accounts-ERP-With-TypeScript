@@ -8,6 +8,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Print format & numbering settings** — the Settings page now has a
+  "Numbering" section with editable prefixes for invoices, purchases, sales
+  returns, purchase returns, stock transfers and vouchers (applied live to new
+  numbers, e.g. `INV-2026-000123`), plus a "Print Format" section to control
+  the printed output: show/hide the invoice balance due, amount-in-words line
+  and date, and optionally print a company-branded header (with logo) on
+  report pages. These preferences are applied automatically to the invoice
+  print template and every printed report.
 - **Professional auto-generated document numbers** — invoice, bill, return and
   transfer numbers are now formatted `PREFIX-YEAR-SEQUENCE` (e.g.
   `SI-2026-000001`, `PI-2026-000042`) and each series restarts at 000001 every

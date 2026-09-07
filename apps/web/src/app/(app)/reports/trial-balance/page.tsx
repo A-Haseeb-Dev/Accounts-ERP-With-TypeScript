@@ -8,6 +8,7 @@ import { Field, Input } from '@/components/ui/field';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { ReportActions } from '@/components/report-actions';
+import { ReportPrintHeader } from '@/components/report-print-header';
 import { QueryError } from '@/components/query-error';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { money } from '@/lib/utils';
@@ -50,6 +51,7 @@ export default function TrialBalancePage() {
         {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
 
         <div id="tb-report" className="overflow-x-auto">
+          <ReportPrintHeader title="Trial Balance" />
           {isLoading ? (
             <TableSkeleton rows={7} columns={6} />
           ) : (

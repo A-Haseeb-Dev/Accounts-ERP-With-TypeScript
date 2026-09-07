@@ -11,6 +11,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { money, num, dateTime, amountInWords } from '@/lib/utils';
+import { usePrintSettings } from '@/hooks/use-print-settings';
 import type { BrandingSetting, TransactionDoc, DocLine } from '@/lib/types';
 
 export interface PrintableDocumentProps {
@@ -40,6 +41,8 @@ export function PrintableDocument({
     queryFn: () => apiFetch('/system/branding'),
     staleTime: Infinity,
   });
+
+  const fmt = usePrintSettings();
 
   if (!open || !detail) return null;
 
@@ -129,7 +132,7 @@ export function PrintableDocument({
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase' }}>{title}</div>
           <div style={{ marginTop: 4, fontSize: 13, fontWeight: 600 }}>#{String(detail.number ?? detail.code ?? '')}</div>
-          <div style={{ color: muted, marginTop: 2 }}>{dateTime(detail[dateField] ?? new Date())}</div>
+          {fmt.invoiceShowDate && <div style={{ color: muted, marginTop: 2 }}>{dateTime(detail[dateField] ?? new Date())}</div>}
           {location && (
             <div style={{ color: muted, marginTop: 2 }}>{location.name}</div>
           )}
@@ -206,12 +209,12 @@ export function PrintableDocument({
           {tax > 0 && <TotalsRow label="Tax" value={money(tax, 'PKR')} />}
           <TotalsRow label="Grand total" value={money(grandTotal, 'PKR')} strong />
           {showAmountPaid && <TotalsRow label="Amount paid" value={money(amountPaid, 'PKR')} />}
-          {showAmountPaid && <TotalsRow label="Balance due" value={money(balance, 'PKR')} strong />}
+          {showAmountPaid && fmt.invoiceShowBalance && <TotalsRow label="Balance due" value={money(balance, 'PKR')} strong />}
         </div>
       </div>
 
       {/* Amount in words */}
-      {grandTotal > 0 && (
+      {grandTotal > 0 && fmt.invoiceShowAmountWords && (
         <div style={{ marginTop: 10, fontSize: 11, color: '#334155', breakInside: 'avoid' }}>
           <span style={{ fontWeight: 700 }}>Amount in words: </span>
           <span style={{ color: dark }}>{amountInWords(grandTotal)}</span>
@@ -219,7 +222,7 @@ export function PrintableDocument({
       )}
 
       {/* Payment terms */}
-      {showAmountPaid && balance > 0 && (
+      {showAmountPaid && balance > 0 && fmt.invoiceShowBalance && (
         <div style={{ marginTop: 4, fontSize: 11, color: '#475569', breakInside: 'avoid' }}>
           Payment status: <b style={{ textTransform: 'uppercase' }}>{paymentStatus ?? 'unpaid'}</b> — balance of{' '}
           {money(balance, 'PKR')} is due.
