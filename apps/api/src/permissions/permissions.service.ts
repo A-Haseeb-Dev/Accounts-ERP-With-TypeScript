@@ -117,6 +117,7 @@ export const PERMISSION_CATALOG: { name: string; module: string; action: string;
   { name: 'system.branding.manage', module: 'system', action: 'view' },
   { name: 'system.settings.manage', module: 'system', action: 'view' },
   { name: 'system.audit.view', module: 'system', action: 'view' },
+  { name: 'system.audit.purge', module: 'system', action: 'purge', description: 'Purge old audit logs' },
 ];
 
 @Injectable()

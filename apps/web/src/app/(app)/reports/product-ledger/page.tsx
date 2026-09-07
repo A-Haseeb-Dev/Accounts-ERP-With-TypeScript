@@ -9,14 +9,26 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { ReportActions } from '@/components/report-actions';
 import { ReportPrintHeader } from '@/components/report-print-header';
+import { ColumnPicker, useReportColumns, type ColumnDef } from '@/components/report-columns';
 import { QueryError } from '@/components/query-error';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { money } from '@/lib/utils';
 import type { Item, ProductLedgerRow } from '@/lib/types';
 
+const COLUMNS: ColumnDef[] = [
+  { key: 'date', header: 'Date' },
+  { key: 'type', header: 'Type' },
+  { key: 'reference', header: 'Reference' },
+  { key: 'qtyIn', header: 'Qty In' },
+  { key: 'qtyOut', header: 'Qty Out' },
+  { key: 'balance', header: 'Balance' },
+  { key: 'value', header: 'Value' },
+];
+
 export default function ProductLedgerPage() {
   const { options: itemOptions } = useItemOptions();
   const { options: locationOptions } = useFlatOptions('stock-locations');
+  const cols = useReportColumns(COLUMNS, 'product-ledger');
   const [itemId, setItemId] = useState('');
   const [locationId, setLocationId] = useState('');
   const [from, setFrom] = useState('');
@@ -59,6 +71,9 @@ export default function ProductLedgerPage() {
           </Field>
           <Field label="From"><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" /></Field>
           <Field label="To"><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" /></Field>
+          <div className="ml-auto">
+            <ColumnPicker defs={COLUMNS} visible={cols.visible} onToggle={cols.toggle} />
+          </div>
         </div>
 
         {!itemId && (
@@ -83,18 +98,14 @@ export default function ProductLedgerPage() {
               </span>
             </div>
             {isLoading ? (
-              <TableSkeleton rows={6} columns={7} />
+              <TableSkeleton rows={6} columns={COLUMNS.length} />
             ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                  <th className="px-4 py-2">Date</th>
-                  <th className="px-4 py-2">Type</th>
-                  <th className="px-4 py-2">Reference</th>
-                  <th className="px-4 py-2 text-right">Qty In</th>
-                  <th className="px-4 py-2 text-right">Qty Out</th>
-                  <th className="px-4 py-2 text-right">Balance</th>
-                  <th className="px-4 py-2 text-right">Value</th>
+                  {cols.defsFiltered.map((c) => (
+                    <th key={c.key} className={`px-4 py-2 ${['qtyIn', 'qtyOut', 'balance', 'value'].includes(c.key) ? 'text-right' : ''}`}>{c.header}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -102,22 +113,24 @@ export default function ProductLedgerPage() {
                   const value = (r.balance ?? 0) * (r.unitCost ?? 0);
                   return (
                     <tr key={i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                      <td className="px-4 py-2 text-slate-600">{r.date ? new Date(r.date).toLocaleDateString('en-GB') : '—'}</td>
-                      <td className="px-4 py-2">
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${(r.stockIn ?? 0) > 0 ? 'bg-teal-50 text-teal-700' : 'bg-red-50 text-red-700'}`}>
-                          {r.transactionType ?? ''}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 font-mono text-xs text-slate-600">{r.referenceType ?? ''} {r.referenceId ? `(${r.referenceId.slice(0, 8)})` : ''}</td>
-                      <td className="px-4 py-2 text-right tabular-nums text-teal-600">{r.stockIn ? r.stockIn : ''}</td>
-                      <td className="px-4 py-2 text-right tabular-nums text-red-600">{r.stockOut ? r.stockOut : ''}</td>
-                      <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{r.balance ?? 0}</td>
-                      <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(value, 'PKR')}</td>
+                      {cols.isVisible('date') && <td className="px-4 py-2 text-slate-600">{r.date ? new Date(r.date).toLocaleDateString('en-GB') : '—'}</td>}
+                      {cols.isVisible('type') && (
+                        <td className="px-4 py-2">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${(r.stockIn ?? 0) > 0 ? 'bg-teal-50 text-teal-700' : 'bg-red-50 text-red-700'}`}>
+                            {r.transactionType ?? ''}
+                          </span>
+                        </td>
+                      )}
+                      {cols.isVisible('reference') && <td className="px-4 py-2 font-mono text-xs text-slate-600">{r.referenceType ?? ''} {r.referenceId ? `(${r.referenceId.slice(0, 8)})` : ''}</td>}
+                      {cols.isVisible('qtyIn') && <td className="px-4 py-2 text-right tabular-nums text-teal-600">{r.stockIn ? r.stockIn : ''}</td>}
+                      {cols.isVisible('qtyOut') && <td className="px-4 py-2 text-right tabular-nums text-red-600">{r.stockOut ? r.stockOut : ''}</td>}
+                      {cols.isVisible('balance') && <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{r.balance ?? 0}</td>}
+                      {cols.isVisible('value') && <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(value, 'PKR')}</td>}
                     </tr>
                   );
                 })}
                 {(!data || data.rows.length === 0) && !isLoading && (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">No movements found.</td></tr>
+                  <tr><td colSpan={cols.defsFiltered.length} className="px-4 py-8 text-center text-slate-400">No movements found.</td></tr>
                 )}
               </tbody>
             </table>

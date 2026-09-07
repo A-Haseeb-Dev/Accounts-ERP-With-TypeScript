@@ -27,6 +27,8 @@ const SETTING_KEYS = [
   'print.reportShowLogo',
   'print.paperSize',
   'print.scale',
+  'audit.retention_days',
+  'fiscal.locked_until',
 ];
 
 @Injectable()
@@ -127,13 +129,34 @@ export class SystemService {
     if (dto.reportShowLogo !== undefined) map['print.reportShowLogo'] = dto.reportShowLogo;
     if (dto.paperSize !== undefined) map['print.paperSize'] = dto.paperSize;
     if (dto.printScale !== undefined) map['print.scale'] = dto.printScale;
-    if (dto.values) Object.assign(map, dto.values);
+    if (dto.auditRetentionDays !== undefined) map['audit.retention_days'] = dto.auditRetentionDays;
+    if (dto.values) {
+      // The free-form values map is only ever written for whitelisted keys, so a
+      // client cannot inject arbitrary rows into system_settings.
+      for (const key of Object.keys(dto.values)) {
+        if (SETTING_KEYS.includes(key)) map[key] = String(dto.values[key] ?? '');
+      }
+    }
 
+    if (Object.keys(map).length === 0) {
+      throw ApiException.validation('No valid settings provided to update');
+    }
+
+    // Capture the before-image so the audit trail records exactly what changed.
+    const existingRows = await this.prisma.systemSetting.findMany({
+      where: { key: { in: Object.keys(map) } },
+    });
+    const before = new Map(existingRows.map((r) => [r.key, r.value ?? '']));
+
+    const changes: Record<string, { from: string | null; to: string }> = {};
     for (const key of Object.keys(map)) {
+      const to = map[key];
+      const from = before.get(key) ?? null;
+      changes[key] = { from, to };
       await this.prisma.systemSetting.upsert({
         where: { key_organizationId: { key, organizationId: 'default-org' } },
-        create: { key, value: map[key], organizationId: 'default-org' },
-        update: { value: map[key] },
+        create: { key, value: to, organizationId: 'default-org', updatedById: actorId },
+        update: { value: to, updatedById: actorId },
       });
     }
 
@@ -142,8 +165,8 @@ export class SystemService {
       action: 'UPDATE',
       module: 'SYSTEM_SETTINGS',
       entity: 'SystemSetting',
-      message: 'System settings updated',
-      metadata: map,
+      message: `System settings updated (${Object.keys(changes).length} key(s))`,
+      metadata: { changes },
     });
 
     return this.getSettings();
@@ -181,17 +204,28 @@ export class SystemService {
       throw ApiException.validation('Invalid backup file. Expected an object with a "settings" map.');
     }
 
+    const beforeRows = await this.prisma.systemSetting.findMany();
+    const before = new Map(beforeRows.map((r) => [r.key, r.value ?? '']));
+
+    // Only whitelisted keys are ever restored from a backup.
+    const accepted: Record<string, string> = {};
     for (const key of Object.keys(dto.settings)) {
+      if (SETTING_KEYS.includes(key)) accepted[key] = String(dto.settings[key] ?? '');
+    }
+
+    const changes: Record<string, { from: string | null; to: string }> = {};
+    for (const key of Object.keys(accepted)) {
+      changes[key] = { from: before.get(key) ?? null, to: accepted[key] };
       await this.prisma.systemSetting.upsert({
         where: { key_organizationId: { key, organizationId: 'default-org' } },
-        create: { key, value: String(dto.settings[key] ?? ''), organizationId: 'default-org' },
-        update: { value: String(dto.settings[key] ?? '') },
+        create: { key, value: accepted[key], organizationId: 'default-org', updatedById: actorId },
+        update: { value: accepted[key], updatedById: actorId },
       });
     }
 
     if (dto.branding && typeof dto.branding === 'object') {
       const source = dto.branding as Record<string, unknown>;
-      const data: Record<string, unknown> = {};
+      const data: Record<string, unknown> = { updatedById: actorId };
       const fields = [
         'businessName', 'shortName', 'logoUrl', 'faviconUrl', 'primaryColor',
         'secondaryColor', 'address', 'phone', 'email', 'ntn',
@@ -205,9 +239,9 @@ export class SystemService {
       }
       const existing = await this.getBranding();
       if (existing) {
-        await this.prisma.brandingSetting.update({ where: { id: existing.id }, data });
+        await this.prisma.brandingSetting.update({ where: { id: existing.id }, data: data as never });
       } else {
-        await this.prisma.brandingSetting.create({ data: { ...data, organizationId: 'default-org' } });
+        await this.prisma.brandingSetting.create({ data: { ...data, organizationId: 'default-org' } as never });
       }
     }
 
@@ -216,8 +250,8 @@ export class SystemService {
       action: 'RESTORE',
       module: 'SYSTEM_SETTINGS',
       entity: 'SystemSetting',
-      message: 'System settings and branding restored from backup',
-      metadata: { settingKeys: Object.keys(dto.settings) },
+      message: `System settings restored from backup (${Object.keys(changes).length} setting(s))`,
+      metadata: { settingKeys: Object.keys(changes), changes },
     });
 
     return { exportedAt: new Date().toISOString(), settings: await this.getSettings(), branding: await this.getBranding() };

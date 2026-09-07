@@ -180,6 +180,13 @@ export class UpdateSettingsDto {
   @IsOptional()
   @Matches(/^([5-9][0-9]|100)$/, { message: 'Print scale must be between 50 and 100' })
   printScale?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^[3-9][0-9]?$|^(1[0-9]{2}|3[0-9]{2})$/, {
+    message: 'Audit retention must be a number of days between 30 and 365',
+  })
+  auditRetentionDays?: string;
 }
 
 export class ImportSettingsDto {

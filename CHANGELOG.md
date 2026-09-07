@@ -8,6 +8,32 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Security headers and transport hardening** — the API now emits security
+  headers via `helmet` for every response: a strict Content-Security-Policy in
+  production (this API only serves JSON) and a relaxed variant in development so
+  the interactive Swagger UI keeps working, HSTS with `includeSubDomains` and
+  `preload` in production only, plus the usual frame/object/MIME protections. The
+  app support an explicit `TRUST_PROXY` opt-in so `req.ip` (used by the rate
+  limiter and account-lockout logic) reflects the real client IP behind a reverse
+  proxy, CORS origins are normalized (trimmed, trailing slashes stripped) before
+  being passed to the browser, JSON body limit is preserved via a dedicated body
+  parser, and Swagger is mounted on `/api/docs` only outside production.
+- **Audit log retention policy** — audit trails are no longer stored forever. A
+  new `audit.retention_days` setting (default 90, 30-365) controls how long logs
+  are kept; an `AuditCleanupService` runs at boot and daily to purge expired rows
+  in batches. The audit screen gains a stats banner (total count, oldest/newest
+  entry, how many logs are past retention) and a manual **Purge** button gated by
+  the new `system.audit.purge` permission, backed by `GET /system/audit-logs/stats`
+  and `POST /system/audit-logs/purge`. List pagination is capped at 200 rows/page.
+- **Settings changes are audited** — saving or importing settings now restricts
+  writes to known setting keys (drops unknown/malicious keys), records the exact
+  before/after value diff as structured metadata on the audit entry, and stamps who
+  made the change.
+- **Custom report columns** — every report page (Trial Balance, Sales Book,
+  Purchase Book, Stock, Product Ledger, General Ledger, General Journal) now has a
+  column picker so users can show or hide individual columns. Selections persist
+  per report on this device, and — because print/CSV export read the visible table
+  — exports always reflect exactly the chosen columns.
 - **Role-based print & export controls** — new granular permissions let the
   owner decide exactly who can print or export data: `reports.print` and
   `reports.export` for report pages, plus per-module print permissions

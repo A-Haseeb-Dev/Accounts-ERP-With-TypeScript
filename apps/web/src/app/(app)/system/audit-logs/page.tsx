@@ -1,8 +1,8 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { Download, Eye } from 'lucide-react';
+import { Download, Eye, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { Field, Input, Select } from '@/components/ui/field';
 import { DataTable, type Column } from '@/components/data-table';
@@ -11,12 +11,24 @@ import { Card } from '@/components/ui/card';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { QueryError } from '@/components/query-error';
+import { ConfirmDialog } from '@/components/confirm-dialog';
+import { useAuth } from '@/context/auth-context';
 import { dateTime } from '@/lib/utils';
 import type { AuditEntry, Paginated } from '@/lib/types';
 
-const ACTION_OPTIONS = ['CREATE', 'UPDATE', 'DELETE', 'POST', 'CANCEL', 'LOGIN', 'LOGIN_FAILED', 'LOGOUT'];
+const ACTION_OPTIONS = ['CREATE', 'UPDATE', 'DELETE', 'POST', 'CANCEL', 'LOGIN', 'LOGIN_FAILED', 'LOGOUT', 'TOKEN_REFRESH', 'PASSWORD_CHANGE', 'PURGE'];
+
+interface AuditStats {
+  total: number;
+  oldest?: string;
+  newest?: string;
+  retentionDays: number;
+  expiring: number;
+}
 
 export default function AuditLogsPage() {
+  const { can } = useAuth();
+  const qc = useQueryClient();
   const [page, setPage] = useState(1);
   const [module, setModule] = useState('');
   const [action, setAction] = useState('');
@@ -24,6 +36,7 @@ export default function AuditLogsPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [selected, setSelected] = useState<AuditEntry | null>(null);
+  const [purgeOpen, setPurgeOpen] = useState(false);
 
   const { data, isLoading, isError, refetch } = useQuery<Paginated<AuditEntry>>({
     queryKey: ['audit-logs', page, module, action, search, from, to],
@@ -33,6 +46,22 @@ export default function AuditLogsPage() {
           qs({ page, pageSize: 30, module: module || undefined, action: action || undefined, search: search || undefined, from: from || undefined, to: to || undefined }),
       ),
   });
+
+  const { data: stats } = useQuery<AuditStats>({
+    queryKey: ['audit-logs-stats'],
+    queryFn: () => apiFetch('/system/audit-logs/stats'),
+  });
+
+  const purge = useMutation({
+    mutationFn: () => apiFetch('/system/audit-logs/purge', { method: 'POST' }),
+    onSuccess: () => {
+      setPurgeOpen(false);
+      qc.invalidateQueries({ queryKey: ['audit-logs'] });
+      qc.invalidateQueries({ queryKey: ['audit-logs-stats'] });
+    },
+  });
+
+  const canPurge = can('system.audit.purge');
 
   const items = data?.items ?? [];
   const modules = useMemo(() => Array.from(new Set(items.map((r) => r.module).filter(Boolean))).sort(), [items]);
@@ -110,11 +139,31 @@ export default function AuditLogsPage() {
         title="Audit Logs"
         description="Full audit trail of every action performed in the system."
         actions={
-          <Button variant="outline" size="md" onClick={exportCsv} disabled={items.length === 0}>
-            <Download className="h-4 w-4" /> Export CSV
-          </Button>
+          <div className="flex items-center gap-2">
+            {canPurge && (
+              <Button variant="outline" size="md" onClick={() => setPurgeOpen(true)}>
+                <Trash2 className="h-4 w-4" /> Purge Old
+              </Button>
+            )}
+            <Button variant="outline" size="md" onClick={exportCsv} disabled={items.length === 0}>
+              <Download className="h-4 w-4" /> Export CSV
+            </Button>
+          </div>
         }
       />
+
+      {stats && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs text-slate-600">
+          <span><strong className="text-slate-800">{stats.total.toLocaleString()}</strong> events recorded</span>
+          {stats.oldest && <span>Oldest: {dateTime(stats.oldest)}</span>}
+          {stats.expiring > 0 && (
+            <span className="text-amber-700">
+              {stats.expiring.toLocaleString()} older than the {stats.retentionDays}-day retention window — purged automatically daily
+            </span>
+          )}
+          {stats.expiring === 0 && <span>Retention: {stats.retentionDays} days (auto-purged daily)</span>}
+        </div>
+      )}
 
       <Card>
         <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 px-4 py-3">
@@ -187,6 +236,17 @@ export default function AuditLogsPage() {
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={purgeOpen}
+        danger
+        title="Purge old audit logs"
+        message={`Delete every audit event older than ${stats?.retentionDays ?? 90} days? This cannot be undone. A purge itself is still recorded in the log.`}
+        confirmLabel="Purge"
+        loading={purge.isPending}
+        onCancel={() => setPurgeOpen(false)}
+        onConfirm={() => purge.mutate()}
+      />
     </div>
   );
 }

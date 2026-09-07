@@ -59,6 +59,7 @@ export default function SettingsPage() {
         'fiscal.locked_until': form.lockedUntil || '',
         'numbering.template': form['numbering.template'] || undefined,
         'numbering.padding': form['numbering.padding'] || undefined,
+        'audit.retention_days': form['audit.retention_days'] || undefined,
       },
     });
   };
@@ -250,6 +251,22 @@ export default function SettingsPage() {
                   />
                 </Field>
               </div>
+            </div>
+
+            <div>
+              <p className="mb-3 text-sm font-semibold text-slate-700">Audit Trail</p>
+              <Field
+                label="Audit Log Retention"
+                hint="Audit events older than this many days are purged automatically each day."
+              >
+                <Input
+                  type="number"
+                  min={30}
+                  max={365}
+                  value={String(form['audit.retention_days'] ?? merged['audit.retention_days'] ?? '90')}
+                  onChange={(e) => set('audit.retention_days', e.target.value)}
+                />
+              </Field>
             </div>
 
             <div>

@@ -9,13 +9,24 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { ReportActions } from '@/components/report-actions';
 import { ReportPrintHeader } from '@/components/report-print-header';
+import { ColumnPicker, useReportColumns, type ColumnDef } from '@/components/report-columns';
 import { QueryError } from '@/components/query-error';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { money } from '@/lib/utils';
 import type { LedgerRow, MainAccount } from '@/lib/types';
 
+const COLUMNS: ColumnDef[] = [
+  { key: 'date', header: 'Date' },
+  { key: 'voucher', header: 'Voucher' },
+  { key: 'description', header: 'Description / Narration' },
+  { key: 'debit', header: 'Debit' },
+  { key: 'credit', header: 'Credit' },
+  { key: 'balance', header: 'Balance' },
+];
+
 export default function GeneralLedgerPage() {
   const { options: accountOptions } = useAccountingAccounts();
+  const cols = useReportColumns(COLUMNS, 'general-ledger');
   const [accountId, setAccountId] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -52,6 +63,9 @@ export default function GeneralLedgerPage() {
           </Field>
           <Field label="From"><Input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} className="w-40" /></Field>
           <Field label="To"><Input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} className="w-40" /></Field>
+          <div className="ml-auto">
+            <ColumnPicker defs={COLUMNS} visible={cols.visible} onToggle={cols.toggle} />
+          </div>
         </div>
 
         {!accountId && (
@@ -77,32 +91,29 @@ export default function GeneralLedgerPage() {
               <span className="text-slate-600">Closing balance: <span className="font-semibold text-slate-800">{money(data?.closingBalance ?? 0, 'PKR')}</span></span>
             </div>
             {isLoading ? (
-              <TableSkeleton rows={6} columns={6} />
+              <TableSkeleton rows={6} columns={COLUMNS.length} />
             ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                  <th className="px-4 py-2">Date</th>
-                  <th className="px-4 py-2">Voucher</th>
-                  <th className="px-4 py-2">Description / Narration</th>
-                  <th className="px-4 py-2 text-right">Debit</th>
-                  <th className="px-4 py-2 text-right">Credit</th>
-                  <th className="px-4 py-2 text-right">Balance</th>
+                  {cols.defsFiltered.map((c) => (
+                    <th key={c.key} className={`px-4 py-2 ${c.key === 'debit' || c.key === 'credit' || c.key === 'balance' ? 'text-right' : ''}`}>{c.header}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {(data?.rows ?? []).map((r, i) => (
                   <tr key={r.id ?? i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-4 py-2 text-slate-600">{r.date ? new Date(r.date).toLocaleDateString('en-GB') : '—'}</td>
-                    <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.voucherNumber ?? ''}</td>
-                    <td className="max-w-[300px] truncate px-4 py-2 text-slate-600">{r.description ?? ''}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-teal-600">{r.debit ? money(r.debit, 'PKR') : ''}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-red-600">{r.credit ? money(r.credit, 'PKR') : ''}</td>
-                    <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(r.balance, 'PKR')}</td>
+                    {cols.isVisible('date') && <td className="px-4 py-2 text-slate-600">{r.date ? new Date(r.date).toLocaleDateString('en-GB') : '—'}</td>}
+                    {cols.isVisible('voucher') && <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.voucherNumber ?? ''}</td>}
+                    {cols.isVisible('description') && <td className="max-w-[300px] truncate px-4 py-2 text-slate-600">{r.description ?? ''}</td>}
+                    {cols.isVisible('debit') && <td className="px-4 py-2 text-right tabular-nums text-teal-600">{r.debit ? money(r.debit, 'PKR') : ''}</td>}
+                    {cols.isVisible('credit') && <td className="px-4 py-2 text-right tabular-nums text-red-600">{r.credit ? money(r.credit, 'PKR') : ''}</td>}
+                    {cols.isVisible('balance') && <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(r.balance, 'PKR')}</td>}
                   </tr>
                 ))}
                 {(!data || data.rows.length === 0) && !isLoading && (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No entries found.</td></tr>
+                  <tr><td colSpan={cols.defsFiltered.length} className="px-4 py-8 text-center text-slate-400">No entries found.</td></tr>
                 )}
               </tbody>
             </table>

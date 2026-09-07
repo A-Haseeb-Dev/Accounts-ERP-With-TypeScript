@@ -9,13 +9,26 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { ReportActions } from '@/components/report-actions';
 import { ReportPrintHeader } from '@/components/report-print-header';
+import { ColumnPicker, useReportColumns, type ColumnDef } from '@/components/report-columns';
 import { QueryError } from '@/components/query-error';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { money } from '@/lib/utils';
 import type { TrialBalanceRow } from '@/lib/types';
 
+const COLUMNS: ColumnDef[] = [
+  { key: 'code', header: 'Code' },
+  { key: 'account', header: 'Account' },
+  { key: 'head', header: 'Head' },
+  { key: 'debit', header: 'Debit' },
+  { key: 'credit', header: 'Credit' },
+  { key: 'net', header: 'Net' },
+];
+
 export default function TrialBalancePage() {
   const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
+  const cols = useReportColumns(COLUMNS, 'trial-balance');
+  const visibleMoney = cols.defsFiltered.filter((c) => c.key !== 'code' && c.key !== 'account' && c.key !== 'head');
+  const labelSpan = cols.defsFiltered.length - visibleMoney.length;
 
   const { data, isLoading, isError, refetch } = useQuery<{ rows: TrialBalanceRow[]; totalDebit: number; totalCredit: number; balanced: boolean }>({
     queryKey: ['trial-balance', asOf],
@@ -46,6 +59,9 @@ export default function TrialBalancePage() {
             <Input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} className="w-40" />
           </Field>
           <Button variant="secondary" onClick={() => refetch()} disabled={isLoading}>Refresh</Button>
+          <div className="ml-auto">
+            <ColumnPicker defs={COLUMNS} visible={cols.visible} onToggle={cols.toggle} />
+          </div>
         </div>
 
         {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
@@ -53,17 +69,14 @@ export default function TrialBalancePage() {
         <div id="tb-report" className="overflow-x-auto">
           <ReportPrintHeader title="Trial Balance" />
           {isLoading ? (
-            <TableSkeleton rows={7} columns={6} />
+            <TableSkeleton rows={7} columns={COLUMNS.length} />
           ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                <th className="px-4 py-2">Code</th>
-                <th className="px-4 py-2">Account</th>
-                <th className="px-4 py-2">Head</th>
-                <th className="px-4 py-2 text-right">Debit</th>
-                <th className="px-4 py-2 text-right">Credit</th>
-                <th className="px-4 py-2 text-right">Net</th>
+                {cols.defsFiltered.map((c) => (
+                  <th key={c.key} className={`px-4 py-2 ${c.key === 'debit' || c.key === 'credit' || c.key === 'net' ? 'text-right' : ''}`}>{c.header}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -71,26 +84,26 @@ export default function TrialBalancePage() {
                 const net = (r.debit ?? 0) - (r.credit ?? 0);
                 return (
                   <tr key={r.accountId ?? r.code} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                    <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.code}</td>
-                    <td className="px-4 py-2 text-slate-700">{r.name}</td>
-                    <td className="px-4 py-2 text-xs text-slate-500">{r.head ?? r.subHead ?? ''}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{r.debit ? money(r.debit, 'PKR') : ''}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">{r.credit ? money(r.credit, 'PKR') : ''}</td>
-                    <td className={`px-4 py-2 text-right tabular-nums font-medium ${net >= 0 ? 'text-teal-600' : 'text-red-600'}`}>{money(r.balance ?? net, 'PKR')}</td>
+                    {cols.isVisible('code') && <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.code}</td>}
+                    {cols.isVisible('account') && <td className="px-4 py-2 text-slate-700">{r.name}</td>}
+                    {cols.isVisible('head') && <td className="px-4 py-2 text-xs text-slate-500">{r.head ?? r.subHead ?? ''}</td>}
+                    {cols.isVisible('debit') && <td className="px-4 py-2 text-right tabular-nums text-slate-700">{r.debit ? money(r.debit, 'PKR') : ''}</td>}
+                    {cols.isVisible('credit') && <td className="px-4 py-2 text-right tabular-nums text-slate-700">{r.credit ? money(r.credit, 'PKR') : ''}</td>}
+                    {cols.isVisible('net') && <td className={`px-4 py-2 text-right tabular-nums font-medium ${net >= 0 ? 'text-teal-600' : 'text-red-600'}`}>{money(r.balance ?? net, 'PKR')}</td>}
                   </tr>
                 );
               })}
               {(rows.length === 0) && !isLoading && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">No data.</td></tr>
+                <tr><td colSpan={cols.defsFiltered.length} className="px-4 py-8 text-center text-slate-400">No data.</td></tr>
               )}
             </tbody>
             {rows.length > 0 && (
               <tfoot>
                 <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-800">
-                  <td colSpan={3} className="px-4 py-2 text-xs font-semibold uppercase text-slate-500">Totals</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{money(totalDebit, 'PKR')}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{money(totalCredit, 'PKR')}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{money(totalDebit - totalCredit, 'PKR')}</td>
+                  <td colSpan={labelSpan} className="px-4 py-2 text-xs font-semibold uppercase text-slate-500">Totals</td>
+                  {cols.isVisible('debit') && <td className="px-4 py-2 text-right tabular-nums">{money(totalDebit, 'PKR')}</td>}
+                  {cols.isVisible('credit') && <td className="px-4 py-2 text-right tabular-nums">{money(totalCredit, 'PKR')}</td>}
+                  {cols.isVisible('net') && <td className="px-4 py-2 text-right tabular-nums">{money(totalDebit - totalCredit, 'PKR')}</td>}
                 </tr>
               </tfoot>
             )}
