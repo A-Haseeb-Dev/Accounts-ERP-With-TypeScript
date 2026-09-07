@@ -18,6 +18,23 @@ and this project follows [Semantic Versioning](https://semver.org/).
   server-side Excel export stays guarded by `reports.export`. Newly added
   permissions are auto-granted to the Super Admin role on startup so existing
   installations keep full access.
+- **Security hardening — brute-force protection, refresh token rotation and
+  revocation, password complexity and production secret validation.** Login is now
+  rate-limited (5 attempts per 15 minutes per IP via `@nestjs/throttler`) and
+  accounts automatically lock for 15 minutes after 5 consecutive wrong passwords,
+  with a per-user audit trail (`LOGIN_FAILED`). Refresh tokens are bound to a
+  per-user `tokenVersion`: every successful refresh rotates the version (invalidating
+  the just-used token), while a password change, admin reset or logout bumps it
+  again so all outstanding refresh tokens are revoked. The `POST /auth/logout`
+  endpoint now revokes the user's refresh-token family even when called without a
+  valid access token. A new `POST /auth/change-password` endpoint lets any
+  authenticated user change their own password (verified against the current one);
+  it re-issues fresh tokens and immediately revokes the old token family. Passwords
+  everywhere — login, create, update, change, register — now enforce a complexity
+  rule: 8-64 characters with at least one uppercase letter, one lowercase letter,
+  one digit, and one special character. Finally, production deployments now fail to
+  start if `JWT_ACCESS_SECRET` or `JWT_REFRESH_SECRET` are still set to their
+  default development values, preventing the most common accidental misconfiguration.
 - **Per-document activity timeline** — opening any sales, purchase or return
   document now shows an "Activity" trail (who created/updated/cancelled it and
   when) inside the detail view, sourced from the audit log. The audit API also

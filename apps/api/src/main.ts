@@ -15,6 +15,22 @@ async function bootstrap() {
   const config = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
 
+  // Fail secure: in production, never run with obvious default JWT secrets.
+  if (process.env.NODE_ENV === 'production') {
+    const defaultSecrets = new Set(['has-erp-access-secret', 'has-erp-refresh-secret']);
+    let missing = false;
+    for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET']) {
+      const value = config.get<string>(key);
+      if (!value || defaultSecrets.has(value)) {
+        logger.error(`${key} must be set to a strong random value in production (JWT_ACCESS_SECRET and JWT_REFRESH_SECRET differ)`);
+        missing = true;
+      }
+    }
+    if (missing) {
+      process.exit(1);
+    }
+  }
+
   app.setGlobalPrefix('api');
 
   app.use(helmet());

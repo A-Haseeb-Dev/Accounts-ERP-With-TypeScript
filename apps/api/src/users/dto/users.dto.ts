@@ -8,6 +8,11 @@ import {
   MinLength,
 } from 'class-validator';
 
+export const PASSWORD_PATTERN =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,64}$/;
+export const PASSWORD_PATTERN_MESSAGE =
+  'Password must be 8-64 characters and include at least one uppercase letter, one lowercase letter, one number and one special character';
+
 export class CreateUserDto {
   @IsString()
   @IsNotEmpty({ message: 'Full name is required' })
@@ -30,6 +35,7 @@ export class CreateUserDto {
 
   @IsString()
   @MinLength(8, { message: 'Password must be at least 8 characters' })
+  @Matches(PASSWORD_PATTERN, { message: PASSWORD_PATTERN_MESSAGE })
   password: string;
 
   @IsString()
@@ -60,6 +66,7 @@ export class UpdateUserDto {
   @IsString()
   @IsOptional()
   @MinLength(8, { message: 'Password must be at least 8 characters' })
+  @Matches(PASSWORD_PATTERN, { message: PASSWORD_PATTERN_MESSAGE })
   password?: string;
 
   @IsString()
@@ -74,5 +81,6 @@ export class ChangePasswordDto {
 
   @IsString()
   @MinLength(8, { message: 'New password must be at least 8 characters' })
+  @Matches(PASSWORD_PATTERN, { message: PASSWORD_PATTERN_MESSAGE })
   newPassword: string;
 }

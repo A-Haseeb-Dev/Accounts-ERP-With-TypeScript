@@ -20,6 +20,9 @@ const mockUser = {
   passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$fakehash',
   status: 'active',
   organizationId: 'default-org',
+  tokenVersion: 1,
+  failedLoginAttempts: 0,
+  lockedUntil: null,
   roles: [
     {
       role: {
@@ -125,6 +128,70 @@ describe('AuthService.login', () => {
     expect(err.status).toBe(401);
     expect(err.message).toMatch(/Invalid username or password/);
   });
+
+  it('throws UNAUTHORIZED when the account is locked out after failed attempts', async () => {
+    argon2VerifyMock.mockResolvedValue(false);
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          ...mockUser,
+          failedLoginAttempts: 5,
+          lockedUntil: new Date(Date.now() + 5 * 60_000),
+        }),
+        update: vi.fn(),
+      },
+    };
+    const { svc } = buildService({ prisma });
+    const err = await extractError(svc.login({ username: 'admin', password: 'wrong' }));
+    expect(err.status).toBe(401);
+    expect(err.message).toMatch(/locked/);
+  });
+
+  it('throws UNAUTHORIZED on wrong password and bumps the failed-attempt counter', async () => {
+    argon2VerifyMock.mockResolvedValue(false);
+    const update = vi.fn().mockResolvedValue({});
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ ...mockUser, failedLoginAttempts: 4 }),
+        update,
+      },
+    };
+    const { svc, audit } = buildService({ prisma });
+    const err = await extractError(svc.login({ username: 'admin', password: 'wrong' }));
+    expect(err.status).toBe(401);
+    expect(err.message).toMatch(/locked for 15 minutes/);
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ failedLoginAttempts: 5, lockedUntil: expect.any(Date) }),
+      }),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'LOGIN_FAILED', module: 'AUTH' }),
+    );
+  });
+
+  it('resets the failed-attempt counter once the lock window has expired', async () => {
+    argon2VerifyMock.mockResolvedValue(true);
+    const update = vi.fn().mockResolvedValue({});
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          ...mockUser,
+          failedLoginAttempts: 5,
+          lockedUntil: new Date(Date.now() - 60_000),
+        }),
+        update,
+      },
+    };
+    const { svc } = buildService({ prisma });
+    const result = await svc.login({ username: 'admin', password: 'correct' });
+    expect(result.accessToken).toBeDefined();
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: expect.any(Date) }),
+      }),
+    );
+  });
 });
 
 describe('AuthService.refresh', () => {
@@ -148,6 +215,34 @@ describe('AuthService.refresh', () => {
     const result = await svc.refresh('valid-token');
     expect(result.accessToken).toBeDefined();
     expect(result.refreshToken).toBeDefined();
+  });
+
+  it('rejects a replayed/stale refresh token after rotation', async () => {
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ ...mockUser, tokenVersion: 3 }),
+        update: vi.fn(),
+      },
+    };
+    const { svc } = buildService({ prisma });
+    const err = await extractError(svc.refresh('stale-issued-at-version-2'));
+    expect(err.status).toBe(401);
+    expect(err.message).toMatch(/no longer valid/);
+  });
+
+  it('rotates the refresh token by bumping the stored token version', async () => {
+    const update = vi.fn().mockResolvedValue({});
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue(mockUser),
+        update,
+      },
+    };
+    const { svc } = buildService({ prisma });
+    await svc.refresh('valid-token');
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ tokenVersion: 2 }) }),
+    );
   });
 });
 

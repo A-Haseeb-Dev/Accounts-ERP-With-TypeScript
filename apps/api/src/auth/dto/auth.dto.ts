@@ -1,4 +1,5 @@
 import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength, Matches } from 'class-validator';
+import { PASSWORD_PATTERN, PASSWORD_PATTERN_MESSAGE } from '../../users/dto/users.dto';
 
 export class LoginDto {
   @IsString()
@@ -36,5 +37,6 @@ export class RegisterUserDto {
 
   @IsString()
   @MinLength(8, { message: 'Password must be at least 8 characters' })
+  @Matches(PASSWORD_PATTERN, { message: PASSWORD_PATTERN_MESSAGE })
   password: string;
 }

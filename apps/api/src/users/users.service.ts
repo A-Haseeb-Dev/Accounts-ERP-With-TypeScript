@@ -111,6 +111,7 @@ export class UsersService {
     };
     if (dto.password) {
       data.passwordHash = await argon2.hash(dto.password);
+      data.tokenVersion = { increment: 1 };
     }
 
     if (dto.roleIds) {
