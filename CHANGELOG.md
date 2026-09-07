@@ -8,6 +8,16 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Role-based print & export controls** — new granular permissions let the
+  owner decide exactly who can print or export data: `reports.print` and
+  `reports.export` for report pages, plus per-module print permissions
+  (`sales.invoice.print`, `sales.return.print`, `inventory.purchase.print`,
+  `inventory.purchase-return.print`, `inventory.transfer.print`) for document
+  copies (Print / Duplicate / Triplicate / Preview, and Save & Print). Print and
+  Download buttons are hidden for roles that lack the permission, while the
+  server-side Excel export stays guarded by `reports.export`. Newly added
+  permissions are auto-granted to the Super Admin role on startup so existing
+  installations keep full access.
 - **Per-document activity timeline** — opening any sales, purchase or return
   document now shows an "Activity" trail (who created/updated/cancelled it and
   when) inside the detail view, sourced from the audit log. The audit API also

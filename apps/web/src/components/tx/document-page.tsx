@@ -18,6 +18,7 @@ import { StatusBadge } from '@/components/ui/badge';
 import { dateTime, money } from '@/lib/utils';
 import { toast } from 'sonner';
 import { printElement } from '@/lib/report-export';
+import { useAuth } from '@/context/auth-context';
 import { PrintableDocument } from '@/components/tx/printable-document';
 import type { Option } from '@/hooks/use-options';
 import type { AuditEntry, Paginated, TransactionDoc, DocLine } from '@/lib/types';
@@ -52,6 +53,15 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
     : resource === 'sales-returns' ? 'salesReturn'
     : resource === 'purchase-returns' ? 'purchaseReturn'
     : 'sale';
+
+  const printPerm =
+    resource === 'purchases' ? 'inventory.purchase.print'
+    : resource === 'sales-returns' ? 'sales.return.print'
+    : resource === 'purchase-returns' ? 'inventory.purchase-return.print'
+    : 'sales.invoice.print';
+
+  const { can } = useAuth();
+  const canPrint = can(printPerm);
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -333,9 +343,11 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
 
           <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
             <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button type="button" variant="outline" onClick={submitAndPrint} disabled={!canSubmit} loading={create.isPending}>
-              <Printer className="h-4 w-4" /> Save & Print
-            </Button>
+            {canPrint && (
+              <Button type="button" variant="outline" onClick={submitAndPrint} disabled={!canSubmit} loading={create.isPending}>
+                <Printer className="h-4 w-4" /> Save & Print
+              </Button>
+            )}
             <Button type="submit" disabled={!canSubmit} loading={create.isPending}>Create</Button>
           </div>
         </form>
@@ -351,6 +363,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
         partyLabel={partyLabel}
         showAmountPaid={!!showAmountPaid}
         docType={docType}
+        canPrint={canPrint}
         printRequested={printRequested}
         onPrintDone={() => setPrintRequested(false)}
         onClose={() => setDetailId(null)}
@@ -386,6 +399,7 @@ function DocumentDetailModal({
   partyLabel,
   showAmountPaid,
   docType,
+  canPrint,
   printRequested,
   onPrintDone,
   onClose,
@@ -399,6 +413,7 @@ function DocumentDetailModal({
   partyLabel: string;
   showAmountPaid: boolean;
   docType?: string;
+  canPrint: boolean;
   printRequested?: boolean;
   onPrintDone?: () => void;
   onClose: () => void;
@@ -443,32 +458,38 @@ function DocumentDetailModal({
                 <Facts label="Status" value={detail.status} />
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" size="md" onClick={() => setPreviewOpen(true)}>
-                  <Eye className="h-4 w-4" /> Preview
-                </Button>
-                <Button
-                  variant="outline"
-                  size="md"
-                  onClick={() => printElement('printable-document', printTitle, isCancelled ? 'CANCELLED' : undefined)}
-                >
-                  <Printer className="h-4 w-4" /> Print
-                </Button>
-                <div className="flex overflow-hidden rounded-lg border border-slate-200">
-                  <button
-                    onClick={() => printElement('printable-document', printTitle, isCancelled ? 'CANCELLED' : 'DUPLICATE')}
-                    className="px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                    title="Print duplicate copy"
+                {canPrint && (
+                  <Button variant="outline" size="md" onClick={() => setPreviewOpen(true)}>
+                    <Eye className="h-4 w-4" /> Preview
+                  </Button>
+                )}
+                {canPrint && (
+                  <Button
+                    variant="outline"
+                    size="md"
+                    onClick={() => printElement('printable-document', printTitle, isCancelled ? 'CANCELLED' : undefined)}
                   >
-                    Duplicate
-                  </button>
-                  <button
-                    onClick={() => printElement('printable-document', printTitle, isCancelled ? 'CANCELLED' : 'TRIPLICATE')}
-                    className="border-l border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                    title="Print triplicate copy"
-                  >
-                    Triplicate
-                  </button>
-                </div>
+                    <Printer className="h-4 w-4" /> Print
+                  </Button>
+                )}
+                {canPrint && (
+                  <div className="flex overflow-hidden rounded-lg border border-slate-200">
+                    <button
+                      onClick={() => printElement('printable-document', printTitle, isCancelled ? 'CANCELLED' : 'DUPLICATE')}
+                      className="px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                      title="Print duplicate copy"
+                    >
+                      Duplicate
+                    </button>
+                    <button
+                      onClick={() => printElement('printable-document', printTitle, isCancelled ? 'CANCELLED' : 'TRIPLICATE')}
+                      className="border-l border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                      title="Print triplicate copy"
+                    >
+                      Triplicate
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 

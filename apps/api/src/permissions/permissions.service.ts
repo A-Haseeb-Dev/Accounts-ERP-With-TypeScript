@@ -81,30 +81,36 @@ export const PERMISSION_CATALOG: { name: string; module: string; action: string;
   { name: 'inventory.purchase.create', module: 'inventory', action: 'create' },
   { name: 'inventory.purchase.post', module: 'inventory', action: 'post' },
   { name: 'inventory.purchase.cancel', module: 'inventory', action: 'cancel' },
+  { name: 'inventory.purchase.print', module: 'inventory', action: 'print', description: 'Print purchase bills' },
   { name: 'inventory.purchase-return.view', module: 'inventory', action: 'view' },
   { name: 'inventory.purchase-return.create', module: 'inventory', action: 'create' },
   { name: 'inventory.purchase-return.post', module: 'inventory', action: 'post' },
   { name: 'inventory.purchase-return.cancel', module: 'inventory', action: 'cancel' },
+  { name: 'inventory.purchase-return.print', module: 'inventory', action: 'print', description: 'Print purchase return bills' },
   { name: 'inventory.transfer.view', module: 'inventory', action: 'view' },
   { name: 'inventory.transfer.create', module: 'inventory', action: 'create' },
   { name: 'inventory.transfer.post', module: 'inventory', action: 'post' },
   { name: 'inventory.transfer.cancel', module: 'inventory', action: 'cancel' },
+  { name: 'inventory.transfer.print', module: 'inventory', action: 'print', description: 'Print stock transfer slips' },
 
   // Sales
   { name: 'sales.invoice.view', module: 'sales', action: 'view' },
   { name: 'sales.invoice.create', module: 'sales', action: 'create' },
   { name: 'sales.invoice.post', module: 'sales', action: 'post' },
   { name: 'sales.invoice.cancel', module: 'sales', action: 'cancel' },
+  { name: 'sales.invoice.print', module: 'sales', action: 'print', description: 'Print sales invoices' },
   { name: 'sales.return.view', module: 'sales', action: 'view' },
   { name: 'sales.return.create', module: 'sales', action: 'create' },
   { name: 'sales.return.post', module: 'sales', action: 'post' },
   { name: 'sales.return.cancel', module: 'sales', action: 'cancel' },
+  { name: 'sales.return.print', module: 'sales', action: 'print', description: 'Print sales return notes' },
 
   // Reports
   { name: 'reports.accounting.view', module: 'reports', action: 'view' },
   { name: 'reports.inventory.view', module: 'reports', action: 'view' },
   { name: 'reports.sales.view', module: 'reports', action: 'view' },
   { name: 'reports.purchase.view', module: 'reports', action: 'view' },
+  { name: 'reports.print', module: 'reports', action: 'print', description: 'Print reports' },
   { name: 'reports.export', module: 'reports', action: 'export' },
 
   // System
@@ -139,6 +145,21 @@ export class PermissionsService implements OnModuleInit {
 
       if (toCreate.length > 0) {
         await this.prisma.permission.createMany({ data: toCreate, skipDuplicates: true });
+        // Keep "Super Admin" truly full-access: grant any newly added catalog
+        // permissions to it, so existing databases don't lock the admin out.
+        const superAdmin = await this.prisma.role.findFirst({
+          where: { name: 'Super Admin', isSystem: true },
+        });
+        if (superAdmin) {
+          const created = await this.prisma.permission.findMany({
+            where: { name: { in: toCreate.map((p) => p.name) } },
+            select: { id: true },
+          });
+          await this.prisma.rolePermission.createMany({
+            data: created.map((p) => ({ roleId: superAdmin.id, permissionId: p.id })),
+            skipDuplicates: true,
+          });
+        }
         this.logger.log(`Synced ${toCreate.length} new permissions`);
       }
     } catch (err) {

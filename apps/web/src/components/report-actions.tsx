@@ -3,13 +3,15 @@
 import { Download, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { downloadTableCSV, printElement } from '@/lib/report-export';
+import { useAuth } from '@/context/auth-context';
 
 /**
- * Print / Download toolbar for report pages.
+ * Print / Download toolbar for report pages, gated by permissions:
  *
  * - Print: opens the OS print dialog printing only the table with `id`,
- *   plus an optional small heading line.
+ *   plus an optional small heading line. Requires `reports.print`.
  * - Download: exports the same table to a CSV file readable in Excel.
+ *   Requires `reports.export`.
  */
 export function ReportActions({
   tableId,
@@ -28,23 +30,27 @@ export function ReportActions({
   printTitle?: string;
   disabled?: boolean;
 }) {
-  const onPrint = () => {
-    printElement(tableId, printTitle ?? title);
-  };
+  const { can } = useAuth();
+
+  if (!can('reports.print') && !can('reports.export')) return null;
 
   return (
     <>
-      <Button variant="outline" size="md" onClick={onPrint} disabled={disabled}>
-        <Printer className="h-4 w-4" /> Print
-      </Button>
-      <Button
-        variant="outline"
-        size="md"
-        onClick={() => downloadTableCSV(tableId, filename)}
-        disabled={disabled}
-      >
-        <Download className="h-4 w-4" /> Download
-      </Button>
+      {can('reports.print') && (
+        <Button variant="outline" size="md" onClick={() => printElement(tableId, printTitle ?? title)} disabled={disabled}>
+          <Printer className="h-4 w-4" /> Print
+        </Button>
+      )}
+      {can('reports.export') && (
+        <Button
+          variant="outline"
+          size="md"
+          onClick={() => downloadTableCSV(tableId, filename)}
+          disabled={disabled}
+        >
+          <Download className="h-4 w-4" /> Download
+        </Button>
+      )}
     </>
   );
 }
