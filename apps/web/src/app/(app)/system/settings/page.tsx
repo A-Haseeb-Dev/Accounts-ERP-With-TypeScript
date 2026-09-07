@@ -55,6 +55,8 @@ export default function SettingsPage() {
       defaultSupplierId: form.defaultSupplierId || undefined,
       values: {
         'fiscal.locked_until': form.lockedUntil || '',
+        'numbering.template': form['numbering.template'] || undefined,
+        'numbering.padding': form['numbering.padding'] || undefined,
       },
     });
   };
@@ -87,7 +89,21 @@ export default function SettingsPage() {
                 <Field label="Stock Transfer Prefix"><Input value={merged.stockTransferPrefix ?? ''} onChange={(e) => set('stockTransferPrefix', e.target.value)} placeholder="ST" /></Field>
                 <Field label="Voucher Prefix"><Input value={merged.voucherPrefix ?? ''} onChange={(e) => set('voucherPrefix', e.target.value)} placeholder="JV" /></Field>
               </div>
-              <p className="mt-2 text-xs text-slate-400">Numbers are generated as PREFIX-YEAR-SEQUENCE, e.g. SI-2026-000123. Leave blank to use the default prefix.</p>
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <Field
+                  label="Number Template"
+                  hint="Tokens: {prefix} {year} {month} {day} {company} {seq}"
+                >
+                  <Input value={String(form['numbering.template'] ?? merged['numbering.template'] ?? '{prefix}-{year}-{seq}')} onChange={(e) => set('numbering.template', e.target.value)} className="font-mono" />
+                </Field>
+                <Field
+                  label="Sequence Padding (digits)"
+                  hint="e.g. 6 → 000123, 3 → 123"
+                >
+                  <Input type="number" min={1} max={10} value={String(form['numbering.padding'] ?? merged['numbering.padding'] ?? '6')} onChange={(e) => set('numbering.padding', e.target.value)} />
+                </Field>
+              </div>
+              <p className="mt-3 text-xs text-slate-400">Numbers are generated from the template, e.g. SI-2026-000123. The company token uses your Short Name from Branding. Leave blank to use defaults.</p>
             </div>
 
             <div>

@@ -4,10 +4,19 @@ import { NumberingService } from './numbering.service';
 function buildService() {
   const prisma = {
     $queryRawUnsafe: vi.fn(),
-    systemSetting: { findFirst: vi.fn().mockResolvedValue(null) },
+    systemSetting: { findFirst: vi.fn().mockImplementation(() => null) },
+    brandingSetting: { findFirst: vi.fn().mockResolvedValue(null) },
   };
   const svc = new NumberingService(prisma as never);
   return { svc, prisma };
+}
+
+/** Routes SystemSetting reads per key, mirroring the Settings page keys. */
+function mockSettings(prisma: any, values: Record<string, string>) {
+  prisma.systemSetting.findFirst.mockImplementation(
+    ({ where }: { where: { key: string } }) =>
+      values[where.key] !== undefined ? { key: where.key, value: values[where.key] } : null,
+  );
 }
 
 describe('NumberingService.next', () => {
@@ -57,11 +66,41 @@ describe('NumberingService.next', () => {
   it('uses a configured prefix override from SystemSetting', async () => {
     const { svc, prisma } = buildService();
     prisma.$queryRawUnsafe.mockResolvedValue([{ value: '3' }]);
-    prisma.systemSetting.findFirst.mockResolvedValue({ key: 'numbering.invoicePrefix', value: 'INV' });
+    mockSettings(prisma, { 'numbering.invoicePrefix': 'INV' });
 
     const number = await svc.next('sale', 'SI');
     expect(number).toBe(`INV-${year}-000003`);
     expect(prisma.systemSetting.findFirst).toHaveBeenCalledWith({ where: { key: 'numbering.invoicePrefix' } });
+  });
+
+  it('uses a custom number template with company and month tokens', async () => {
+    const { svc, prisma } = buildService();
+    prisma.$queryRawUnsafe.mockResolvedValue([{ value: '7' }]);
+    mockSettings(prisma, { 'numbering.template': '{prefix}/{company}/{year}-{seq}' });
+    prisma.brandingSetting.findFirst.mockResolvedValue({ shortName: 'ACME', businessName: 'ACME Ltd' });
+
+    const month = String(new Date().getMonth() + 1).padStart(2, '0');
+    const number = await svc.next('sale', 'SI');
+    expect(number).toBe(`SI/ACME/${year}-000007`);
+    expect(month).toBeTruthy();
+  });
+
+  it('uses the configured sequence padding', async () => {
+    const { svc, prisma } = buildService();
+    prisma.$queryRawUnsafe.mockResolvedValue([{ value: '7' }]);
+    mockSettings(prisma, { 'numbering.padding': '3' });
+
+    const number = await svc.next('sale', 'SI');
+    expect(number).toBe(`SI-${year}-007`);
+  });
+
+  it('keeps party codes unpadded by the template in a stable PREFIX-SEQUENCE shape', async () => {
+    const { svc, prisma } = buildService();
+    prisma.$queryRawUnsafe.mockResolvedValue([{ value: '5' }]);
+    mockSettings(prisma, { 'numbering.template': '{prefix}/{company}/{year}-{seq}' });
+
+    const number = await svc.next('customer', 'CST', undefined, 6, { year: false });
+    expect(number).toBe('CST-000005');
   });
 
   it('scopes the counter by year so each series restarts annually', async () => {
@@ -91,5 +130,14 @@ describe('NumberingService.preview', () => {
 
     const number = await svc.preview('sale', 'SI');
     expect(number).toBe(`SI-${new Date().getFullYear()}-000001`);
+  });
+
+  it('reflects a custom template when previewing', async () => {
+    const { svc, prisma } = buildService();
+    prisma.$queryRawUnsafe.mockResolvedValue([{ value: '2' }]);
+    mockSettings(prisma, { 'numbering.template': '{prefix}-{year}/{seq}' });
+
+    const number = await svc.preview('sale', 'SI');
+    expect(number).toBe(`SI-${new Date().getFullYear()}/000003`);
   });
 });

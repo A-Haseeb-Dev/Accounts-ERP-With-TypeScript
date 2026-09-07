@@ -14,6 +14,8 @@ const SETTING_KEYS = [
   'numbering.purchaseReturnPrefix',
   'numbering.stockTransferPrefix',
   'numbering.voucherPrefix',
+  'numbering.template',
+  'numbering.padding',
   'inventory.negative_stock',
   'defaults.stockLocationId',
   'defaults.customerId',

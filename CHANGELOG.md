@@ -8,6 +8,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Configurable number format template** — the exact shape of document numbers
+  is now fully controllable from the Settings page via a template string with
+  the tokens `{prefix}`, `{year}`, `{month}`, `{day}`, `{company}` and `{seq}`
+  (e.g. `{prefix}/{company}-{year}-{seq}` → `SI/ACME-2026-000123`), plus a
+  configurable sequence padding (e.g. 6 → `000123`, 3 → `123`). The `{company}`
+  token uses the Short Name from Branding. Party codes are unaffected and always
+  stay `PREFIX-SEQUENCE`. Defaults keep the existing `{prefix}-{year}-{seq}`
+  format, so existing data is untouched.
 - **Print format & numbering settings** — the Settings page now has a
   "Numbering" section with editable prefixes for invoices, purchases, sales
   returns, purchase returns, stock transfers and vouchers (applied live to new
