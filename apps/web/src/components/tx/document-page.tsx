@@ -20,7 +20,7 @@ import { toast } from 'sonner';
 import { printElement } from '@/lib/report-export';
 import { PrintableDocument } from '@/components/tx/printable-document';
 import type { Option } from '@/hooks/use-options';
-import type { Paginated, TransactionDoc, DocLine } from '@/lib/types';
+import type { AuditEntry, Paginated, TransactionDoc, DocLine } from '@/lib/types';
 
 export interface DocumentConfig {
   resource: string;
@@ -405,6 +405,11 @@ function DocumentDetailModal({
 }) {
   const items = detail?.items ?? [];
   const [previewOpen, setPreviewOpen] = useState(false);
+  const { data: activity } = useQuery<Paginated<AuditEntry>>({
+    queryKey: ['audit-logs', 'entity', detail?.id],
+    queryFn: () => apiFetch('/system/audit-logs' + qs({ page: 1, pageSize: 10, entityId: detail?.id })),
+    enabled: !!open && !!detail?.id,
+  });
   const printTitle = partyLabel === 'Supplier' ? 'Purchase Bill' : 'Sales Invoice';
   const isCancelled = detail?.status === 'cancelled';
 
@@ -508,6 +513,25 @@ function DocumentDetailModal({
 
           {!!detail.reference && <p className="mt-3 text-xs text-slate-500">Reference: {detail.reference}</p>}
           {!!detail.note && <p className="mt-1 text-xs text-slate-500">Note: {detail.note}</p>}
+
+          {activity && activity.items.length > 0 && (
+            <div className="mt-5">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Activity</div>
+              <ol className="space-y-0 border-l border-slate-200">
+                {activity.items.map((ev) => (
+                  <li key={ev.id} className="relative pb-3 pl-4">
+                    <span className="absolute -left-[5px] top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-teal-500" />
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="text-xs font-semibold text-slate-700">{ev.user?.fullName ?? ev.user?.username ?? 'System'}</span>
+                      <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">{ev.action}</span>
+                      <span className="text-[11px] text-slate-400">{dateTime(ev.createdAt)}</span>
+                    </div>
+                    {ev.message && <p className="mt-0.5 text-xs text-slate-500">{ev.message}</p>}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </div>
       )}
       </Modal>

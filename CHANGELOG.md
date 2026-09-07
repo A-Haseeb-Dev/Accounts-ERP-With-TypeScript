@@ -8,6 +8,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Per-document activity timeline** — opening any sales, purchase or return
+  document now shows an "Activity" trail (who created/updated/cancelled it and
+  when) inside the detail view, sourced from the audit log. The audit API also
+  gained an `entityId` filter so callers can scope events to a single record.
 - **Paper size & print scale** — Settings now controls the printed output
   format: choose A4, A5 or Letter paper for every invoice and report, and a
   print scale from 50–100% to shrink output for thermal or compact printers.

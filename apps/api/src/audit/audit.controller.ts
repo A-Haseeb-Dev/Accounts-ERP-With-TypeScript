@@ -22,6 +22,7 @@ export class AuditController {
     @Query('module') module?: string,
     @Query('action') action?: string,
     @Query('userId') userId?: string,
+    @Query('entityId') entityId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('search') search?: string,
@@ -32,6 +33,7 @@ export class AuditController {
     if (module) where.module = module;
     if (action) where.action = action;
     if (userId) where.userId = userId;
+    if (entityId) where.entityId = entityId;
     if (from || to) {
       where.createdAt = {
         ...(from ? { gte: new Date(from) } : {}),
