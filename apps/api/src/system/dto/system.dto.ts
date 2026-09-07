@@ -170,6 +170,16 @@ export class UpdateSettingsDto {
   @IsOptional()
   @Matches(/^(true|false)$/, { message: 'Must be true or false' })
   reportShowLogo?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(A4|A5|Letter)$/, { message: 'Paper size must be A4, A5 or Letter' })
+  paperSize?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^([5-9][0-9]|100)$/, { message: 'Print scale must be between 50 and 100' })
+  printScale?: string;
 }
 
 export class ImportSettingsDto {

@@ -83,6 +83,8 @@ export function PrintableDocument({
     return (branding?.[key] as string) || branding?.invoiceTerms || '';
   })();
 
+  const parkedWidth = fmt.paperSize === 'A5' ? '148mm' : fmt.paperSize === 'Letter' ? '216mm' : '210mm';
+
   return (
     <div
       id={preview ? 'printable-document-preview' : 'printable-document'}
@@ -101,7 +103,7 @@ export function PrintableDocument({
             position: 'fixed',
             left: '-200vw',
             top: 0,
-            width: '210mm',
+            width: parkedWidth,
             background: '#ffffff',
             color: dark,
             fontFamily: studio,

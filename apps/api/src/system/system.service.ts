@@ -25,6 +25,8 @@ const SETTING_KEYS = [
   'print.invoiceShowDate',
   'print.reportShowBranding',
   'print.reportShowLogo',
+  'print.paperSize',
+  'print.scale',
 ];
 
 @Injectable()
@@ -123,6 +125,8 @@ export class SystemService {
     if (dto.invoiceShowDate !== undefined) map['print.invoiceShowDate'] = dto.invoiceShowDate;
     if (dto.reportShowBranding !== undefined) map['print.reportShowBranding'] = dto.reportShowBranding;
     if (dto.reportShowLogo !== undefined) map['print.reportShowLogo'] = dto.reportShowLogo;
+    if (dto.paperSize !== undefined) map['print.paperSize'] = dto.paperSize;
+    if (dto.printScale !== undefined) map['print.scale'] = dto.printScale;
     if (dto.values) Object.assign(map, dto.values);
 
     for (const key of Object.keys(map)) {

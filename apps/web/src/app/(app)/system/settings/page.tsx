@@ -49,6 +49,8 @@ export default function SettingsPage() {
       invoiceShowDate: form.invoiceShowDate || undefined,
       reportShowBranding: form.reportShowBranding || undefined,
       reportShowLogo: form.reportShowLogo || undefined,
+      paperSize: form.paperSize || undefined,
+      printScale: form.printScale || undefined,
       negativeInventory: form.negativeInventory || undefined,
       defaultStockLocationId: form.defaultStockLocationId || undefined,
       defaultCustomerId: form.defaultCustomerId || undefined,
@@ -175,6 +177,26 @@ export default function SettingsPage() {
                   <Select value={merged.reportShowLogo ?? 'false'} onChange={(e) => set('reportShowLogo', e.target.value)}>
                     <option value="false">No</option>
                     <option value="true">Yes</option>
+                  </Select>
+                </Field>
+                <Field label="Paper Size" hint="Applies to everything you print or export">
+                  <Select value={String(form.paperSize ?? merged.paperSize ?? 'A4')} onChange={(e) => set('paperSize', e.target.value)}>
+                    <option value="A4">A4</option>
+                    <option value="A5">A5</option>
+                    <option value="Letter">Letter</option>
+                  </Select>
+                </Field>
+                <Field label="Print Scale" hint="Shrink output for thermal/compact printers">
+                  <Select value={String(form.printScale ?? merged.printScale ?? '100')} onChange={(e) => set('printScale', e.target.value)}>
+                    <option value="100">100%</option>
+                    <option value="95">95%</option>
+                    <option value="90">90%</option>
+                    <option value="85">85%</option>
+                    <option value="80">80%</option>
+                    <option value="75">75%</option>
+                    <option value="70">70%</option>
+                    <option value="60">60%</option>
+                    <option value="50">50%</option>
                   </Select>
                 </Field>
               </div>

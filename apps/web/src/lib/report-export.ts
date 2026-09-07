@@ -8,20 +8,26 @@
  *
  * `overlay` (e.g. "CANCELLED", "DUPLICATE") is drawn as a translucent rotated
  * watermark across the page — used for cancelled documents and copy runs.
+ *
+ * Paper size (A4/A5/Letter) and print scale (50–100%) are read from
+ * localStorage, which usePrintSettings() keeps in sync with the Settings page.
  */
 export function printElement(id: string, title?: string, overlay?: string): void {
   const source = document.getElementById(id);
   if (!source) return;
 
-  // A4 at 96dpi. Using real dimensions (instead of 0×0) avoids blank prints
-  // in browsers that refuse to render zero-sized iframe content.
+  const { paper, scale } = printPrefs();
+  const frameSize = PAPER_PX[paper] ?? PAPER_PX.A4;
+
+  // Real dimensions (instead of 0×0) avoid blank prints in browsers that
+  // refuse to render zero-sized iframe content.
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
   frame.style.position = 'absolute';
   frame.style.left = '-10000px';
   frame.style.top = '0';
-  frame.style.width = '794px';
-  frame.style.height = '1123px';
+  frame.style.width = `${frameSize.width}px`;
+  frame.style.height = `${frameSize.height}px`;
   frame.style.visibility = 'hidden';
   frame.style.border = '0';
   document.body.appendChild(frame);
@@ -57,8 +63,10 @@ export function printElement(id: string, title?: string, overlay?: string): void
     bodyHTML += `<div style="position:fixed;top:45%;left:50%;transform:translate(-50%,-50%) rotate(-25deg);z-index:999;font-size:56px;font-weight:800;letter-spacing:10px;text-transform:uppercase;color:#dc2626;opacity:.16;border:5px solid #dc2626;border-radius:14px;padding:8px 28px;pointer-events:none;text-align:center;">${escapeHtml(overlay)}</div>`;
   }
 
+  const pageCss = `@media print{@page{size:${paper};margin:12mm;@bottom-center{content:"Page " counter(page) " of " counter(pages);font-family:sans-serif;font-size:10px;color:#64748b;}}body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}`;
+
   doc.open();
-  doc.write(`<!doctype html><html><head>${headHTML}<style>@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}@page{@bottom-center{content:"Page " counter(page) " of " counter(pages);font-family:sans-serif;font-size:10px;color:#64748b;}}}</style></head><body style="padding:16px;font-family:Inter,ui-sans-serif,system-ui,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${bodyHTML}</body></html>`);
+  doc.write(`<!doctype html><html><head>${headHTML}<style>${pageCss}</style></head><body style="padding:16px;font-family:Inter,ui-sans-serif,system-ui,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;zoom:${scale / 100};">${bodyHTML}</body></html>`);
   doc.close();
 
   // Give the browser a tick to parse styles, then print.
@@ -71,6 +79,30 @@ export function printElement(id: string, title?: string, overlay?: string): void
     }
   };
   setTimeout(print, 400);
+}
+
+const PAPER_PX: Record<string, { width: number; height: number }> = {
+  A4: { width: 794, height: 1123 }, // 210×297mm @96dpi
+  A5: { width: 559, height: 794 }, //  148×210mm @96dpi
+  Letter: { width: 816, height: 1056 }, // 8.5×11in @96dpi
+};
+
+function printPrefs(): { paper: 'A4' | 'A5' | 'Letter'; scale: number } {
+  let paper: 'A4' | 'A5' | 'Letter' = 'A4';
+  try {
+    const raw = localStorage.getItem('print.paperSize');
+    if (raw === 'A5' || raw === 'Letter') paper = raw;
+  } catch {
+    // ignore
+  }
+  let scale = 100;
+  try {
+    const raw = Number(localStorage.getItem('print.scale'));
+    if (Number.isFinite(raw)) scale = Math.min(100, Math.max(50, raw));
+  } catch {
+    // ignore
+  }
+  return { paper, scale };
 }
 
 function escapeHtml(value: string): string {

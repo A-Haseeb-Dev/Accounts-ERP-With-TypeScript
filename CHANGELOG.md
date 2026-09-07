@@ -8,6 +8,11 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Paper size & print scale** — Settings now controls the printed output
+  format: choose A4, A5 or Letter paper for every invoice and report, and a
+  print scale from 50–100% to shrink output for thermal or compact printers.
+  The invoice template adjusts its layout width to the selected paper, and the
+  print engine (`@page size` + zoom) applies both options automatically.
 - **Logo & favicon upload from disk** — Branding now lets you pick a logo or
   favicon file (PNG/JPG/SVG/WebP, up to 1.5 MB) directly from your computer
   instead of only pasting a URL. The image is embedded as a data URL, so it
