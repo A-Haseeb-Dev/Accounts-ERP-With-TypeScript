@@ -47,8 +47,8 @@ interface ItemBrief {
   id: string;
   code: string;
   name: string;
-  purchasePrice?: unknown;
-  salePrice?: unknown;
+  purchasePrice?: number;
+  salePrice?: number;
 }
 
 export function useItemOptions(): { options: Option[]; data: ItemBrief[]; isLoading: boolean } {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, Eye, Plus, Printer, Search, XCircle } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { useItemOptions } from '@/hooks/use-options';
@@ -44,7 +44,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
   } = config;
 
   const qc = useQueryClient();
-  const { options: itemOptions } = useItemOptions();
+  const { options: itemOptions, data: itemData } = useItemOptions();
   const { post, cancel } = useDocumentMutations(resource, resource, { noun: config.newLabel?.toLowerCase() ?? 'document' });
 
   const [search, setSearch] = useState('');
@@ -55,8 +55,10 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
   const [lines, setLines] = useState<LineItem[]>([]);
   const [error, setError] = useState('');
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [printRequested, setPrintRequested] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<TransactionDoc | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const autoPrintRef = useRef(false);
 
   const { data, isLoading } = useQuery<Paginated<TransactionDoc>>({
     queryKey: [resource, page, search, status],
@@ -70,13 +72,18 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
   });
 
   const create = useMutation({
-    mutationFn: (payload: unknown) => apiFetch(`/${resource}`, { method: 'POST', body: JSON.stringify(payload) }),
-    onSuccess: () => {
+    mutationFn: (payload: unknown) => apiFetch<TransactionDoc>(`/${resource}`, { method: 'POST', body: JSON.stringify(payload) }),
+    onSuccess: (record: TransactionDoc) => {
       qc.invalidateQueries({ queryKey: [resource] });
       setModalOpen(false);
       setForm({});
       setLines([]);
       toast.success(`${config.newLabel ?? 'Document'} saved`);
+      if (autoPrintRef.current) {
+        autoPrintRef.current = false;
+        setPrintRequested(true);
+        setDetailId(record.id);
+      }
     },
     onError: (e: Error) => {
       setError(e.message);
@@ -111,12 +118,33 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
     });
   };
 
+  const submitAndPrint = (e: React.FormEvent) => {
+    autoPrintRef.current = true;
+    submit(e);
+  };
+
+  const defaultPrice = (itemId: string): number | undefined => {
+    const it = itemData.find((i) => i.id === itemId);
+    if (!it) return undefined;
+    const raw = priceKey === 'unitCost' ? it.purchasePrice : it.salePrice;
+    const n = Number(raw ?? 0);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  const lineSubtotal = lines.reduce((s, l) => s + l.quantity * l.price, 0);
+  const lineDiscount = lines.reduce((s, l) => s + (l.discount || 0), 0);
+  const lineTax = lines.reduce((s, l) => s + (l.tax || 0), 0);
   const grandTotal = useMemo(() => {
     const sub = lines.reduce((s, l) => s + l.quantity * l.price - (l.discount || 0) + (l.tax || 0), 0);
     return sub - Number(form.discount ?? 0) + Number(form.tax ?? 0);
   }, [lines, form.discount, form.tax]);
 
+  const paid = Number(form.amountPaid ?? 0);
+  const due = Math.max(0, grandTotal - paid);
+  const paymentPreview = due <= 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+
   const partyField = partyParam;
+  const canSubmit = lines.length > 0 && !!form[partyField] && !!form.stockLocationId;
 
   return (
     <div>
@@ -188,55 +216,110 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
         />
       </Card>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={`New ${title}`} size="lg">
-        <form onSubmit={submit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <Field label={`${dateField === 'returnDate' ? 'Return' : title.replace(/s$/,'')} Date`} required>
-              <Input type="date" value={String(form[dateField] ?? '')} onChange={(e) => setForm((f) => ({ ...f, [dateField]: e.target.value }))} required />
-            </Field>
-            <Field label="Reference">
-              <Input value={String(form.reference ?? '')} onChange={(e) => setForm((f) => ({ ...f, reference: e.target.value }))} placeholder="party invoice #" />
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label={partyLabel} required>
-              <Select value={String(form[partyField] ?? '')} onChange={(e) => setForm((f) => ({ ...f, [partyField]: e.target.value }))} required>
-                <option value="">Select {partyLabel.toLowerCase()}…</option>
-                {partyOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </Select>
-            </Field>
-            <Field label="Stock Location" required>
-              <Select value={String(form.stockLocationId ?? '')} onChange={(e) => setForm((f) => ({ ...f, stockLocationId: e.target.value }))} required>
-                <option value="">Select location…</option>
-                {locationOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </Select>
-            </Field>
-          </div>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={`New ${title}`} size="xl">
+        <form onSubmit={submit} className="space-y-5">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
+            <div className="min-w-0 space-y-5">
+              <Section label={`${partyLabel === 'Supplier' ? 'Purchase' : 'Sales'} Details`}>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field label={`${dateField === 'returnDate' ? 'Return' : title.replace(/s$/,'')} Date`} required>
+                    <Input type="date" value={String(form[dateField] ?? '')} onChange={(e) => setForm((f) => ({ ...f, [dateField]: e.target.value }))} required />
+                  </Field>
+                  <Field label="Reference">
+                    <Input value={String(form.reference ?? '')} onChange={(e) => setForm((f) => ({ ...f, reference: e.target.value }))} placeholder="party invoice #" />
+                  </Field>
+                </div>
+              </Section>
 
-          <div>
-            <p className="mb-1.5 text-sm font-medium text-slate-700">Items</p>
-            <ItemsEditor items={lines} onChange={setLines} itemOptions={itemOptions} priceKey={priceKey} />
-          </div>
+              <Section label={partyLabel}>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field label={partyLabel} required>
+                    <Select value={String(form[partyField] ?? '')} onChange={(e) => setForm((f) => ({ ...f, [partyField]: e.target.value }))} required>
+                      <option value="">Select {partyLabel.toLowerCase()}…</option>
+                      {partyOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="Stock Location" required>
+                    <Select value={String(form.stockLocationId ?? '')} onChange={(e) => setForm((f) => ({ ...f, stockLocationId: e.target.value }))} required>
+                      <option value="">Select location…</option>
+                      {locationOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </Select>
+                  </Field>
+                </div>
+              </Section>
 
-          <div className="grid grid-cols-3 gap-4">
-            <Field label="Discount"><Input type="number" step="0.01" value={String(form.discount ?? 0)} onChange={(e) => setForm((f) => ({ ...f, discount: Number(e.target.value) || 0 }))} /></Field>
-            <Field label="Tax"><Input type="number" step="0.01" value={String(form.tax ?? 0)} onChange={(e) => setForm((f) => ({ ...f, tax: Number(e.target.value) || 0 }))} /></Field>
-            <Field label="Grand Total">
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-right text-sm font-semibold text-slate-800">{money(grandTotal, 'PKR')}</div>
-            </Field>
+              <Section label="Items">
+                <ItemsEditor
+                  items={lines}
+                  onChange={setLines}
+                  itemOptions={itemOptions}
+                  priceKey={priceKey}
+                  defaultPrice={defaultPrice}
+                />
+              </Section>
+
+              <Section label="Note">
+                <Textarea value={String(form.note ?? '')} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} placeholder="Optional notes printed on the document…" />
+              </Section>
+            </div>
+
+            <div className="min-w-0">
+              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Totals</p>
+                <TotalsRow label="Subtotal" value={money(lineSubtotal, 'PKR')} />
+                {lineDiscount > 0 && <TotalsRow label="Line discounts" value={`- ${money(lineDiscount, 'PKR')}`} />}
+                {lineTax > 0 && <TotalsRow label="Line tax" value={money(lineTax, 'PKR')} />}
+
+                <div className="grid grid-cols-2 gap-3 border-t border-slate-200 pt-3">
+                  <Field label="Discount"><Input type="number" min={0} step="0.01" value={String(form.discount ?? 0)} onChange={(e) => setForm((f) => ({ ...f, discount: Number(e.target.value) || 0 }))} /></Field>
+                  <Field label="Tax"><Input type="number" min={0} step="0.01" value={String(form.tax ?? 0)} onChange={(e) => setForm((f) => ({ ...f, tax: Number(e.target.value) || 0 }))} /></Field>
+                </div>
+
+                <div className="flex items-center justify-between border-t-2 border-slate-800 pt-2.5">
+                  <span className="text-sm font-semibold text-slate-800">Grand total</span>
+                  <span className="text-lg font-bold tabular-nums text-slate-900">{money(grandTotal, 'PKR')}</span>
+                </div>
+
+                {showAmountPaid && (
+                  <>
+                    <div className="space-y-1.5 border-t border-slate-200 pt-3">
+                      <Field label="Amount Paid">
+                        <div className="flex gap-2">
+                          <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={String(paid || 0)}
+                            onChange={(e) => setForm((f) => ({ ...f, amountPaid: Math.min(Number(e.target.value) || 0, grandTotal) }))}
+                          />
+                          <Button type="button" variant="secondary" size="md" onClick={() => setForm((f) => ({ ...f, amountPaid: grandTotal }))}>
+                            Pay in full
+                          </Button>
+                        </div>
+                      </Field>
+                      <div className="flex justify-between text-sm text-slate-600">
+                        <span>Balance due</span>
+                        <span className="tabular-nums font-semibold text-slate-800">{money(due, 'PKR')}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <span className="h-2 w-2 rounded-full" style={{ background: paymentPreview === 'paid' ? '#059669' : paymentPreview === 'partial' ? '#d97706' : '#dc2626' }} />
+                        Payment will be <b className="uppercase text-slate-700">{paymentPreview}</b>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
-          {showAmountPaid && (
-            <Field label="Amount Paid">
-              <Input type="number" step="0.01" value={String(form.amountPaid ?? 0)} onChange={(e) => setForm((f) => ({ ...f, amountPaid: Number(e.target.value) || 0 }))} />
-            </Field>
-          )}
-          <Field label="Note"><Textarea value={String(form.note ?? '')} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} /></Field>
 
           {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
             <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button type="submit" loading={create.isPending}>Create</Button>
+            <Button type="button" variant="outline" onClick={submitAndPrint} disabled={!canSubmit} loading={create.isPending}>
+              <Printer className="h-4 w-4" /> Save & Print
+            </Button>
+            <Button type="submit" disabled={!canSubmit} loading={create.isPending}>Create</Button>
           </div>
         </form>
       </Modal>
@@ -250,6 +333,8 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
         dateField={dateField}
         partyLabel={partyLabel}
         showAmountPaid={!!showAmountPaid}
+        printRequested={printRequested}
+        onPrintDone={() => setPrintRequested(false)}
         onClose={() => setDetailId(null)}
       />
 
@@ -282,6 +367,8 @@ function DocumentDetailModal({
   dateField,
   partyLabel,
   showAmountPaid,
+  printRequested,
+  onPrintDone,
   onClose,
 }: {
   open: boolean;
@@ -292,12 +379,22 @@ function DocumentDetailModal({
   dateField: string;
   partyLabel: string;
   showAmountPaid: boolean;
+  printRequested?: boolean;
+  onPrintDone?: () => void;
   onClose: () => void;
 }) {
   const items = detail?.items ?? [];
   const [previewOpen, setPreviewOpen] = useState(false);
   const printTitle = partyLabel === 'Supplier' ? 'Purchase Bill' : 'Sales Invoice';
   const isCancelled = detail?.status === 'cancelled';
+
+  useEffect(() => {
+    if (printRequested && detail && !loading) {
+      printElement('printable-document', printTitle, isCancelled ? 'CANCELLED' : undefined);
+      onPrintDone?.();
+    }
+  }, [printRequested, detail, loading, printTitle, isCancelled, onPrintDone]);
+
   return (
     <>
       <PrintableDocument
@@ -425,4 +522,22 @@ function Facts({ label, value }: { label: string; value: string }) {
 
 function Fact({ label, value }: { label: string; value: string }) {
   return <div className="flex justify-between text-slate-600"><span>{label}</span><span className="tabular-nums">{value}</span></div>;
+}
+
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="mb-2 border-b border-slate-100 pb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function TotalsRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between text-sm text-slate-600">
+      <span>{label}</span>
+      <span className="tabular-nums">{value}</span>
+    </div>
+  );
 }

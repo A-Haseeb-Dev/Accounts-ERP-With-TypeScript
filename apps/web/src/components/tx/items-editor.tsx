@@ -1,10 +1,11 @@
 'use client';
 
 import { Plus, Trash2 } from 'lucide-react';
+import { useRef } from 'react';
 import { Select, Input } from '@/components/ui/field';
 import { Button } from '@/components/ui/button';
 import type { Option } from '@/hooks/use-options';
-import { money, num } from '@/lib/utils';
+import { money } from '@/lib/utils';
 
 export interface LineItem {
   key: string;
@@ -21,9 +22,13 @@ interface ItemsEditorProps {
   onChange: (items: LineItem[]) => void;
   itemOptions: Option[];
   priceKey: 'unitCost' | 'unitPrice';
+  /** Returns the item's default cost/price, used to prefill a line on item pick. */
+  defaultPrice?: (itemId: string) => number | undefined;
 }
 
-export function ItemsEditor({ items, onChange, itemOptions, priceKey }: ItemsEditorProps) {
+export function ItemsEditor({ items, onChange, itemOptions, priceKey, defaultPrice }: ItemsEditorProps) {
+  const tableRef = useRef<HTMLDivElement>(null);
+
   const addLine = () => {
     onChange([
       ...items,
@@ -41,7 +46,34 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey }: ItemsEdi
 
   const onPickItem = (key: string, value: string) => {
     const opt = itemOptions.find((o) => o.value === value);
-    update(key, { itemId: value, itemName: opt?.label });
+    const prefill = value && defaultPrice ? defaultPrice(value) : undefined;
+    update(key, {
+      itemId: value,
+      itemName: opt?.label,
+      ...(value && prefill != null && Number.isFinite(prefill) ? { price: prefill } : {}),
+    });
+  };
+
+  /**
+   * Enter moves to the next row (or appends a new one at the end) instead of
+   * submitting the surrounding form.
+   */
+  const onEnterFrom = (index: number, e: React.KeyboardEvent) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const rows = tableRef.current?.querySelectorAll('tbody tr');
+    const next = rows?.[index + 1];
+    if (next) {
+      const input = next.querySelector<HTMLInputElement>('input');
+      input?.focus();
+    } else {
+      addLine();
+      setTimeout(() => {
+        const last = tableRef.current?.querySelectorAll('tbody tr');
+        const input = last?.[last.length - 1]?.querySelector<HTMLInputElement>('input');
+        input?.focus();
+      }, 0);
+    }
   };
 
   const subtotal = items.reduce((s, i) => s + i.quantity * i.price, 0);
@@ -51,10 +83,11 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey }: ItemsEdi
 
   return (
     <div>
-      <div className="overflow-x-auto rounded-lg border border-slate-200">
+      <div ref={tableRef} className="overflow-x-auto rounded-lg border border-slate-200">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+              <th className="w-8 px-3 py-2">#</th>
               <th className="px-3 py-2">Item</th>
               <th className="w-20 px-3 py-2 text-right">Qty</th>
               <th className="w-28 px-3 py-2 text-right">{priceKey === 'unitCost' ? 'Unit Cost' : 'Unit Price'}</th>
@@ -65,10 +98,11 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey }: ItemsEdi
             </tr>
           </thead>
           <tbody>
-            {items.map((i) => {
+            {items.map((i, idx) => {
               const lineTotal = i.quantity * i.price - i.discount + i.tax;
               return (
                 <tr key={i.key} className="border-b border-slate-100 last:border-0">
+                  <td className="px-3 py-1.5 text-slate-400">{idx + 1}</td>
                   <td className="px-3 py-1.5">
                     <Select
                       value={i.itemId ?? ''}
@@ -85,7 +119,8 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey }: ItemsEdi
                       min={1}
                       value={String(i.quantity)}
                       onChange={(e) => update(i.key, { quantity: Number(e.target.value) || 0 })}
-                      className="text-right"
+                      onKeyDown={(e) => onEnterFrom(idx, e)}
+                      className="w-16 text-right"
                     />
                   </td>
                   <td className="px-3 py-1.5">
@@ -95,7 +130,8 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey }: ItemsEdi
                       step="0.01"
                       value={String(i.price)}
                       onChange={(e) => update(i.key, { price: Number(e.target.value) || 0 })}
-                      className="text-right"
+                      onKeyDown={(e) => onEnterFrom(idx, e)}
+                      className="w-24 text-right"
                     />
                   </td>
                   <td className="px-3 py-1.5">
@@ -105,6 +141,7 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey }: ItemsEdi
                       step="0.01"
                       value={String(i.discount || 0)}
                       onChange={(e) => update(i.key, { discount: Number(e.target.value) || 0 })}
+                      onKeyDown={(e) => onEnterFrom(idx, e)}
                       className="w-20 text-right"
                     />
                   </td>
@@ -115,6 +152,7 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey }: ItemsEdi
                       step="0.01"
                       value={String(i.tax || 0)}
                       onChange={(e) => update(i.key, { tax: Number(e.target.value) || 0 })}
+                      onKeyDown={(e) => onEnterFrom(idx, e)}
                       className="w-20 text-right"
                     />
                   </td>
@@ -131,7 +169,7 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey }: ItemsEdi
             })}
             {items.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-400">No lines yet — add an item.</td>
+                <td colSpan={8} className="px-3 py-6 text-center text-sm text-slate-400">No lines yet — add an item.</td>
               </tr>
             )}
           </tbody>

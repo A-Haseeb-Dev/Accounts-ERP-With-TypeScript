@@ -8,6 +8,17 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Professional invoice/bill creation form** — the shared document modal was
+  redesigned into a wide, two-column layout: the left side groups fields into
+  clearly labelled sections (document details, party & stock location, items,
+  note), and the right side shows a live totals card with subtotal, per-line
+  discount/tax, header-level discount/tax inputs, grand total, amount paid with
+  a one-click "Pay in full" button, the balance due, and a payment-status
+  preview badge. The item editor gained a line-number column, Enter moves to the
+  next row (or appends one), and picking an item prefills its default unit
+  price. Create is disabled until a party, location, and at least one item are
+  valid, and a new "Save & Print" action creates the document and immediately
+  prints it.
 - **Per-line discount & tax on invoices** — the item editor now has Discount and
   Tax columns per line, the form sends them to the API, and document totals
   (subtotal/grand total) include them, so the printed invoice's Disc/Tax columns
