@@ -54,6 +54,38 @@ export class UpdateBrandingDto {
   @IsString()
   @IsOptional()
   reportFooter?: string;
+
+  @IsString()
+  @IsOptional()
+  saleFooter?: string;
+
+  @IsString()
+  @IsOptional()
+  saleTerms?: string;
+
+  @IsString()
+  @IsOptional()
+  purchaseFooter?: string;
+
+  @IsString()
+  @IsOptional()
+  purchaseTerms?: string;
+
+  @IsString()
+  @IsOptional()
+  salesReturnFooter?: string;
+
+  @IsString()
+  @IsOptional()
+  salesReturnTerms?: string;
+
+  @IsString()
+  @IsOptional()
+  purchaseReturnFooter?: string;
+
+  @IsString()
+  @IsOptional()
+  purchaseReturnTerms?: string;
 }
 
 export class UpdateSettingsDto {

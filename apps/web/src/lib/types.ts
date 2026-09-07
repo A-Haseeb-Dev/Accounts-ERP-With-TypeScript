@@ -392,6 +392,14 @@ export interface BrandingSetting {
   invoiceFooter?: string;
   invoiceTerms?: string;
   reportFooter?: string;
+  saleFooter?: string;
+  saleTerms?: string;
+  purchaseFooter?: string;
+  purchaseTerms?: string;
+  salesReturnFooter?: string;
+  salesReturnTerms?: string;
+  purchaseReturnFooter?: string;
+  purchaseReturnTerms?: string;
   updatedAt: string;
 }
 

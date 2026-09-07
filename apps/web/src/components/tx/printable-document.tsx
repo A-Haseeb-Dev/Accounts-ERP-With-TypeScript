@@ -24,6 +24,8 @@ export interface PrintableDocumentProps {
   showAmountPaid: boolean;
   /** Render in-flow (for an on-screen preview) instead of parked off-screen. */
   preview?: boolean;
+  /** Document type for per-type footer/terms: 'sale' | 'purchase' | 'salesReturn' | 'purchaseReturn' */
+  docType?: string;
 }
 
 export function PrintableDocument({
@@ -35,6 +37,7 @@ export function PrintableDocument({
   priceKey,
   showAmountPaid,
   preview = false,
+  docType,
 }: PrintableDocumentProps) {
   const { data: branding } = useQuery<BrandingSetting | null>({
     queryKey: ['branding'],
@@ -68,6 +71,17 @@ export function PrintableDocument({
 
   const statusColor =
     paymentStatus === 'paid' ? '#059669' : paymentStatus === 'partial' ? '#d97706' : '#dc2626';
+
+  const docFooter = (() => {
+    if (!docType) return branding?.invoiceFooter ?? '';
+    const key = docType + 'Footer' as keyof BrandingSetting;
+    return (branding?.[key] as string) || branding?.invoiceFooter || '';
+  })();
+  const docTerms = (() => {
+    if (!docType) return branding?.invoiceTerms ?? '';
+    const key = docType + 'Terms' as keyof BrandingSetting;
+    return (branding?.[key] as string) || branding?.invoiceTerms || '';
+  })();
 
   return (
     <div
@@ -248,10 +262,10 @@ export function PrintableDocument({
       </div>
 
       {/* Terms / footer */}
-      {(!!branding?.invoiceTerms || !!branding?.invoiceFooter) && (
+      {(!!docTerms || !!docFooter) && (
         <div style={{ marginTop: 24, borderTop: '1px solid #e2e8f0', paddingTop: 10, fontSize: 11, color: muted }}>
-          {!!branding?.invoiceTerms && <p style={{ marginBottom: 4 }}>{String(branding.invoiceTerms)}</p>}
-          {!!branding?.invoiceFooter && <p>{String(branding.invoiceFooter)}</p>}
+          {!!docTerms && <p style={{ marginBottom: 4 }}>{docTerms}</p>}
+          {!!docFooter && <p>{docFooter}</p>}
         </div>
       )}
     </div>

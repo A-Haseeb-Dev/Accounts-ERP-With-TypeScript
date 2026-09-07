@@ -47,6 +47,12 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
   const { options: itemOptions, data: itemData } = useItemOptions();
   const { post, cancel } = useDocumentMutations(resource, resource, { noun: config.newLabel?.toLowerCase() ?? 'document' });
 
+  const docType =
+    resource === 'purchases' ? 'purchase'
+    : resource === 'sales-returns' ? 'salesReturn'
+    : resource === 'purchase-returns' ? 'purchaseReturn'
+    : 'sale';
+
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
@@ -344,6 +350,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
         dateField={dateField}
         partyLabel={partyLabel}
         showAmountPaid={!!showAmountPaid}
+        docType={docType}
         printRequested={printRequested}
         onPrintDone={() => setPrintRequested(false)}
         onClose={() => setDetailId(null)}
@@ -378,6 +385,7 @@ function DocumentDetailModal({
   dateField,
   partyLabel,
   showAmountPaid,
+  docType,
   printRequested,
   onPrintDone,
   onClose,
@@ -390,6 +398,7 @@ function DocumentDetailModal({
   dateField: string;
   partyLabel: string;
   showAmountPaid: boolean;
+  docType?: string;
   printRequested?: boolean;
   onPrintDone?: () => void;
   onClose: () => void;
@@ -416,6 +425,7 @@ function DocumentDetailModal({
         dateField={dateField}
         priceKey={priceKey}
         showAmountPaid={showAmountPaid}
+        docType={docType}
       />
       <Modal open={open} onClose={onClose} title={`${detail?.number ?? ''}`} size="lg">
         {loading || !detail ? null : (
@@ -514,6 +524,7 @@ function DocumentDetailModal({
               dateField={dateField}
               priceKey={priceKey}
               showAmountPaid={showAmountPaid}
+              docType={docType}
             />
           </div>
         </div>

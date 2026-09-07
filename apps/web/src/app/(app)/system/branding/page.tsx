@@ -33,7 +33,7 @@ export default function BrandingPage() {
     e.preventDefault();
     setError('');
     const payload: Record<string, string> = {};
-    for (const k of ['businessName', 'shortName', 'logoUrl', 'faviconUrl', 'primaryColor', 'secondaryColor', 'address', 'phone', 'email', 'ntn', 'invoiceFooter', 'invoiceTerms', 'reportFooter'] as const) {
+    for (const k of ['businessName', 'shortName', 'logoUrl', 'faviconUrl', 'primaryColor', 'secondaryColor', 'address', 'phone', 'email', 'ntn', 'invoiceFooter', 'invoiceTerms', 'reportFooter', 'saleFooter', 'saleTerms', 'purchaseFooter', 'purchaseTerms', 'salesReturnFooter', 'salesReturnTerms', 'purchaseReturnFooter', 'purchaseReturnTerms'] as const) {
       const v = merged[k];
       if (v !== undefined && v.trim() !== '') payload[k] = v;
     }
@@ -69,6 +69,22 @@ export default function BrandingPage() {
             <Field label="Invoice Footer"><Textarea value={merged.invoiceFooter ?? ''} onChange={(e) => set('invoiceFooter', e.target.value)} /></Field>
             <Field label="Invoice Terms"><Textarea value={merged.invoiceTerms ?? ''} onChange={(e) => set('invoiceTerms', e.target.value)} /></Field>
             <Field label="Report Footer"><Textarea value={merged.reportFooter ?? ''} onChange={(e) => set('reportFooter', e.target.value)} /></Field>
+
+            <div className="border-t border-slate-100 pt-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Per-Document Footer &amp; Terms (leave blank to fall back to Invoice Footer / Terms)
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <Field label="Sales Invoice Footer"><Textarea className="h-20" value={merged.saleFooter ?? ''} onChange={(e) => set('saleFooter', e.target.value)} /></Field>
+                <Field label="Sales Invoice Terms"><Textarea className="h-20" value={merged.saleTerms ?? ''} onChange={(e) => set('saleTerms', e.target.value)} /></Field>
+                <Field label="Purchase Bill Footer"><Textarea className="h-20" value={merged.purchaseFooter ?? ''} onChange={(e) => set('purchaseFooter', e.target.value)} /></Field>
+                <Field label="Purchase Bill Terms"><Textarea className="h-20" value={merged.purchaseTerms ?? ''} onChange={(e) => set('purchaseTerms', e.target.value)} /></Field>
+                <Field label="Sales Return Footer"><Textarea className="h-20" value={merged.salesReturnFooter ?? ''} onChange={(e) => set('salesReturnFooter', e.target.value)} /></Field>
+                <Field label="Sales Return Terms"><Textarea className="h-20" value={merged.salesReturnTerms ?? ''} onChange={(e) => set('salesReturnTerms', e.target.value)} /></Field>
+                <Field label="Purchase Return Footer"><Textarea className="h-20" value={merged.purchaseReturnFooter ?? ''} onChange={(e) => set('purchaseReturnFooter', e.target.value)} /></Field>
+                <Field label="Purchase Return Terms"><Textarea className="h-20" value={merged.purchaseReturnTerms ?? ''} onChange={(e) => set('purchaseReturnTerms', e.target.value)} /></Field>
+              </div>
+            </div>
 
             {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
             <div className="flex justify-end">

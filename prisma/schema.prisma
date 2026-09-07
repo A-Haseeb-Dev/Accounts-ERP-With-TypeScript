@@ -736,6 +736,14 @@ model BrandingSetting {
   invoiceFooter  String?
   invoiceTerms   String?
   reportFooter   String?
+  saleFooter     String?
+  saleTerms      String?
+  purchaseFooter String?
+  purchaseTerms  String?
+  salesReturnFooter  String?
+  salesReturnTerms   String?
+  purchaseReturnFooter String?
+  purchaseReturnTerms  String?
   organizationId String   @default("default-org")
   updatedAt      DateTime @updatedAt
   updatedById    String?

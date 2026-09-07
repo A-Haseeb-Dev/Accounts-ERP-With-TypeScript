@@ -54,6 +54,14 @@ export class SystemService {
       invoiceFooter: dto.invoiceFooter,
       invoiceTerms: dto.invoiceTerms,
       reportFooter: dto.reportFooter,
+      saleFooter: dto.saleFooter,
+      saleTerms: dto.saleTerms,
+      purchaseFooter: dto.purchaseFooter,
+      purchaseTerms: dto.purchaseTerms,
+      salesReturnFooter: dto.salesReturnFooter,
+      salesReturnTerms: dto.salesReturnTerms,
+      purchaseReturnFooter: dto.purchaseReturnFooter,
+      purchaseReturnTerms: dto.purchaseReturnTerms,
       updatedById: actorId,
     };
 
@@ -174,6 +182,8 @@ export class SystemService {
         'businessName', 'shortName', 'logoUrl', 'faviconUrl', 'primaryColor',
         'secondaryColor', 'address', 'phone', 'email', 'ntn',
         'invoiceFooter', 'invoiceTerms', 'reportFooter',
+        'saleFooter', 'saleTerms', 'purchaseFooter', 'purchaseTerms',
+        'salesReturnFooter', 'salesReturnTerms', 'purchaseReturnFooter', 'purchaseReturnTerms',
       ] as const;
       for (const field of fields) {
         const value = source[field];

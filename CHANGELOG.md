@@ -8,6 +8,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Per-document-type footer & terms** — Branding can now define printed
+  footer/terms for each document type (Sales Invoice, Purchase Bill, Sales
+  Return, Purchase Return). Each type falls back to the shared Invoice Footer /
+  Terms when its own is left blank, so existing setups are unaffected.
 - **Settings backup & restore** — the Settings page has a new "Backup & Restore"
   section. "Export Backup (JSON)" downloads every system setting (including
   numbering counters), print-format configuration and branding as a single
