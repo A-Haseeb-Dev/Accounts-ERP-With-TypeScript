@@ -21,6 +21,8 @@ export interface PrintableDocumentProps {
   dateField: string;
   priceKey: 'unitCost' | 'unitPrice';
   showAmountPaid: boolean;
+  /** Render in-flow (for an on-screen preview) instead of parked off-screen. */
+  preview?: boolean;
 }
 
 export function PrintableDocument({
@@ -31,6 +33,7 @@ export function PrintableDocument({
   dateField,
   priceKey,
   showAmountPaid,
+  preview = false,
 }: PrintableDocumentProps) {
   const { data: branding } = useQuery<BrandingSetting | null>({
     queryKey: ['branding'],
@@ -65,19 +68,30 @@ export function PrintableDocument({
 
   return (
     <div
-      id="printable-document"
-      style={{
-        position: 'fixed',
-        left: '-200vw',
-        top: 0,
-        width: '210mm',
-        background: '#ffffff',
-        color: dark,
-        fontFamily: studio,
-        fontSize: '12px',
-        lineHeight: 1.4,
-        zIndex: -1,
-      }}
+      id={preview ? 'printable-document-preview' : 'printable-document'}
+      style={preview
+        ? {
+            width: '794px',
+            maxWidth: '100%',
+            background: '#ffffff',
+            color: dark,
+            fontFamily: studio,
+            fontSize: '12px',
+            lineHeight: 1.4,
+            boxShadow: '0 1px 6px rgba(15, 23, 42, .12)',
+          }
+        : {
+            position: 'fixed',
+            left: '-200vw',
+            top: 0,
+            width: '210mm',
+            background: '#ffffff',
+            color: dark,
+            fontFamily: studio,
+            fontSize: '12px',
+            lineHeight: 1.4,
+            zIndex: -1,
+          }}
     >
       {/* Header / branding */}
       <div
@@ -201,6 +215,14 @@ export function PrintableDocument({
         <div style={{ marginTop: 10, fontSize: 11, color: '#334155', breakInside: 'avoid' }}>
           <span style={{ fontWeight: 700 }}>Amount in words: </span>
           <span style={{ color: dark }}>{amountInWords(grandTotal)}</span>
+        </div>
+      )}
+
+      {/* Payment terms */}
+      {showAmountPaid && balance > 0 && (
+        <div style={{ marginTop: 4, fontSize: 11, color: '#475569', breakInside: 'avoid' }}>
+          Payment status: <b style={{ textTransform: 'uppercase' }}>{paymentStatus ?? 'unpaid'}</b> — balance of{' '}
+          {money(balance, 'PKR')} is due.
         </div>
       )}
 

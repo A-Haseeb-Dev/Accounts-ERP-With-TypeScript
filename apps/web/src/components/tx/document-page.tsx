@@ -95,6 +95,8 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
       itemId: l.itemId,
       quantity: l.quantity,
       [config.itemLineField]: l.price,
+      discount: l.discount || 0,
+      tax: l.tax || 0,
     }));
     create.mutate({
       [dateField]: form[dateField],
@@ -110,7 +112,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
   };
 
   const grandTotal = useMemo(() => {
-    const sub = lines.reduce((s, l) => s + l.quantity * l.price, 0);
+    const sub = lines.reduce((s, l) => s + l.quantity * l.price - (l.discount || 0) + (l.tax || 0), 0);
     return sub - Number(form.discount ?? 0) + Number(form.tax ?? 0);
   }, [lines, form.discount, form.tax]);
 
@@ -293,12 +295,15 @@ function DocumentDetailModal({
   onClose: () => void;
 }) {
   const items = detail?.items ?? [];
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const printTitle = partyLabel === 'Supplier' ? 'Purchase Bill' : 'Sales Invoice';
+  const isCancelled = detail?.status === 'cancelled';
   return (
     <>
       <PrintableDocument
         open={open}
         detail={detail}
-        title={partyLabel === 'Supplier' ? 'Purchase Bill' : 'Sales Invoice'}
+        title={printTitle}
         partyLabel={partyLabel}
         dateField={dateField}
         priceKey={priceKey}
@@ -314,9 +319,34 @@ function DocumentDetailModal({
                 <Facts label="Location" value={detail.stockLocation?.name ?? detail.location?.name ?? '-'} />
                 <Facts label="Status" value={detail.status} />
               </div>
-              <Button variant="outline" size="md" onClick={() => printElement('printable-document', partyLabel === 'Supplier' ? 'Purchase Bill' : 'Sales Invoice')}>
-                <Printer className="h-4 w-4" /> Print
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="md" onClick={() => setPreviewOpen(true)}>
+                  <Eye className="h-4 w-4" /> Preview
+                </Button>
+                <Button
+                  variant="outline"
+                  size="md"
+                  onClick={() => printElement('printable-document', printTitle, isCancelled ? 'CANCELLED' : undefined)}
+                >
+                  <Printer className="h-4 w-4" /> Print
+                </Button>
+                <div className="flex overflow-hidden rounded-lg border border-slate-200">
+                  <button
+                    onClick={() => printElement('printable-document', printTitle, isCancelled ? 'CANCELLED' : 'DUPLICATE')}
+                    className="px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                    title="Print duplicate copy"
+                  >
+                    Duplicate
+                  </button>
+                  <button
+                    onClick={() => printElement('printable-document', printTitle, isCancelled ? 'CANCELLED' : 'TRIPLICATE')}
+                    className="border-l border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                    title="Print triplicate copy"
+                  >
+                    Triplicate
+                  </button>
+                </div>
+              </div>
             </div>
 
           <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -362,6 +392,23 @@ function DocumentDetailModal({
           {!!detail.note && <p className="mt-1 text-xs text-slate-500">Note: {detail.note}</p>}
         </div>
       )}
+      </Modal>
+
+      <Modal open={previewOpen} onClose={() => setPreviewOpen(false)} title={`Print preview — ${detail?.number ?? ''}`} size="lg">
+        <div className="overflow-auto rounded-lg border border-slate-200 bg-slate-100 p-4" style={{ maxHeight: '75vh' }}>
+          <div className="mx-auto w-[794px] origin-top scale-[0.72]">
+            <PrintableDocument
+              open={previewOpen}
+              preview
+              detail={detail}
+              title={printTitle}
+              partyLabel={partyLabel}
+              dateField={dateField}
+              priceKey={priceKey}
+              showAmountPaid={showAmountPaid}
+            />
+          </div>
+        </div>
       </Modal>
     </>
   );

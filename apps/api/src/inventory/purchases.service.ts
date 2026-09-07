@@ -267,7 +267,12 @@ export class PurchasesService {
   }
 
   private computeTotals(items: any[], headerDiscount: number, headerTax: number) {
-    const subtotal = round2(items.reduce((s, i) => s + i.quantity * i.unitCost, 0));
+    const subtotal = round2(
+      items.reduce(
+        (s, i) => s + i.quantity * i.unitCost - (i.discount ?? 0) + (i.tax ?? 0),
+        0,
+      ),
+    );
     const discount = round2(headerDiscount);
     const tax = round2(headerTax);
     const grandTotal = round2(subtotal - discount + tax);

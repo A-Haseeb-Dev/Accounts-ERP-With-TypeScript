@@ -58,6 +58,8 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey }: ItemsEdi
               <th className="px-3 py-2">Item</th>
               <th className="w-20 px-3 py-2 text-right">Qty</th>
               <th className="w-28 px-3 py-2 text-right">{priceKey === 'unitCost' ? 'Unit Cost' : 'Unit Price'}</th>
+              <th className="w-24 px-3 py-2 text-right" title="Per-line discount">Disc.</th>
+              <th className="w-24 px-3 py-2 text-right" title="Per-line tax">Tax</th>
               <th className="w-24 px-3 py-2 text-right">Line Total</th>
               <th className="w-10 px-3 py-2"></th>
             </tr>
@@ -94,6 +96,26 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey }: ItemsEdi
                       value={String(i.price)}
                       onChange={(e) => update(i.key, { price: Number(e.target.value) || 0 })}
                       className="text-right"
+                    />
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={String(i.discount || 0)}
+                      onChange={(e) => update(i.key, { discount: Number(e.target.value) || 0 })}
+                      className="w-20 text-right"
+                    />
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={String(i.tax || 0)}
+                      onChange={(e) => update(i.key, { tax: Number(e.target.value) || 0 })}
+                      className="w-20 text-right"
                     />
                   </td>
                   <td className="px-3 py-1.5 text-right font-medium text-slate-700">

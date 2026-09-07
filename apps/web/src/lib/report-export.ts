@@ -5,8 +5,11 @@
  * Opens an invisible iframe, clones the node into it, then triggers the
  * browser print dialog scoped to that iframe. The rest of the app is never
  * printed because the iframe only contains the report.
+ *
+ * `overlay` (e.g. "CANCELLED", "DUPLICATE") is drawn as a translucent rotated
+ * watermark across the page — used for cancelled documents and copy runs.
  */
-export function printElement(id: string, title?: string): void {
+export function printElement(id: string, title?: string, overlay?: string): void {
   const source = document.getElementById(id);
   if (!source) return;
 
@@ -50,9 +53,12 @@ export function printElement(id: string, title?: string): void {
   if (title) {
     bodyHTML = `<div style="text-align:center;font-size:16px;font-weight:700;margin:8px 24px 12px;">${escapeHtml(title)}</div>${bodyHTML}`;
   }
+  if (overlay) {
+    bodyHTML += `<div style="position:fixed;top:45%;left:50%;transform:translate(-50%,-50%) rotate(-25deg);z-index:999;font-size:56px;font-weight:800;letter-spacing:10px;text-transform:uppercase;color:#dc2626;opacity:.16;border:5px solid #dc2626;border-radius:14px;padding:8px 28px;pointer-events:none;text-align:center;">${escapeHtml(overlay)}</div>`;
+  }
 
   doc.open();
-  doc.write(`<!doctype html><html><head>${headHTML}<style>@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body style="padding:16px;font-family:Inter,ui-sans-serif,system-ui,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${bodyHTML}</body></html>`);
+  doc.write(`<!doctype html><html><head>${headHTML}<style>@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}@page{@bottom-center{content:"Page " counter(page) " of " counter(pages);font-family:sans-serif;font-size:10px;color:#64748b;}}}</style></head><body style="padding:16px;font-family:Inter,ui-sans-serif,system-ui,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${bodyHTML}</body></html>`);
   doc.close();
 
   // Give the browser a tick to parse styles, then print.

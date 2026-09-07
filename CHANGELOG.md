@@ -8,6 +8,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Per-line discount & tax on invoices** — the item editor now has Discount and
+  Tax columns per line, the form sends them to the API, and document totals
+  (subtotal/grand total) include them, so the printed invoice's Disc/Tax columns
+  show real figures that add up.
+- **Print copies, watermarks & preview** — invoice/bill detail offers
+  Preview (on-screen), Print, Duplicate, and Triplicate; duplicate/triplicate
+  copies print with a translucent DUPLICATE / TRIPLICATE watermark, and
+  cancelled documents print with a CANCELLED watermark. Long printouts gain
+  "Page N of M" footers, and unpaid invoices print a payment-terms line.
 - **Print & download on every report page** — the Product Ledger and General
   Ledger pages now keep the Print / Download toolbar visible at all times
   (disabled until an item or account is selected, so the option is never
