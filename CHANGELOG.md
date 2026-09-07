@@ -8,6 +8,13 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Professional auto-generated document numbers** — invoice, bill, return and
+  transfer numbers are now formatted `PREFIX-YEAR-SEQUENCE` (e.g.
+  `SI-2026-000001`, `PI-2026-000042`) and each series restarts at 000001 every
+  new financial year, while customer/supplier codes (`CST-000001`) keep their
+  permanent, non-year series. The create form shows the upcoming number
+  (non-reserving preview via a new `next-number` endpoint) in a disabled
+  "Invoice # / Bill #" field so the user always knows what will be assigned.
 - **Professional invoice/bill creation form** — the shared document modal was
   redesigned into a wide, two-column layout: the left side groups fields into
   clearly labelled sections (document details, party & stock location, items,

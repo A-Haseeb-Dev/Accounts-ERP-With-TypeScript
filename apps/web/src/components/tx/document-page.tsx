@@ -71,10 +71,18 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
     enabled: !!detailId,
   });
 
+  const { data: nextNumber } = useQuery<string>({
+    queryKey: [resource, 'next-number'],
+    queryFn: () => apiFetch<{ number: string }>(`/${resource}/next-number`).then((r) => r.number),
+    enabled: modalOpen,
+    staleTime: 0,
+  });
+
   const create = useMutation({
     mutationFn: (payload: unknown) => apiFetch<TransactionDoc>(`/${resource}`, { method: 'POST', body: JSON.stringify(payload) }),
     onSuccess: (record: TransactionDoc) => {
       qc.invalidateQueries({ queryKey: [resource] });
+      qc.invalidateQueries({ queryKey: [resource, 'next-number'] });
       setModalOpen(false);
       setForm({});
       setLines([]);
@@ -221,9 +229,12 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
             <div className="min-w-0 space-y-5">
               <Section label={`${partyLabel === 'Supplier' ? 'Purchase' : 'Sales'} Details`}>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <Field label={`${dateField === 'returnDate' ? 'Return' : title.replace(/s$/,'')} Date`} required>
                     <Input type="date" value={String(form[dateField] ?? '')} onChange={(e) => setForm((f) => ({ ...f, [dateField]: e.target.value }))} required />
+                  </Field>
+                  <Field label={partyLabel === 'Supplier' ? 'Bill #' : 'Invoice #'}>
+                    <Input value={nextNumber ?? ''} disabled className="font-mono" title="Auto-generated on save" />
                   </Field>
                   <Field label="Reference">
                     <Input value={String(form.reference ?? '')} onChange={(e) => setForm((f) => ({ ...f, reference: e.target.value }))} placeholder="party invoice #" />

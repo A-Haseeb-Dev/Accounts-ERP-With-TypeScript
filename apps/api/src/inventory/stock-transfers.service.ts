@@ -19,6 +19,10 @@ export class StockTransfersService {
     private readonly fiscal: FiscalPeriodGuard,
   ) {}
 
+  previewNumber() {
+    return this.numbering.preview('transfer', 'ST');
+  }
+
   async create(dto: CreateStockTransferDto, actorId?: string) {
     await this.fiscal.assertOpen(dto.transferDate, 'Cannot create a stock transfer');
     this.validateLocations(dto);

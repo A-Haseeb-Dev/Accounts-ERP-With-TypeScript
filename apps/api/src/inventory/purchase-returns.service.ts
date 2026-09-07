@@ -23,6 +23,10 @@ export class PurchaseReturnsService {
     private readonly fiscal: FiscalPeriodGuard,
   ) {}
 
+  previewNumber() {
+    return this.numbering.preview('purchase_return', 'PR');
+  }
+
   async create(dto: CreatePurchaseReturnDto, actorId?: string) {
     await this.fiscal.assertOpen(dto.returnDate, 'Cannot create a purchase return');
     const supplier = await this.prisma.supplier.findUnique({ where: { id: dto.supplierId } });

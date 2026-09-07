@@ -24,6 +24,10 @@ export class PurchasesService {
     private readonly fiscal: FiscalPeriodGuard,
   ) {}
 
+  previewNumber() {
+    return this.numbering.preview('purchase', 'PI');
+  }
+
   async create(dto: CreatePurchaseDto, actorId?: string) {
     await this.fiscal.assertOpen(dto.purchaseDate, 'Cannot create a purchase');
     const supplier = await this.prisma.supplier.findUnique({ where: { id: dto.supplierId } });

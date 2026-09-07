@@ -19,7 +19,7 @@ export class SuppliersService {
       const existing = await this.prisma.supplier.findUnique({ where: { code: requestedCode } });
       if (existing) throw ApiException.duplicateCode('Supplier code');
     }
-    const code = requestedCode || (await this.numbering.next('supplier', 'SUP'));
+    const code = requestedCode || (await this.numbering.next('supplier', 'SUP', undefined, 6, { year: false }));
     if (dto.townId) {
       const town = await this.prisma.town.findUnique({ where: { id: dto.townId } });
       if (!town) throw ApiException.notFound('Town');

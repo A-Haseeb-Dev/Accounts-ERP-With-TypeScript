@@ -23,6 +23,10 @@ export class SalesService {
     private readonly fiscal: FiscalPeriodGuard,
   ) {}
 
+  previewNumber() {
+    return this.numbering.preview('sale', 'SI');
+  }
+
   async create(dto: CreateSaleDto, actorId?: string) {
     await this.fiscal.assertOpen(dto.saleDate, 'Cannot create a sales invoice');
     const customer = await this.prisma.customer.findUnique({ where: { id: dto.customerId } });

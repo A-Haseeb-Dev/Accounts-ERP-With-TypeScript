@@ -27,6 +27,9 @@ export class PurchasesController {
     @Query('to') to?: string,
   ) { return this.service.findAll({ page: Number(page), pageSize: Number(pageSize), search, status, supplierId, from, to }); }
 
+  @Get('next-number') @Permissions('inventory.purchase.view') @ApiOperation({ summary: 'Preview the next auto-generated purchase number' })
+  nextNumber() { return this.service.previewNumber(); }
+
   @Get(':id') @Permissions('inventory.purchase.view') @ApiOperation({ summary: 'Get a purchase' })
   findOne(@Param('id') id: string) { return this.service.findOne(id); }
 
@@ -57,6 +60,9 @@ export class PurchaseReturnsController {
     @Query('to') to?: string,
   ) { return this.service.findAll({ page: Number(page), pageSize: Number(pageSize), search, status, supplierId, from, to }); }
 
+  @Get('next-number') @Permissions('inventory.purchase-return.view') @ApiOperation({ summary: 'Preview the next auto-generated purchase return number' })
+  nextNumber() { return this.service.previewNumber(); }
+
   @Get(':id') @Permissions('inventory.purchase-return.view') @ApiOperation({ summary: 'Get a purchase return' })
   findOne(@Param('id') id: string) { return this.service.findOne(id); }
 
@@ -85,6 +91,9 @@ export class StockTransfersController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) { return this.service.findAll({ page: Number(page), pageSize: Number(pageSize), search, status, from, to }); }
+
+  @Get('next-number') @Permissions('inventory.transfer.view') @ApiOperation({ summary: 'Preview the next auto-generated stock transfer number' })
+  nextNumber() { return this.service.previewNumber(); }
 
   @Get(':id') @Permissions('inventory.transfer.view') @ApiOperation({ summary: 'Get a stock transfer' })
   findOne(@Param('id') id: string) { return this.service.findOne(id); }

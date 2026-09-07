@@ -65,7 +65,7 @@ describe('CustomersService.create code generation', () => {
 
     const result = await svc.create({ name: 'Test Customer' }, 'u1');
 
-    expect(numbering.next).toHaveBeenCalledWith('customer', 'CST');
+    expect(numbering.next).toHaveBeenCalledWith('customer', 'CST', undefined, 6, { year: false });
     expect(prisma.customer?.findUnique).not.toHaveBeenCalled();
     expect(prisma.customer?.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ code: 'CST-000001' }) }),
