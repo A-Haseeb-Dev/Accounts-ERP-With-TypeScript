@@ -4,6 +4,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import express from 'express';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter';
@@ -18,6 +19,9 @@ async function bootstrap() {
 
   app.use(helmet());
   app.use(cookieParser());
+  // Allow larger JSON bodies so branding logos/favicons uploaded as data URLs
+  // (base64) can pass through the PATCH /branding endpoint.
+  app.use(express.json({ limit: '6mb' }));
   app.enableCors({
     origin: config.get<string>('WEB_URL', 'http://localhost:3000').split(','),
     credentials: true,

@@ -29,6 +29,19 @@ export default function BrandingPage() {
   const merged: Partial<BrandingSetting> = { ...(data ?? {}), ...form };
   const set = (k: keyof BrandingSetting, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
+  const uploadImage = (field: 'logoUrl' | 'faviconUrl') => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 1_500_000) {
+      setError('Image too large. Please choose a file under 1.5 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => { if (typeof reader.result === 'string') set(field, reader.result); };
+    reader.readAsDataURL(file);
+  };
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -57,8 +70,27 @@ export default function BrandingPage() {
               <Field label="Primary Color"><Input type="color" value={colorPreview} onChange={(e) => set('primaryColor', e.target.value)} className="h-10 p-1" /></Field>
               <Field label="Secondary Color"><Input type="color" value={secondaryPreview} onChange={(e) => set('secondaryColor', e.target.value)} className="h-10 p-1" /></Field>
             </div>
-            <Field label="Logo URL"><Input value={merged.logoUrl ?? ''} onChange={(e) => set('logoUrl', e.target.value)} placeholder="https://…" /></Field>
-            <Field label="Favicon URL"><Input value={merged.faviconUrl ?? ''} onChange={(e) => set('faviconUrl', e.target.value)} placeholder="https://…" /></Field>
+            <Field label="Logo URL">
+              <div className="flex gap-2">
+                <Input value={merged.logoUrl ?? ''} onChange={(e) => set('logoUrl', e.target.value)} placeholder="https://… or upload from disk" />
+                <label className="col cursor-pointer shrink-0 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                  Upload
+                  <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden" onChange={uploadImage('logoUrl')} />
+                </label>
+              </div>
+            </Field>
+            <Field label="Favicon URL">
+              <div className="flex gap-2">
+                <Input value={merged.faviconUrl ?? ''} onChange={(e) => set('faviconUrl', e.target.value)} placeholder="https://… or upload from disk" />
+                <label className="col cursor-pointer shrink-0 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                  Upload
+                  <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden" onChange={uploadImage('faviconUrl')} />
+                </label>
+              </div>
+            </Field>
+            {merged.logoUrl?.startsWith('data:') && (
+              <p className="text-xs text-emerald-600">Logo uploaded from disk — will be embedded directly in prints.</p>
+            )}
             <p className="pt-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Company Contact (printed on invoices)</p>
             <Field label="Address"><Input value={merged.address ?? ''} onChange={(e) => set('address', e.target.value)} placeholder="Street, City" /></Field>
             <div className="grid grid-cols-2 gap-4">

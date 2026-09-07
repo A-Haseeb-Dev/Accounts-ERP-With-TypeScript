@@ -8,6 +8,11 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Logo & favicon upload from disk** — Branding now lets you pick a logo or
+  favicon file (PNG/JPG/SVG/WebP, up to 1.5 MB) directly from your computer
+  instead of only pasting a URL. The image is embedded as a data URL, so it
+  prints offline and requires no separate file server. Audit logs store a
+  marker instead of the raw base64 blob to avoid bloat.
 - **Per-document-type footer & terms** — Branding can now define printed
   footer/terms for each document type (Sales Invoice, Purchase Bill, Sales
   Return, Purchase Return). Each type falls back to the shared Invoice Footer /

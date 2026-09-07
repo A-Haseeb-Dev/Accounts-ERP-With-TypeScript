@@ -81,9 +81,19 @@ export class SystemService {
       entity: 'BrandingSetting',
       entityId: branding.id,
       message: 'Branding updated',
-      metadata: { ...dto },
+      metadata: this.maskDataUrls({ ...dto }),
     });
     return branding;
+  }
+
+  /** Replaces inline base64 data-URLs (uploaded logos) with a short marker. */
+  private maskDataUrls(value: Record<string, string | undefined>): Record<string, string | undefined> {
+    const out: Record<string, string | undefined> = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (typeof v === 'string' && v.startsWith('data:')) out[k] = '[uploaded image]';
+      else out[k] = v;
+    }
+    return out;
   }
 
   async getSettings() {
