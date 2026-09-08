@@ -84,7 +84,7 @@ export class PurchaseReturnsService {
 
     const number = await this.numbering.next('purchase_return', 'PR');
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.runInTransaction(async (tx) => {
       const header = await tx.purchaseReturn.create({
         data: {
           number,
@@ -160,7 +160,7 @@ export class PurchaseReturnsService {
       pr.items.reduce((s, i) => s + Number(i.quantity) * Number(i.unitCost), 0),
     );
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.runInTransaction(async (tx) => {
       // 1. Reduce inventory for each line.
       for (const line of pr.items) {
         try {
@@ -238,7 +238,7 @@ export class PurchaseReturnsService {
         'Posted purchase returns cannot be cancelled. Create a reversal instead.',
       );
     }
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.runInTransaction(async (tx) => {
       const updated = await tx.purchaseReturn.update({
         where: { id },
         data: { status: 'cancelled' },

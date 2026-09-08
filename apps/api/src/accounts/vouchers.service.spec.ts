@@ -47,6 +47,7 @@ function buildService(overrides?: {
     voucherEntry: { findMany: vi.fn() },
     systemSetting: { findFirst: vi.fn() },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({})),
+    runInTransaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({})),
   };
   const audit = overrides?.audit ?? { record: vi.fn().mockResolvedValue(undefined) };
   const numbering = overrides?.numbering ?? { next: vi.fn().mockResolvedValue('JV-000001') };
@@ -89,13 +90,13 @@ describe('VouchersService.create validation', () => {
 describe('VouchersService.create', () => {
   it('creates a journal voucher inside a transaction and records an audit entry', async () => {
     const created = { id: 'v1', number: 'JV-000001', totalDebit: 500, totalCredit: 500 };
+    const txFactory = () => ({
+      voucher: { create: vi.fn().mockResolvedValue(created), findUnique: vi.fn(), update: vi.fn() },
+    });
+    const runTx = async (fn: (tx: unknown) => unknown) => fn(txFactory());
     const prisma = {
-      $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => {
-        const tx = {
-          voucher: { create: vi.fn().mockResolvedValue(created), findUnique: vi.fn(), update: vi.fn() },
-        };
-        return fn(tx);
-      }),
+      $transaction: vi.fn(runTx),
+      runInTransaction: vi.fn(runTx),
     };
     const audit = { record: vi.fn().mockResolvedValue(undefined) };
     const numbering = { next: vi.fn().mockResolvedValue('JV-000001') };
@@ -129,23 +130,25 @@ describe('VouchersService.post', () => {
   it('posts a draft voucher via the accounting engine', async () => {
     const draft = { id: 'v1', number: 'JV-000001', voucherType: 'JOURNAL', status: 'draft' };
     const posted = { ...draft, status: 'posted' };
+    const runTx = async (fn: (tx: unknown) => unknown) => {
+      const accounting = new AccountingService({} as never);
+      const inside = {
+        ...draft,
+        entries: [
+          { mainAccountId: 'cash', debit: 500, credit: 0 },
+          { mainAccountId: 'capital', debit: 0, credit: 500 },
+        ],
+      };
+      const tx = { voucher: { findUnique: vi.fn().mockResolvedValue(inside), update: vi.fn().mockResolvedValue(posted) } };
+      return fn({ ...tx, accounting });
+    };
     const prisma = {
       voucher: {
         findUnique: vi.fn().mockResolvedValue(draft),
         update: vi.fn(),
       },
-      $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => {
-        const accounting = new AccountingService({} as never);
-        const inside = {
-          ...draft,
-          entries: [
-            { mainAccountId: 'cash', debit: 500, credit: 0 },
-            { mainAccountId: 'capital', debit: 0, credit: 500 },
-          ],
-        };
-        const tx = { voucher: { findUnique: vi.fn().mockResolvedValue(inside), update: vi.fn().mockResolvedValue(posted) } };
-        return fn({ ...tx, accounting });
-      }),
+      $transaction: vi.fn(runTx),
+      runInTransaction: vi.fn(runTx),
     };
     const { svc } = buildService({ prisma });
     const result = await svc.post('v1', 'u1');
@@ -157,12 +160,12 @@ describe('VouchersService.cancel', () => {
   it('cancels a voucher with a reason', async () => {
     const draft = { id: 'v1', number: 'JV-000001', voucherType: 'JOURNAL', status: 'draft' };
     const cancelled = { ...draft, status: 'cancelled', cancelReason: 'Wrote wrong amount' };
+    const runTx = async (fn: (tx: unknown) => unknown) =>
+      fn({ voucher: { findUnique: vi.fn().mockResolvedValue(draft), update: vi.fn().mockResolvedValue(cancelled) } });
     const prisma = {
       voucher: { findUnique: vi.fn().mockResolvedValue(draft), update: vi.fn() },
-      $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => {
-        const tx = { voucher: { findUnique: vi.fn().mockResolvedValue(draft), update: vi.fn().mockResolvedValue(cancelled) } };
-        return fn(tx);
-      }),
+      $transaction: vi.fn(runTx),
+      runInTransaction: vi.fn(runTx),
     };
     const { svc } = buildService({ prisma });
     const result = await svc.cancel('v1', 'Wrote wrong amount', 'u1');

@@ -70,7 +70,7 @@ export class SalesReturnsService {
 
     const number = await this.numbering.next('sales_return', 'SR');
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.runInTransaction(async (tx) => {
       const header = await tx.salesReturn.create({
         data: {
           number,
@@ -139,7 +139,7 @@ export class SalesReturnsService {
 
     const productTotal = Number(sr.grandTotal);
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.runInTransaction(async (tx) => {
       // 1. Restore inventory for each line.
       for (const line of sr.items) {
         await this.inventory.recordIn(tx, {
@@ -200,7 +200,7 @@ export class SalesReturnsService {
         'Posted sales returns cannot be cancelled. Create a reversal instead.',
       );
     }
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.runInTransaction(async (tx) => {
       const updated = await tx.salesReturn.update({ where: { id }, data: { status: 'cancelled' } });
       this.audit.record({
         userId: actorId,

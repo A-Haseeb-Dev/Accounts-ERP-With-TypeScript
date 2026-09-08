@@ -42,7 +42,7 @@ export class VouchersService {
     );
 
     try {
-      const voucher = await this.prisma.$transaction(async (tx) => {
+      const voucher = await this.prisma.runInTransaction(async (tx) => {
         const created = await this.accounting.createVoucher(
           tx,
           {
@@ -77,7 +77,7 @@ export class VouchersService {
     if (!voucher) throw ApiException.notFound('Voucher');
     await this.fiscal.assertOpen(voucher.voucherDate, 'Cannot post a voucher');
 
-    const posted = await this.prisma.$transaction(async (tx) => {
+    const posted = await this.prisma.runInTransaction(async (tx) => {
       const result = await this.accounting.postVoucher(tx, id, actorId);
       this.audit.record({
         userId: actorId,
@@ -97,7 +97,7 @@ export class VouchersService {
     if (!voucher) throw ApiException.notFound('Voucher');
     await this.fiscal.assertOpen(voucher.voucherDate, 'Cannot cancel a voucher');
 
-    const cancelled = await this.prisma.$transaction(async (tx) => {
+    const cancelled = await this.prisma.runInTransaction(async (tx) => {
       const result = await this.accounting.cancelVoucher(tx, id, reason, actorId);
       this.audit.record({
         userId: actorId,
@@ -231,7 +231,7 @@ export class VouchersService {
     const totalCredit = round2(dto.entries.reduce((s, e) => s + Number(e.credit ?? 0), 0));
 
     try {
-      const updated = await this.prisma.$transaction(async (tx) => {
+      const updated = await this.prisma.runInTransaction(async (tx) => {
         await tx.voucherEntry.deleteMany({ where: { voucherId: id } });
         return tx.voucher.update({
           where: { id },
@@ -275,7 +275,7 @@ export class VouchersService {
     }
     await this.fiscal.assertOpen(voucher.voucherDate, 'Cannot delete a voucher');
 
-    await this.prisma.$transaction(async (tx) => {
+    await this.prisma.runInTransaction(async (tx) => {
       await tx.voucherEntry.deleteMany({ where: { voucherId: id } });
       await tx.voucher.delete({ where: { id } });
     });

@@ -40,7 +40,7 @@ export class PurchasesService {
     const number = await this.numbering.next('purchase', 'PI');
 
     try {
-      const purchase = await this.prisma.$transaction(async (tx) => {
+      const purchase = await this.prisma.runInTransaction(async (tx) => {
         const header = await tx.purchase.create({
           data: {
             number,
@@ -128,7 +128,7 @@ export class PurchasesService {
     });
     const allowNegative = negativeSetting?.value === 'true';
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.runInTransaction(async (tx) => {
       // 1. Inventory in-transactions for each line.
       for (const line of purchase.items) {
         await this.inventory.recordIn(tx, {
@@ -143,7 +143,7 @@ export class PurchasesService {
         });
       }
 
-      // 2. Accounting: Dr Inventory, Cr Supplier/Payable.
+      // 2. Accounting: Dr Inventory, Cr Supplier/Payable (+ purchase tax).
       const voucherEntries: VoucherEntryInput[] = [
         { mainAccountId: inventoryAccountId, debit: inventoryTotal, narration: `Purchase ${purchase.number}` },
         // Post the full grand total against supplier (or payable control).
@@ -153,6 +153,25 @@ export class PurchasesService {
           narration: `Purchase ${purchase.number}`,
         }),
       ];
+
+      // Any difference between item cost and the grand total is purchase tax
+      // (or a net discount). Keep the voucher balanced by posting it to the
+      // tax account, or fold it into inventory cost when no tax account is set.
+      const taxAmount = round2(Number(purchase.grandTotal) - inventoryTotal);
+      if (taxAmount !== 0) {
+        const taxAccountId = taxAmount > 0
+          ? await this.defaultAccounts.resolveAccount('accounting.tax_account', 'Sales Tax Payable')
+          : null;
+        if (taxAccountId) {
+          voucherEntries.push({
+            mainAccountId: taxAccountId,
+            ...(taxAmount > 0 ? { debit: taxAmount } : { credit: -taxAmount }),
+            narration: `Purchase tax ${purchase.number}`,
+          });
+        } else {
+          voucherEntries[0].debit = round2(Number(voucherEntries[0].debit) + taxAmount);
+        }
+      }
 
       const voucher = await this.accounting.createVoucher(
         tx,
@@ -200,7 +219,7 @@ export class PurchasesService {
       );
     }
 
-    const cancelled = await this.prisma.$transaction(async (tx) => {
+    const cancelled = await this.prisma.runInTransaction(async (tx) => {
       const result = await tx.purchase.update({
         where: { id },
         data: { status: 'cancelled', cancelReason: reason, cancelledAt: new Date() },

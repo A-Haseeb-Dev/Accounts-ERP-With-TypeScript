@@ -48,7 +48,7 @@ export class SalesService {
 
     const number = await this.numbering.next('sale', 'SI');
 
-    const sale = await this.prisma.$transaction(async (tx) => {
+    const sale = await this.prisma.runInTransaction(async (tx) => {
       const header = await tx.sale.create({
         data: {
           number,
@@ -125,7 +125,7 @@ export class SalesService {
     });
     const allowNegative = negativeSetting?.value === 'true';
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.runInTransaction(async (tx) => {
       // 1. Validate and reduce stock for each line.
       for (const line of sale.items) {
         try {
@@ -247,7 +247,7 @@ export class SalesService {
       );
     }
 
-    const cancelled = await this.prisma.$transaction(async (tx) => {
+    const cancelled = await this.prisma.runInTransaction(async (tx) => {
       const result = await tx.sale.update({
         where: { id },
         data: { status: 'cancelled', cancelReason: reason, cancelledAt: new Date() },

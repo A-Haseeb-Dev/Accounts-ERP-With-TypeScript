@@ -29,7 +29,7 @@ export class StockTransfersService {
 
     const number = await this.numbering.next('transfer', 'ST');
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.runInTransaction(async (tx) => {
       const transfer = await tx.stockTransfer.create({
         data: {
           number,
@@ -82,7 +82,7 @@ export class StockTransfersService {
     });
     const allowNegative = negativeSetting?.value === 'true';
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.runInTransaction(async (tx) => {
       // 1. Reduce source location stock for each item.
       for (const line of transfer.items) {
         try {
@@ -152,7 +152,7 @@ export class StockTransfersService {
     if (transfer.status === 'posted') {
       throw ApiException.invalidTransaction('Posted transfers cannot be cancelled. Create a reverse transfer.');
     }
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.runInTransaction(async (tx) => {
       const updated = await tx.stockTransfer.update({
         where: { id },
         data: { status: 'cancelled' },
