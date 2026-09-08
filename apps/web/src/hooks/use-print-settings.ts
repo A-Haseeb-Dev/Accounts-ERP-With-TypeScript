@@ -6,7 +6,9 @@ import { apiFetch } from '@/lib/api';
 import {
   decodePrintLayout,
   defaultLayout,
+  decodeLayoutOverrides,
   type PrintLayoutConfig,
+  type PrintLayoutOverrides,
 } from '@/lib/print-layout';
 
 export type InvoiceTemplate = 'standard' | 'compact' | 'thermal' | 'custom';
@@ -33,6 +35,8 @@ export interface PrintSettings {
   invoiceHeaderAlign: PrintHeaderAlign;
   showPageNumbers: boolean;
   customLayout: PrintLayoutConfig | null;
+  /** Per document-type / warehouse layout overrides (see print-layout.ts). */
+  customLayoutOverrides: PrintLayoutOverrides;
 }
 
 export const PRINT_DEFAULTS: PrintSettings = {
@@ -54,6 +58,7 @@ export const PRINT_DEFAULTS: PrintSettings = {
   invoiceHeaderAlign: 'left',
   showPageNumbers: true,
   customLayout: defaultLayout(),
+  customLayoutOverrides: {},
 };
 
 const isTrue = (s?: string) => s === 'true';
@@ -103,6 +108,9 @@ export function usePrintSettings(): PrintSettings {
   const customLayout = data
     ? (decodePrintLayout(data['print.layout']) ?? PRINT_DEFAULTS.customLayout)
     : PRINT_DEFAULTS.customLayout;
+  const customLayoutOverrides = data
+    ? decodeLayoutOverrides(data['print.layoutOverrides'])
+    : {};
 
   // Mirror paper/scale/template/page-numbers to localStorage so the synchronous
   // printElement() in a plain module can pick them up without a React context.
@@ -136,5 +144,6 @@ export function usePrintSettings(): PrintSettings {
     invoiceHeaderAlign,
     showPageNumbers,
     customLayout,
+    customLayoutOverrides,
   };
 }

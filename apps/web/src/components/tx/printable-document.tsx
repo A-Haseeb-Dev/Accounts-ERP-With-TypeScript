@@ -23,6 +23,7 @@ import { usePrintSettings, type PrintSettings } from '@/hooks/use-print-settings
 import {
   blockFontSize,
   defaultLayout,
+  resolveLayout,
   type LayoutBlockConfig,
 } from '@/lib/print-layout';
 import type { BrandingSetting, TransactionDoc, DocLine } from '@/lib/types';
@@ -152,7 +153,12 @@ export function PrintableDocument({
 
   // ---- Custom (Designer) layout ------------------------------------------
   if (template === 'custom') {
-    const layout = fmt.customLayout ?? defaultLayout();
+    const layout = resolveLayout(
+      fmt.customLayout ?? defaultLayout(),
+      fmt.customLayoutOverrides,
+      docType,
+      location?.id ?? null,
+    );
     const blocks = layout.blocks.filter((b) => b.enabled);
     const bs = (cfg: LayoutBlockConfig) => Math.round(blockFontSize(cfg) * fz);
 

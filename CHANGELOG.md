@@ -41,6 +41,16 @@ and this project follows [Semantic Versioning](https://semver.org/).
   (−120…+120 px), margin above (0–60 px), vertical alignment (left/center/right),
   per-block font size (or Auto) and bold. Blocks render in a live preview and the
   layout is persisted as `print.layout` in the settings backup.
+- **Per-scope custom layouts** — the Custom designer now lets you scope a layout:
+  the base layout applies to all documents, and you can create overrides per
+  document type (Sales Invoices, Purchase Bills, Sales/Purchase Returns) and, if
+  you wish, per warehouse/stock location (or "all warehouses" for a type).
+  Warehouse-specific overrides take precedence over the document-type override,
+  which takes precedence over the base layout. The Print Layout page adds an
+  "Apply to" / "Warehouse" scope selector, a "Remove override" action, and a live
+  preview that reflects the scope being edited. Overrides are stored as
+  `print.layoutOverrides` (a whitelisted setting, included in backups) and are
+  resolved automatically when printing from any document screen.
   Thermal printing switches the print output to a continuous 80mm receipt:
   `@page size: 80mm auto`, narrow margins and no pagination footer. Changes are
   saved as normal `print.*` settings and instantly apply to every document

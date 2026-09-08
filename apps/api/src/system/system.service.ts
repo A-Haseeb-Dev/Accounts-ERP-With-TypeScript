@@ -29,6 +29,7 @@ const SETTING_KEYS = [
   'print.scale',
   'print.invoiceTemplate',
   'print.layout',
+  'print.layoutOverrides',
   'print.fontSize',
   'print.logoSize',
   'print.invoiceShowSignatures',

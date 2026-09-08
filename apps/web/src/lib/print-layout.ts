@@ -180,3 +180,98 @@ export function decodePrintLayout(raw: string | undefined | null): PrintLayoutCo
 export function normalizeLayout(raw: string | undefined | null): PrintLayoutConfig {
   return decodePrintLayout(raw) ?? defaultLayout();
 }
+
+// ---------------------------------------------------------------------------
+// Per-scope layout overrides
+//
+// On top of the base layout (`print.layout`) you can override the layout for a
+// specific document type (sale / purchase / salesReturn / purchaseReturn) and
+// optionally a specific warehouse/stock location. The overrides map lives in
+// the settings table under `print.layoutOverrides` as a JSON string of the
+// shape:
+//
+//   { "<docType>": { "<warehouseId>": "<layout JSON>", "*": "<layout JSON>" } }
+//
+// A warehouse key of "*" applies to every warehouse of that document type.
+// Resolution precedence when printing:
+//   1. overrides[docType][warehouseId]
+//   2. overrides[docType]["*"]
+//   3. the base layout
+// ---------------------------------------------------------------------------
+
+export const PRINT_DOC_TYPES = [
+  { value: 'sale', label: 'Sales Invoices' },
+  { value: 'purchase', label: 'Purchase Bills' },
+  { value: 'salesReturn', label: 'Sales Returns' },
+  { value: 'purchaseReturn', label: 'Purchase Returns' },
+] as const;
+
+export type PrintDocType = (typeof PRINT_DOC_TYPES)[number]['value'];
+
+/** overrides[docType][warehouseId] → layout; "*" = all warehouses of the doc type. */
+export interface PrintLayoutOverrides {
+  [docType: string]: Record<string, PrintLayoutConfig>;
+}
+
+export function encodeLayoutOverrides(overrides: PrintLayoutOverrides): string {
+  const out: Record<string, Record<string, string>> = {};
+  for (const docType of Object.keys(overrides)) {
+    out[docType] = {};
+    for (const scopeKey of Object.keys(overrides[docType])) {
+      out[docType][scopeKey] = encodePrintLayout(overrides[docType][scopeKey]);
+    }
+  }
+  return JSON.stringify(out);
+}
+
+export function decodeLayoutOverrides(raw: string | undefined | null): PrintLayoutOverrides {
+  if (!raw) return {};
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== 'object') return {};
+
+  const out: PrintLayoutOverrides = {};
+  for (const docType of Object.keys(parsed)) {
+    const byWh = parsed[docType];
+    if (!byWh || typeof byWh !== 'object') continue;
+    const map: Record<string, PrintLayoutConfig> = {};
+    for (const scopeKey of Object.keys(byWh as Record<string, unknown>)) {
+      const rawLayout = (byWh as Record<string, unknown>)[scopeKey];
+      if (typeof rawLayout !== 'string') continue;
+      const decoded = decodePrintLayout(rawLayout);
+      if (decoded) map[scopeKey] = decoded;
+    }
+    if (Object.keys(map).length > 0) out[docType] = map;
+  }
+  return out;
+}
+
+/**
+ * The most specific override for (docType, warehouseId), or null when none.
+ * "*" matches any warehouse of that document type.
+ */
+export function getLayoutOverride(
+  overrides: PrintLayoutOverrides,
+  docType: string | undefined | null,
+  warehouseId: string | null,
+): PrintLayoutConfig | null {
+  if (!docType) return null;
+  const byDoc = overrides?.[docType];
+  if (!byDoc) return null;
+  if (warehouseId && byDoc[warehouseId]) return byDoc[warehouseId];
+  return byDoc['*'] ?? null;
+}
+
+/** The effective layout for a document: override if present, else the base. */
+export function resolveLayout(
+  base: PrintLayoutConfig,
+  overrides: PrintLayoutOverrides,
+  docType: string | undefined | null,
+  warehouseId: string | null,
+): PrintLayoutConfig {
+  return getLayoutOverride(overrides, docType, warehouseId) ?? base;
+}

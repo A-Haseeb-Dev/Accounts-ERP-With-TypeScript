@@ -9,6 +9,7 @@ import { Field, Select } from '@/components/ui/field';
 import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/page-header';
 import { PrintableDocument } from '@/components/tx/printable-document';
+import { useFlatOptions } from '@/hooks/use-options';
 import {
   PRINT_DEFAULTS,
   type InvoiceTemplate,
@@ -19,14 +20,20 @@ import {
 } from '@/hooks/use-print-settings';
 import {
   LAYOUT_BLOCK_LABELS,
+  PRINT_DOC_TYPES,
   blockFontSize,
+  decodeLayoutOverrides,
   decodePrintLayout,
   defaultLayout,
+  encodeLayoutOverrides,
   encodePrintLayout,
+  resolveLayout,
   type LayoutBlockAlign,
   type LayoutBlockConfig,
   type LayoutBlockKey,
+  type PrintDocType,
   type PrintLayoutConfig,
+  type PrintLayoutOverrides,
 } from '@/lib/print-layout';
 import type { TransactionDoc } from '@/lib/types';
 
@@ -50,6 +57,9 @@ const FIELDS: Record<string, { key: string; def: string }> = {
   invoiceShowTaxCol: { key: 'print.invoiceShowTaxCol', def: 'true' },
   showPageNumbers: { key: 'print.showPageNumbers', def: 'true' },
 };
+
+type Scope = { docType: 'default' | PrintDocType; warehouseId: string };
+const DEFAULT_SCOPE: Scope = { docType: 'default', warehouseId: '*' };
 
 const SAMPLE_DETAIL: TransactionDoc = {
   id: 'layout-preview',
@@ -77,8 +87,12 @@ const ALIGN_BUTTONS: { value: LayoutBlockAlign; label: string }[] = [
   { value: 'right', label: 'Right' },
 ];
 
+const cloneOverrides = (ov: PrintLayoutOverrides): PrintLayoutOverrides =>
+  Object.fromEntries(Object.entries(ov).map(([k, v]) => [k, { ...v }]));
+
 export default function PrintLayoutPage() {
   const qc = useQueryClient();
+  const { options: warehouseOptions } = useFlatOptions('stock-locations');
 
   const { data, isLoading } = useQuery<Settings>({
     queryKey: ['settings'],
@@ -86,6 +100,9 @@ export default function PrintLayoutPage() {
   });
 
   const [form, setForm] = useState<Settings>({});
+  const [baseLayout, setBaseLayout] = useState<PrintLayoutConfig | null>(null);
+  const [overrides, setOverrides] = useState<PrintLayoutOverrides>({});
+  const [scope, setScope] = useState<Scope>(DEFAULT_SCOPE);
   const [layout, setLayout] = useState<PrintLayoutConfig | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<LayoutBlockKey | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -93,7 +110,11 @@ export default function PrintLayoutPage() {
 
   useEffect(() => {
     if (data && layout === null) {
-      setLayout(decodePrintLayout(data['print.layout']) ?? defaultLayout());
+      const base = decodePrintLayout(data['print.layout']) ?? defaultLayout();
+      const ov = decodeLayoutOverrides(data['print.layoutOverrides']);
+      setBaseLayout(base);
+      setOverrides(ov);
+      setLayout(resolveLayout(base, ov, 'sale', null));
       setSelectedBlock(null);
     }
   }, [data, layout]);
@@ -109,12 +130,28 @@ export default function PrintLayoutPage() {
     onError: (e: Error) => setError(e.message),
   });
 
-  const submit = () => {
+  const persistLayout = (base: PrintLayoutConfig, ov: PrintLayoutOverrides) => {
     setError('');
     const payload: Record<string, unknown> = {};
     for (const field of Object.keys(FIELDS)) payload[field] = value(field);
-    if (layout) payload.values = { 'print.layout': encodePrintLayout(layout) };
+    payload.values = {
+      'print.layout': encodePrintLayout(base),
+      'print.layoutOverrides': encodeLayoutOverrides(ov),
+    };
     save.mutate(payload);
+  };
+
+  const submit = () => {
+    if (!layout) return;
+    if (scope.docType === 'default') {
+      setBaseLayout(layout);
+      persistLayout(layout, overrides);
+    } else {
+      const next = cloneOverrides(overrides);
+      next[scope.docType] = { ...(next[scope.docType] ?? {}), [scope.warehouseId]: layout };
+      setOverrides(next);
+      persistLayout(baseLayout ?? layout, next);
+    }
   };
 
   const resetToDefaults = () => {
@@ -123,11 +160,13 @@ export default function PrintLayoutPage() {
     for (const field of Object.keys(FIELDS)) payload[field] = FIELDS[field].def;
     setForm(payload);
     const fresh = defaultLayout();
+    setBaseLayout(fresh);
+    setOverrides({});
     setLayout(fresh);
     setSelectedBlock(null);
     save.mutate({
       ...payload,
-      values: { 'print.layout': encodePrintLayout(fresh) },
+      values: { 'print.layout': encodePrintLayout(fresh), 'print.layoutOverrides': '{}' },
     });
   };
 
@@ -146,6 +185,35 @@ export default function PrintLayoutPage() {
       blocks.splice(to, 0, moved);
       return { ...l, blocks };
     });
+
+  const layoutForScope = (s: Scope, base: PrintLayoutConfig, ov: PrintLayoutOverrides) =>
+    s.docType === 'default' ? base : resolveLayout(base, ov, s.docType, s.warehouseId === '*' ? null : s.warehouseId);
+
+  const changeScope = (next: Scope) => {
+    setScope(next);
+    if (baseLayout) {
+      setLayout(layoutForScope(next, baseLayout, overrides));
+    }
+    setSelectedBlock(null);
+  };
+
+  const hasExactOverride =
+    scope.docType !== 'default' && !!overrides[scope.docType]?.[scope.warehouseId];
+
+  const removeOverride = () => {
+    if (scope.docType === 'default') return;
+    const next = cloneOverrides(overrides);
+    const byDoc = { ...(next[scope.docType] ?? {}) };
+    delete byDoc[scope.warehouseId];
+    if (Object.keys(byDoc).length === 0) delete next[scope.docType];
+    else next[scope.docType] = byDoc;
+    setOverrides(next);
+    setSelectedBlock(null);
+    if (baseLayout) {
+      setLayout(layoutForScope({ ...scope }, baseLayout, next));
+      persistLayout(baseLayout, next);
+    }
+  };
 
   const thermal = value('invoiceTemplate') === 'thermal';
   const isCustom = value('invoiceTemplate') === 'custom';
@@ -169,6 +237,7 @@ export default function PrintLayoutPage() {
     invoiceHeaderAlign: value('invoiceHeaderAlign') as PrintHeaderAlign,
     showPageNumbers: value('showPageNumbers') === 'true',
     customLayout: layout,
+    customLayoutOverrides: {},
   };
 
   const yN = (field: string, label: string) => (
@@ -209,11 +278,18 @@ export default function PrintLayoutPage() {
     </div>
   );
 
+  const scopeLabel =
+    scope.docType === 'default'
+      ? 'Default (all documents)'
+      : `${PRINT_DOC_TYPES.find((t) => t.value === scope.docType)?.label ?? scope.docType}${
+          scope.warehouseId === '*' ? ' — all warehouses' : ' — one warehouse'
+        }`;
+
   return (
     <div>
       <PageHeader
         title="Print Layout"
-        description="Design how invoices print. Pick a preset template, or use the Custom designer to drag blocks and position every element to the pixel."
+        description="Design how invoices print. Pick a preset template, or use the Custom designer to drag blocks and position every element to the pixel. Custom layouts can be scoped per document type and per warehouse."
       />
 
       <Card>
@@ -280,12 +356,64 @@ export default function PrintLayoutPage() {
 
                 {isCustom && (
                   <div className="rounded-xl border border-slate-200 p-4">
-                    <div className="mb-1 flex items-center justify-between">
+                    <div className="mb-3 flex items-center justify-between">
                       <p className="text-sm font-semibold text-slate-700">Custom Designer</p>
                       <span className="rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700">
                         {layout?.blocks.filter((b) => b.enabled).length ?? 0} blocks shown
                       </span>
                     </div>
+
+                    <div className="mb-3 grid grid-cols-2 gap-3">
+                      <Field label="Apply to">
+                        <Select
+                          value={scope.docType}
+                          onChange={(e) =>
+                            changeScope({ docType: e.target.value as Scope['docType'], warehouseId: '*' })
+                          }
+                        >
+                          <option value="default">Default (all documents)</option>
+                          {PRINT_DOC_TYPES.map((t) => (
+                            <option key={t.value} value={t.value}>{t.label}</option>
+                          ))}
+                        </Select>
+                      </Field>
+                      {scope.docType !== 'default' && (
+                        <Field label="Warehouse">
+                          <Select
+                            value={scope.warehouseId}
+                            onChange={(e) => changeScope({ ...scope, warehouseId: e.target.value })}
+                          >
+                            <option value="*">All warehouses</option>
+                            {warehouseOptions.map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </Select>
+                        </Field>
+                      )}
+                    </div>
+
+                    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-teal-100 bg-teal-50/50 px-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-teal-800">Editing: {scopeLabel}</p>
+                        <p className="text-[11px] text-teal-600">
+                          {scope.docType === 'default'
+                            ? 'This base layout applies wherever no override exists.'
+                            : hasExactOverride
+                              ? 'This override applies only to this scope.'
+                              : 'No override yet — Saving creates one for this scope; otherwise the base/inherited layout is used.'}
+                        </p>
+                      </div>
+                      {scope.docType !== 'default' && hasExactOverride && (
+                        <button
+                          type="button"
+                          onClick={removeOverride}
+                          className="rounded-lg border border-red-200 bg-white px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                        >
+                          Remove override
+                        </button>
+                      )}
+                    </div>
+
                     <p className="mb-3 text-xs text-slate-400">
                       Drag a block to change its vertical order. Click a block to fine-tune its exact position.
                     </p>
@@ -428,7 +556,7 @@ export default function PrintLayoutPage() {
                       dateField="saleDate"
                       priceKey="unitPrice"
                       showAmountPaid
-                      docType="sale"
+                      docType={scope.docType === 'default' ? 'sale' : scope.docType}
                       fmtOverride={fmtOverride}
                     />
                   </div>
