@@ -14,6 +14,7 @@ import {
   Wallet,
   Boxes,
   Network,
+  Printer,
 } from 'lucide-react';
 import { isAllowed } from '@/lib/auth-types';
 
@@ -101,6 +102,7 @@ export const NAV_ITEMS: NavItem[] = [
       { label: 'Roles & Permissions', href: '/system/roles', icon: Settings, permission: 'roles.view' },
       { label: 'Audit Logs', href: '/system/audit-logs', icon: FileSpreadsheet, permission: 'system.audit.view' },
       { label: 'Settings', href: '/system/settings', icon: Settings, permission: 'system.settings.manage' },
+      { label: 'Print Layout', href: '/system/print-layout', icon: Printer, permission: 'system.settings.manage' },
       { label: 'Branding', href: '/system/branding', icon: Building2, permission: 'system.branding.manage' },
     ],
   },

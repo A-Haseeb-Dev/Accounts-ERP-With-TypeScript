@@ -183,6 +183,56 @@ export class UpdateSettingsDto {
 
   @IsString()
   @IsOptional()
+  @Matches(/^(standard|compact|thermal)$/, { message: 'Invoice template must be standard, compact or thermal' })
+  invoiceTemplate?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(small|normal|large)$/, { message: 'Font size must be small, normal or large' })
+  fontSize?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(small|medium|large)$/, { message: 'Logo size must be small, medium or large' })
+  logoSize?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  invoiceShowSignatures?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  invoiceShowPartyContact?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  invoiceShowItemCode?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  invoiceShowDiscountCol?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  invoiceShowTaxCol?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(left|center)$/, { message: 'Header alignment must be left or center' })
+  invoiceHeaderAlign?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  showPageNumbers?: string;
+
+  @IsString()
+  @IsOptional()
   @Matches(/^[3-9][0-9]?$|^(1[0-9]{2}|3[0-9]{2})$/, {
     message: 'Audit retention must be a number of days between 30 and 365',
   })

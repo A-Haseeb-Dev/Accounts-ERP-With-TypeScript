@@ -16,8 +16,11 @@ export function printElement(id: string, title?: string, overlay?: string): void
   const source = document.getElementById(id);
   if (!source) return;
 
-  const { paper, scale } = printPrefs();
-  const frameSize = PAPER_PX[paper] ?? PAPER_PX.A4;
+  const { paper, scale, invoiceTemplate, showPageNumbers } = printPrefs();
+  const thermal = invoiceTemplate === 'thermal';
+  // An 80mm receipt prints as a continuous strip — the iframe just needs to be
+  // tall enough to hold the whole document so the print dialog can paginate it.
+  const frameSize = thermal ? { width: 302, height: 2000 } : PAPER_PX[paper] ?? PAPER_PX.A4;
 
   // Real dimensions (instead of 0×0) avoid blank prints in browsers that
   // refuse to render zero-sized iframe content.
@@ -63,7 +66,11 @@ export function printElement(id: string, title?: string, overlay?: string): void
     bodyHTML += `<div style="position:fixed;top:45%;left:50%;transform:translate(-50%,-50%) rotate(-25deg);z-index:999;font-size:56px;font-weight:800;letter-spacing:10px;text-transform:uppercase;color:#dc2626;opacity:.16;border:5px solid #dc2626;border-radius:14px;padding:8px 28px;pointer-events:none;text-align:center;">${escapeHtml(overlay)}</div>`;
   }
 
-  const pageCss = `@media print{@page{size:${paper};margin:12mm;@bottom-center{content:"Page " counter(page) " of " counter(pages);font-family:sans-serif;font-size:10px;color:#64748b;}}body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}`;
+  const pageFooterCss =
+    showPageNumbers && !thermal
+      ? '@bottom-center{content:"Page " counter(page) " of " counter(pages);font-family:sans-serif;font-size:10px;color:#64748b;}'
+      : '';
+  const pageCss = `@media print{@page{size:${thermal ? '80mm auto' : paper};margin:${thermal ? '4mm 2mm' : '12mm'};${pageFooterCss}}body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}`;
 
   doc.open();
   doc.write(`<!doctype html><html><head>${headHTML}<style>${pageCss}</style></head><body style="padding:16px;font-family:Inter,ui-sans-serif,system-ui,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;zoom:${scale / 100};">${bodyHTML}</body></html>`);
@@ -87,7 +94,7 @@ const PAPER_PX: Record<string, { width: number; height: number }> = {
   Letter: { width: 816, height: 1056 }, // 8.5×11in @96dpi
 };
 
-function printPrefs(): { paper: 'A4' | 'A5' | 'Letter'; scale: number } {
+function printPrefs(): { paper: 'A4' | 'A5' | 'Letter'; scale: number; invoiceTemplate: string; showPageNumbers: boolean } {
   let paper: 'A4' | 'A5' | 'Letter' = 'A4';
   try {
     const raw = localStorage.getItem('print.paperSize');
@@ -102,7 +109,20 @@ function printPrefs(): { paper: 'A4' | 'A5' | 'Letter'; scale: number } {
   } catch {
     // ignore
   }
-  return { paper, scale };
+  let invoiceTemplate = 'standard';
+  try {
+    const raw = localStorage.getItem('print.invoiceTemplate');
+    if (raw === 'compact' || raw === 'thermal') invoiceTemplate = raw;
+  } catch {
+    // ignore
+  }
+  let showPageNumbers = true;
+  try {
+    showPageNumbers = localStorage.getItem('print.showPageNumbers') !== 'false';
+  } catch {
+    // ignore
+  }
+  return { paper, scale, invoiceTemplate, showPageNumbers };
 }
 
 function escapeHtml(value: string): string {

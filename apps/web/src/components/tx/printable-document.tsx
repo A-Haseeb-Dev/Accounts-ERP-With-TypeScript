@@ -3,6 +3,13 @@
 /**
  * Professional printable document template (invoice / bill / return / statement).
  *
+ * Supports three layout presets driven by the Print Layout page:
+ *   - standard: full A4 business layout (default)
+ *   - compact:  tighter spacing and smaller title
+ *   - thermal:  single-column 80mm receipt style for thermal printers
+ * Together with Show/Hide toggles (balance due, signatures, party contact,
+ * item code, discount/tax columns), logo size, font size and header alignment.
+ *
  * Rendered into an off-screen print node and printed via an isolated iframe so
  * only the document appears (no app chrome). Styling is inline / print-only so
  * it survives isolation. The parking styles (position: fixed / left: -200vw)
@@ -11,7 +18,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { money, num, dateTime, amountInWords } from '@/lib/utils';
-import { usePrintSettings } from '@/hooks/use-print-settings';
+import { usePrintSettings, type PrintSettings } from '@/hooks/use-print-settings';
 import type { BrandingSetting, TransactionDoc, DocLine } from '@/lib/types';
 
 export interface PrintableDocumentProps {
@@ -26,6 +33,8 @@ export interface PrintableDocumentProps {
   preview?: boolean;
   /** Document type for per-type footer/terms: 'sale' | 'purchase' | 'salesReturn' | 'purchaseReturn' */
   docType?: string;
+  /** Override the saved print settings — used by the Print Layout live preview. */
+  fmtOverride?: Partial<PrintSettings>;
 }
 
 export function PrintableDocument({
@@ -38,6 +47,7 @@ export function PrintableDocument({
   showAmountPaid,
   preview = false,
   docType,
+  fmtOverride,
 }: PrintableDocumentProps) {
   const { data: branding } = useQuery<BrandingSetting | null>({
     queryKey: ['branding'],
@@ -45,7 +55,8 @@ export function PrintableDocument({
     staleTime: Infinity,
   });
 
-  const fmt = usePrintSettings();
+  const baseFmt = usePrintSettings();
+  const fmt = fmtOverride ? { ...baseFmt, ...fmtOverride } : baseFmt;
 
   if (!open || !detail) return null;
 
@@ -83,20 +94,43 @@ export function PrintableDocument({
     return (branding?.[key] as string) || branding?.invoiceTerms || '';
   })();
 
-  const parkedWidth = fmt.paperSize === 'A5' ? '148mm' : fmt.paperSize === 'Letter' ? '216mm' : '210mm';
+  // ---- Layout derived from Print Layout settings -------------------------
+  const template = fmt.invoiceTemplate;
+  const thermal = template === 'thermal';
+  const tight = template === 'compact';
+  const centerAlign = fmt.invoiceHeaderAlign === 'center' || thermal;
+
+  const fz = fmt.fontSize === 'small' ? 0.9 : fmt.fontSize === 'large' ? 1.1 : 1;
+  const font = (px: number) => `${Math.round(px * fz)}px`;
+  const logoPx = fmt.logoSize === 'small' ? 34 : fmt.logoSize === 'large' ? 72 : 52;
+
+  const showNumCol = !thermal;
+  const colCount =
+    (showNumCol ? 1 : 0) + 1 + 1 + 1 + (fmt.invoiceShowDiscountCol ? 1 : 0) + (fmt.invoiceShowTaxCol ? 1 : 0) + 1;
+
+  const parkedWidth = thermal
+    ? '80mm'
+    : fmt.paperSize === 'A5'
+      ? '148mm'
+      : fmt.paperSize === 'Letter'
+        ? '216mm'
+        : '210mm';
+
+  const rowPad = thermal ? '5px 3px' : tight ? '5px 4px' : '7px 6px';
+  const headPad = thermal ? '4px 3px' : tight ? '5px 4px' : '8px 6px';
 
   return (
     <div
       id={preview ? 'printable-document-preview' : 'printable-document'}
       style={preview
         ? {
-            width: '794px',
+            width: thermal ? '302px' : '794px',
             maxWidth: '100%',
             background: '#ffffff',
             color: dark,
             fontFamily: studio,
-            fontSize: '12px',
-            lineHeight: 1.4,
+            fontSize: font(thermal ? 9 : 12),
+            lineHeight: thermal ? 1.35 : 1.4,
             boxShadow: '0 1px 6px rgba(15, 23, 42, .12)',
           }
         : {
@@ -107,8 +141,8 @@ export function PrintableDocument({
             background: '#ffffff',
             color: dark,
             fontFamily: studio,
-            fontSize: '12px',
-            lineHeight: 1.4,
+            fontSize: font(thermal ? 9 : 12),
+            lineHeight: thermal ? 1.35 : 1.4,
             zIndex: -1,
           }}
     >
@@ -116,26 +150,34 @@ export function PrintableDocument({
       <div
         style={{
           display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          borderBottom: '3px solid ' + primary,
-          paddingBottom: 14,
+          borderBottom: thermal ? '1px dashed ' + primary : '3px solid ' + primary,
+          paddingBottom: thermal ? 8 : 14,
           breakInside: 'avoid',
+          ...(centerAlign
+            ? { flexDirection: 'column', alignItems: 'center' }
+            : { justifyContent: 'space-between', alignItems: 'flex-start' }),
         }}
       >
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <div
+          style={{
+            display: 'flex',
+            gap: 12,
+            alignItems: 'center',
+            ...(centerAlign ? { flexDirection: 'column', textAlign: 'center' } : {}),
+          }}
+        >
           {!!branding?.logoUrl && (
             <img
               src={branding.logoUrl}
               alt=""
-              style={{ width: 52, height: 52, objectFit: 'contain', flexShrink: 0 }}
+              style={{ width: logoPx, height: logoPx, objectFit: 'contain', flexShrink: 0 }}
             />
           )}
           <div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: primary }}>
+            <div style={{ fontSize: font(thermal ? 14 : 22), fontWeight: 700, color: primary }}>
               {String(branding?.businessName ?? 'Your Business')}
             </div>
-            {!!branding?.shortName && <div style={{ fontSize: 12, color: muted, marginTop: 2 }}>{String(branding.shortName)}</div>}
+            {!!branding?.shortName && <div style={{ fontSize: font(11), color: muted, marginTop: 2 }}>{String(branding.shortName)}</div>}
             {!!branding?.address && <div style={{ color: muted, marginTop: 3 }}>{String(branding.address)}</div>}
             {(!!branding?.phone || !!branding?.email) && (
               <div style={{ color: muted, marginTop: 1 }}>
@@ -145,9 +187,13 @@ export function PrintableDocument({
             {!!branding?.ntn && <div style={{ color: muted, marginTop: 1 }}>NTN: {String(branding.ntn)}</div>}
           </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase' }}>{title}</div>
-          <div style={{ marginTop: 4, fontSize: 13, fontWeight: 600 }}>#{String(detail.number ?? detail.code ?? '')}</div>
+        <div
+          style={{
+            ...(centerAlign ? { marginTop: 8, textAlign: 'center' } : { textAlign: 'right' }),
+          }}
+        >
+          <div style={{ fontSize: font(thermal ? 13 : 18), fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase' }}>{title}</div>
+          <div style={{ marginTop: 4, fontSize: font(thermal ? 11 : 13), fontWeight: 600 }}>#{String(detail.number ?? detail.code ?? '')}</div>
           {fmt.invoiceShowDate && <div style={{ color: muted, marginTop: 2 }}>{dateTime(detail[dateField] ?? new Date())}</div>}
           {location && (
             <div style={{ color: muted, marginTop: 2 }}>{location.name}</div>
@@ -159,7 +205,7 @@ export function PrintableDocument({
                 marginTop: 6,
                 padding: '2px 10px',
                 borderRadius: 999,
-                fontSize: 10,
+                fontSize: font(9),
                 fontWeight: 700,
                 textTransform: 'uppercase',
                 letterSpacing: 0.5,
@@ -174,64 +220,76 @@ export function PrintableDocument({
       </div>
 
       {/* Bill to */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, breakInside: 'avoid' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: centerAlign ? 'center' : 'space-between',
+          marginTop: thermal ? 10 : 16,
+          breakInside: 'avoid',
+          ...(centerAlign ? { textAlign: 'center' } : {}),
+        }}
+      >
         <div>
-          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: lighter, fontWeight: 600 }}>{partyLabel}</div>
-          <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{party?.name || '—'}</div>
-          {party?.phone && <div style={{ color: '#475569', marginTop: 2 }}>{party.phone}</div>}
-          {party?.address && <div style={{ color: muted, marginTop: 1 }}>{party.address}</div>}
+          <div style={{ fontSize: font(9), textTransform: 'uppercase', letterSpacing: 1, color: lighter, fontWeight: 600 }}>{partyLabel}</div>
+          <div style={{ fontSize: font(thermal ? 11 : 14), fontWeight: 700, marginTop: 2 }}>{party?.name || '—'}</div>
+          {fmt.invoiceShowPartyContact && party?.phone && <div style={{ color: '#475569', marginTop: 2 }}>{party.phone}</div>}
+          {fmt.invoiceShowPartyContact && party?.address && <div style={{ color: muted, marginTop: 1 }}>{party.address}</div>}
         </div>
       </div>
 
       {/* Line items */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 18, borderTop: '1px solid #e2e8f0' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: thermal ? 10 : 18, borderTop: '1px solid #e2e8f0' }}>
         <thead>
-          <tr style={{ borderBottom: '2px solid ' + dark, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: '#334155' }}>
-            <th style={{ padding: '8px 6px', textAlign: 'left', width: 22 }}>#</th>
-            <th style={{ padding: '8px 6px', textAlign: 'left' }}>Item</th>
-            <th style={{ padding: '8px 6px', textAlign: 'right' }}>Qty</th>
-            <th style={{ padding: '8px 6px', textAlign: 'right' }}>{priceKey === 'unitCost' ? 'Unit Cost' : 'Unit Price'}</th>
-            <th style={{ padding: '8px 6px', textAlign: 'right' }}>Disc</th>
-            <th style={{ padding: '8px 6px', textAlign: 'right' }}>Tax</th>
-            <th style={{ padding: '8px 6px', textAlign: 'right' }}>Amount</th>
+          <tr style={{ borderBottom: '2px solid ' + dark, fontSize: font(thermal ? 7 : 10), textTransform: 'uppercase', letterSpacing: 1, color: '#334155' }}>
+            {showNumCol && <th style={{ padding: headPad, textAlign: 'left', width: 22 }}>#</th>}
+            <th style={{ padding: headPad, textAlign: 'left' }}>Item</th>
+            <th style={{ padding: headPad, textAlign: 'right' }}>Qty</th>
+            <th style={{ padding: headPad, textAlign: 'right' }}>{priceKey === 'unitCost' ? 'Unit Cost' : 'Rate'}</th>
+            {fmt.invoiceShowDiscountCol && <th style={{ padding: headPad, textAlign: 'right' }}>Disc</th>}
+            {fmt.invoiceShowTaxCol && <th style={{ padding: headPad, textAlign: 'right' }}>Tax</th>}
+            <th style={{ padding: headPad, textAlign: 'right' }}>Amount</th>
           </tr>
         </thead>
         <tbody>
           {items.map((l, i) => (
             <tr key={i} style={{ borderBottom: '1px solid #e2e8f0', breakInside: 'avoid' }}>
-              <td style={{ padding: '7px 6px', color: lighter }}>{i + 1}</td>
-              <td style={{ padding: '7px 6px' }}>
+              {showNumCol && <td style={{ padding: rowPad, color: lighter }}>{i + 1}</td>}
+              <td style={{ padding: rowPad }}>
                 <span style={{ fontWeight: 600 }}>{l.item?.name ?? '—'}</span>
-                {l.item?.code && <span style={{ color: lighter, fontSize: 11 }}> ({l.item.code})</span>}
+                {fmt.invoiceShowItemCode && l.item?.code && (
+                  thermal
+                    ? <span style={{ display: 'block', color: lighter, fontSize: font(8) }}>{l.item.code}</span>
+                    : <span style={{ color: lighter, fontSize: font(10) }}> ({l.item.code})</span>
+                )}
               </td>
-              <td style={{ padding: '7px 6px', textAlign: 'right' }}>{num(l.quantity)}</td>
-              <td style={{ padding: '7px 6px', textAlign: 'right' }}>{money(unit(l), 'PKR')}</td>
-              <td style={{ padding: '7px 6px', textAlign: 'right' }}>{Number(l.discount ?? 0) ? money(l.discount, 'PKR') : '—'}</td>
-              <td style={{ padding: '7px 6px', textAlign: 'right' }}>{Number(l.tax ?? 0) ? money(l.tax, 'PKR') : '—'}</td>
-              <td style={{ padding: '7px 6px', textAlign: 'right', fontWeight: 600 }}>{money(lineAmount(l), 'PKR')}</td>
+              <td style={{ padding: rowPad, textAlign: 'right' }}>{num(l.quantity)}</td>
+              <td style={{ padding: rowPad, textAlign: 'right' }}>{money(unit(l), 'PKR')}</td>
+              {fmt.invoiceShowDiscountCol && <td style={{ padding: rowPad, textAlign: 'right' }}>{Number(l.discount ?? 0) ? money(l.discount, 'PKR') : '—'}</td>}
+              {fmt.invoiceShowTaxCol && <td style={{ padding: rowPad, textAlign: 'right' }}>{Number(l.tax ?? 0) ? money(l.tax, 'PKR') : '—'}</td>}
+              <td style={{ padding: rowPad, textAlign: 'right', fontWeight: 600 }}>{money(lineAmount(l), 'PKR')}</td>
             </tr>
           ))}
           {items.length === 0 && (
-            <tr><td colSpan={7} style={{ padding: 12, textAlign: 'center', color: lighter }}>No lines</td></tr>
+            <tr><td colSpan={colCount} style={{ padding: 12, textAlign: 'center', color: lighter }}>No lines</td></tr>
           )}
         </tbody>
       </table>
 
       {/* Totals */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14, breakInside: 'avoid' }}>
-        <div style={{ width: 260 }}>
-          <TotalsRow label="Subtotal" value={money(sub, 'PKR')} />
-          {discount > 0 && <TotalsRow label="Discount" value={`- ${money(discount, 'PKR')}`} />}
-          {tax > 0 && <TotalsRow label="Tax" value={money(tax, 'PKR')} />}
-          <TotalsRow label="Grand total" value={money(grandTotal, 'PKR')} strong />
-          {showAmountPaid && <TotalsRow label="Amount paid" value={money(amountPaid, 'PKR')} />}
-          {showAmountPaid && fmt.invoiceShowBalance && <TotalsRow label="Balance due" value={money(balance, 'PKR')} strong />}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: thermal ? 8 : 14, breakInside: 'avoid' }}>
+        <div style={{ width: thermal ? '100%' : tight ? 230 : 260 }}>
+          <TotalsRow label="Subtotal" value={money(sub, 'PKR')} fz={fz} thermal={thermal} />
+          {discount > 0 && <TotalsRow label="Discount" value={`- ${money(discount, 'PKR')}`} fz={fz} thermal={thermal} />}
+          {tax > 0 && <TotalsRow label="Tax" value={money(tax, 'PKR')} fz={fz} thermal={thermal} />}
+          <TotalsRow label="Grand total" value={money(grandTotal, 'PKR')} strong fz={fz} thermal={thermal} />
+          {showAmountPaid && <TotalsRow label="Amount paid" value={money(amountPaid, 'PKR')} fz={fz} thermal={thermal} />}
+          {showAmountPaid && fmt.invoiceShowBalance && <TotalsRow label="Balance due" value={money(balance, 'PKR')} strong fz={fz} thermal={thermal} />}
         </div>
       </div>
 
       {/* Amount in words */}
       {grandTotal > 0 && fmt.invoiceShowAmountWords && (
-        <div style={{ marginTop: 10, fontSize: 11, color: '#334155', breakInside: 'avoid' }}>
+        <div style={{ marginTop: 10, fontSize: font(thermal ? 8 : 11), color: '#334155', breakInside: 'avoid' }}>
           <span style={{ fontWeight: 700 }}>Amount in words: </span>
           <span style={{ color: dark }}>{amountInWords(grandTotal)}</span>
         </div>
@@ -239,33 +297,35 @@ export function PrintableDocument({
 
       {/* Payment terms */}
       {showAmountPaid && balance > 0 && fmt.invoiceShowBalance && (
-        <div style={{ marginTop: 4, fontSize: 11, color: '#475569', breakInside: 'avoid' }}>
+        <div style={{ marginTop: 4, fontSize: font(thermal ? 8 : 11), color: '#475569', breakInside: 'avoid' }}>
           Payment status: <b style={{ textTransform: 'uppercase' }}>{paymentStatus ?? 'unpaid'}</b> — balance of{' '}
           {money(balance, 'PKR')} is due.
         </div>
       )}
 
       {/* References / notes */}
-      {!!detail.reference && <p style={{ color: muted, marginTop: 10 }}>Reference: {String(detail.reference)}</p>}
-      {!!detail.note && <p style={{ color: muted, marginTop: 2 }}>Note: {String(detail.note)}</p>}
+      {!!detail.reference && <p style={{ color: muted, marginTop: 10, fontSize: font(10) }}>Reference: {String(detail.reference)}</p>}
+      {!!detail.note && <p style={{ color: muted, marginTop: 2, fontSize: font(10) }}>Note: {String(detail.note)}</p>}
 
       {/* Signatures */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 46, breakInside: 'avoid' }}>
-        <div style={{ textAlign: 'center', width: '45%' }}>
-          <div style={{ borderTop: '1px solid #94a3b8', paddingTop: 6, fontSize: 11, color: muted }}>
-            Prepared by
+      {fmt.invoiceShowSignatures && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: thermal ? 28 : 46, breakInside: 'avoid' }}>
+          <div style={{ textAlign: 'center', width: '45%' }}>
+            <div style={{ borderTop: '1px solid #94a3b8', paddingTop: 6, fontSize: font(10), color: muted }}>
+              Prepared by
+            </div>
+          </div>
+          <div style={{ textAlign: 'center', width: '45%' }}>
+            <div style={{ borderTop: '1px solid #94a3b8', paddingTop: 6, fontSize: font(10), color: muted }}>
+              {partyLabel === 'Supplier' ? 'Received by (Supplier)' : 'Received by (Customer)'}
+            </div>
           </div>
         </div>
-        <div style={{ textAlign: 'center', width: '45%' }}>
-          <div style={{ borderTop: '1px solid #94a3b8', paddingTop: 6, fontSize: 11, color: muted }}>
-            {partyLabel === 'Supplier' ? 'Received by (Supplier)' : 'Received by (Customer)'}
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* Terms / footer */}
       {(!!docTerms || !!docFooter) && (
-        <div style={{ marginTop: 24, borderTop: '1px solid #e2e8f0', paddingTop: 10, fontSize: 11, color: muted }}>
+        <div style={{ marginTop: 24, borderTop: '1px solid #e2e8f0', paddingTop: 10, fontSize: font(10), color: muted }}>
           {!!docTerms && <p style={{ marginBottom: 4 }}>{docTerms}</p>}
           {!!docFooter && <p>{docFooter}</p>}
         </div>
@@ -274,16 +334,28 @@ export function PrintableDocument({
   );
 }
 
-function TotalsRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function TotalsRow({
+  label,
+  value,
+  strong,
+  fz,
+  thermal,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  fz: number;
+  thermal: boolean;
+}) {
   return (
     <div
       style={{
         display: 'flex',
         justifyContent: 'space-between',
-        padding: '5px 0',
+        padding: thermal ? '3px 0' : '5px 0',
         fontWeight: strong ? 700 : 400,
         borderTop: strong ? '2px solid #0f172a' : '1px solid #f1f5f9',
-        fontSize: strong ? 14 : 12,
+        fontSize: `${Math.round((strong ? 14 : 12) * fz)}px`,
       }}
     >
       <span>{label}</span><span className="tabular-nums">{value}</span>

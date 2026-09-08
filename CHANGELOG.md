@@ -8,6 +8,23 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Print Layout designer** — a new **System → Print Layout** page lets you design
+  exactly how invoices print, with a live side-by-side preview of a sample invoice.
+  Pick a **template** — Standard (A4), Compact (tighter spacing) or **Thermal
+  (80mm receipt-style)** — plus paper size (A4/A5/Letter), print scale, font size,
+  logo size and header alignment (left/center). A Show/Hide panel controls which
+  sections appear: balance due, amount in words, invoice date, signature lines,
+  party contact info, item codes, discount column, tax column and page numbers.
+  Thermal printing switches the print output to a continuous 80mm receipt:
+  `@page size: 80mm auto`, narrow margins and no pagination footer. Changes are
+  saved as normal `print.*` settings and instantly apply to every document
+  printed from Sales / Purchases / Returns, and there's a one-click Reset to
+  Defaults. Print settings now live in dedicated whitelisted keys
+  (`print.invoiceTemplate`, `print.fontSize`, `print.logoSize`,
+  `print.invoiceShowSignatures`, `print.invoiceShowPartyContact`,
+  `print.invoiceShowItemCode`, `print.invoiceShowDiscountCol`,
+  `print.invoiceShowTaxCol`, `print.invoiceHeaderAlign`, `print.showPageNumbers`)
+  so they are also included in settings backups.
 - **Security headers and transport hardening** — the API now emits security
   headers via `helmet` for every response: a strict Content-Security-Policy in
   production (this API only serves JSON) and a relaxed variant in development so

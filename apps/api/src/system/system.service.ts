@@ -27,6 +27,16 @@ const SETTING_KEYS = [
   'print.reportShowLogo',
   'print.paperSize',
   'print.scale',
+  'print.invoiceTemplate',
+  'print.fontSize',
+  'print.logoSize',
+  'print.invoiceShowSignatures',
+  'print.invoiceShowPartyContact',
+  'print.invoiceShowItemCode',
+  'print.invoiceShowDiscountCol',
+  'print.invoiceShowTaxCol',
+  'print.invoiceHeaderAlign',
+  'print.showPageNumbers',
   'audit.retention_days',
   'fiscal.locked_until',
 ];
@@ -129,6 +139,16 @@ export class SystemService {
     if (dto.reportShowLogo !== undefined) map['print.reportShowLogo'] = dto.reportShowLogo;
     if (dto.paperSize !== undefined) map['print.paperSize'] = dto.paperSize;
     if (dto.printScale !== undefined) map['print.scale'] = dto.printScale;
+    if (dto.invoiceTemplate !== undefined) map['print.invoiceTemplate'] = dto.invoiceTemplate;
+    if (dto.fontSize !== undefined) map['print.fontSize'] = dto.fontSize;
+    if (dto.logoSize !== undefined) map['print.logoSize'] = dto.logoSize;
+    if (dto.invoiceShowSignatures !== undefined) map['print.invoiceShowSignatures'] = dto.invoiceShowSignatures;
+    if (dto.invoiceShowPartyContact !== undefined) map['print.invoiceShowPartyContact'] = dto.invoiceShowPartyContact;
+    if (dto.invoiceShowItemCode !== undefined) map['print.invoiceShowItemCode'] = dto.invoiceShowItemCode;
+    if (dto.invoiceShowDiscountCol !== undefined) map['print.invoiceShowDiscountCol'] = dto.invoiceShowDiscountCol;
+    if (dto.invoiceShowTaxCol !== undefined) map['print.invoiceShowTaxCol'] = dto.invoiceShowTaxCol;
+    if (dto.invoiceHeaderAlign !== undefined) map['print.invoiceHeaderAlign'] = dto.invoiceHeaderAlign;
+    if (dto.showPageNumbers !== undefined) map['print.showPageNumbers'] = dto.showPageNumbers;
     if (dto.auditRetentionDays !== undefined) map['audit.retention_days'] = dto.auditRetentionDays;
     if (dto.values) {
       // The free-form values map is only ever written for whitelisted keys, so a
