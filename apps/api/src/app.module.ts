@@ -11,6 +11,7 @@ import { RolesModule } from './roles/roles.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { AuditModule } from './audit/audit.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from './auth/guards/permissions.guard';
 import { AdministrationModule } from './administration/administration.module';
 import { PartiesModule } from './parties/parties.module';
 import { AccountsModule } from './accounts/accounts.module';
@@ -56,6 +57,10 @@ import { DashboardModule } from './dashboard/dashboard.module';
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: PermissionsGuard,
     },
   ],
 })

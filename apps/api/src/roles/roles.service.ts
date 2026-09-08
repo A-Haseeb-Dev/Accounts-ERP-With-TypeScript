@@ -50,6 +50,13 @@ export class RolesService {
     return roles;
   }
 
+  async findFlat() {
+    return this.prisma.role.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async findOne(id: string) {
     const role = await this.prisma.role.findUnique({
       where: { id },

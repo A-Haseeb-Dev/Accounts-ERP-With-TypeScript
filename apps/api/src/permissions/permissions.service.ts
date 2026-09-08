@@ -72,6 +72,8 @@ export const PERMISSION_CATALOG: { name: string; module: string; action: string;
   // Accounting
   { name: 'accounts.vouchers.view', module: 'accounts', action: 'view' },
   { name: 'accounts.vouchers.create', module: 'accounts', action: 'create' },
+  { name: 'accounts.vouchers.update', module: 'accounts', action: 'update' },
+  { name: 'accounts.vouchers.delete', module: 'accounts', action: 'delete' },
   { name: 'accounts.vouchers.post', module: 'accounts', action: 'post' },
   { name: 'accounts.vouchers.cancel', module: 'accounts', action: 'cancel' },
   { name: 'accounts.cashbook.view', module: 'accounts', action: 'view' },

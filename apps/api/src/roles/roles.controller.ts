@@ -25,6 +25,13 @@ export class RolesController {
     return this.rolesService.findAll();
   }
 
+  @Get('flat')
+  @Permissions('users.view')
+  @ApiOperation({ summary: 'List roles (for selects)' })
+  findFlat() {
+    return this.rolesService.findFlat();
+  }
+
   @Get(':id')
   @Permissions('roles.view')
   @ApiOperation({ summary: 'Get a role by id' })

@@ -8,6 +8,19 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Permissions are now enforced end-to-end** — the previously dead
+  `PermissionsGuard` is registered as a global guard, so every
+  `@Permissions(...)` on the API actually takes effect (before this change roles
+  and permission toggles had no server-side impact). Super Admin keeps full
+  access (new catalog permissions are auto-granted on boot) and the Developer
+  role bypasses checks. Two missing permissions — `accounts.vouchers.update` and
+  `accounts.vouchers.delete` — were added to the catalog, so manager roles can
+  now be granted voucher editing/deletion.
+- **Roles dropdown on the Users page fixed** — a new `GET /roles/flat` endpoint
+  (`users.view`) feeds the user form's role selector, which was previously empty.
+  Also fixed user create/update role assignment, which was rejected with a 400 by
+  validation (`roleIds` was decorated `@IsString()` instead of an array of
+  strings).
 - **Print Layout designer** — a new **System → Print Layout** page lets you design
   exactly how invoices print, with a live side-by-side preview of a sample invoice.
   Pick a **template** — Standard (A4), Compact (tighter spacing) or **Thermal

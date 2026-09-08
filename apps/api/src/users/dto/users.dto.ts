@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsEmail,
   IsNotEmpty,
   IsOptional,
@@ -38,7 +39,8 @@ export class CreateUserDto {
   @Matches(PASSWORD_PATTERN, { message: PASSWORD_PATTERN_MESSAGE })
   password: string;
 
-  @IsString()
+  @IsArray()
+  @IsString({ each: true })
   @IsOptional()
   roleIds?: string[];
 }
@@ -69,7 +71,8 @@ export class UpdateUserDto {
   @Matches(PASSWORD_PATTERN, { message: PASSWORD_PATTERN_MESSAGE })
   password?: string;
 
-  @IsString()
+  @IsArray()
+  @IsString({ each: true })
   @IsOptional()
   roleIds?: string[];
 }
