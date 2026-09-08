@@ -11,7 +11,8 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
-import { filterByPermissions, NAV_ITEMS } from '@/lib/navigation';
+import { filterNavigation, NAV_ITEMS } from '@/lib/navigation';
+import { useFeatureFlags } from '@/hooks/use-feature-flags';
 import { cn, initials } from '@/lib/utils';
 
 export function Sidebar({
@@ -22,9 +23,15 @@ export function Sidebar({
   onMobileToggle: (open: boolean) => void;
 }) {
   const { user, logout, can } = useAuth();
+  const { enabled } = useFeatureFlags();
   const pathname = usePathname();
+  const isDeveloper = user?.roles?.includes('Developer') ?? false;
 
-  const items = filterByPermissions(NAV_ITEMS, user?.permissions ?? []);
+  const items = filterNavigation(NAV_ITEMS, {
+    permissions: user?.permissions ?? [],
+    enabledFeatures: enabled,
+    isDeveloper,
+  });
   const topLevel = items.filter((i) => i.children);
 
   const close = () => onMobileToggle(false);

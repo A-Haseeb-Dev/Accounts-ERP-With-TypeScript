@@ -120,6 +120,7 @@ export const PERMISSION_CATALOG: { name: string; module: string; action: string;
   { name: 'system.settings.manage', module: 'system', action: 'view' },
   { name: 'system.audit.view', module: 'system', action: 'view' },
   { name: 'system.audit.purge', module: 'system', action: 'purge', description: 'Purge old audit logs' },
+  { name: 'system.features.manage', module: 'system', action: 'manage', description: 'Toggle company features (Developer role only)' },
 ];
 
 @Injectable()

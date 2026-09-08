@@ -10,6 +10,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ApiException } from '../../common/exceptions/api.exception';
 import { REQUIRED_PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
+import { FeaturesService } from '../../features/features.service';
+import { featureForPermission } from '../../features/feature-catalog';
 
 /**
  * Guards routes by requiring any/all of the declared permission(s).
@@ -23,6 +25,7 @@ export class PermissionsGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly features: FeaturesService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -48,6 +51,20 @@ export class PermissionsGuard implements CanActivate {
     const isDeveloper = await this.isDeveloperRole(user.id);
     if (isDeveloper) {
       return true;
+    }
+
+    // Company feature switches: if any required permission belongs to a feature
+    // that the developer has switched off for this company, deny the route to
+    // everyone except the Developer role (checked above).
+    const featureCodes = new Set<string>();
+    for (const perm of required) {
+      const feature = featureForPermission(perm);
+      if (feature) featureCodes.add(feature);
+    }
+    for (const code of featureCodes) {
+      if (!(await this.features.isEnabled(code))) {
+        throw ApiException.forbidden(`The "${code}" feature is disabled for this company`);
+      }
     }
 
     const permissions = await this.prisma.rolePermission.findMany({

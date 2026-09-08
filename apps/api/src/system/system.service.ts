@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ApiException } from '../common/exceptions/api.exception';
 import { ImportSettingsDto, UpdateBrandingDto, UpdateSettingsDto } from './dto/system.dto';
+import { FEATURES } from '../features/feature-catalog';
 
 const SETTING_KEYS = [
   'currency',
@@ -42,6 +43,12 @@ const SETTING_KEYS = [
   'audit.retention_days',
   'fiscal.locked_until',
 ];
+
+// Feature switches are stored in system_settings too, so backups/restores pick
+// them up. They are whitelisted by expanding the feature catalog below.
+for (const feature of FEATURES) {
+  SETTING_KEYS.push(`features.${feature.code}`);
+}
 
 @Injectable()
 export class SystemService {

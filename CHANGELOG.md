@@ -8,6 +8,18 @@ and this project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Company Features (on/off switches)** — a developer can now sell the ERP with
+  or without individual modules. The new **System → Company Features** page lists
+  each switchable module — Sales, Purchases, Inventory & Items, Parties,
+  Accounting, Reports and Audit Logs — with an on/off toggle. Toggling is
+  **Developer-role only** (Super Admin and everyone else get a 403, enforced in
+  both the controller and a dedicated permission), and a disabled feature blocks
+  every user *except* the Developer at the `PermissionsGuard` — a turned-off
+  module cannot be reached even by a Super Admin, not even by URL. State is stored
+  in whitelisted `features.*` settings (so it is included in settings
+  backups/restores) and the sidebar hides navigation entries for disabled modules
+  right away. Core admin abilities (users, roles, settings, branding, print
+  design) stay always-on by design.
 - **Permissions are now enforced end-to-end** — the previously dead
   `PermissionsGuard` is registered as a global guard, so every
   `@Permissions(...)` on the API actually takes effect (before this change roles

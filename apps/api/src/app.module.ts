@@ -19,6 +19,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { SalesModule } from './sales/sales.module';
 import { ReportsModule } from './reports/reports.module';
 import { SystemModule } from './system/system.module';
+import { FeaturesModule } from './features/features.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
@@ -47,6 +48,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     SalesModule,
     ReportsModule,
     SystemModule,
+    FeaturesModule,
     DashboardModule,
   ],
   providers: [
