@@ -114,7 +114,7 @@ export default function PrintLayoutPage() {
       const ov = decodeLayoutOverrides(data['print.layoutOverrides']);
       setBaseLayout(base);
       setOverrides(ov);
-      setLayout(resolveLayout(base, ov, 'sale', null));
+      setLayout(layoutForScope(DEFAULT_SCOPE, base, ov));
       setSelectedBlock(null);
     }
   }, [data, layout]);
