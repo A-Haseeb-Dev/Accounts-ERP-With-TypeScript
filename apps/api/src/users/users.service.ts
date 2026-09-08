@@ -145,22 +145,21 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw ApiException.notFound('User');
     if (user.id === actorId) {
-      throw ApiException.invalidTransaction('You cannot deactivate your own account');
+      throw ApiException.invalidTransaction('You cannot delete your own account');
     }
 
-    await this.prisma.userRole.deleteMany({ where: { userId: id } });
-    await this.prisma.user.update({ where: { id }, data: { status: 'inactive' } });
+    await this.prisma.user.delete({ where: { id } });
 
     this.audit.record({
       userId: actorId,
-      action: 'DEACTIVATE',
+      action: 'DELETE',
       module: 'USER',
       entity: 'User',
       entityId: id,
-      message: `User ${user.username} deactivated`,
+      message: `User ${user.username} deleted permanently`,
     });
 
-    return { id, status: 'inactive' };
+    return { id, deleted: true };
   }
 
   private sanitize(user: any) {

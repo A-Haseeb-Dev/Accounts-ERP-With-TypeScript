@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Power, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
@@ -49,6 +49,12 @@ export default function UsersPage() {
   const update = useMutation({
     mutationFn: ({ id, ...body }: { id: string; [k: string]: unknown }) => apiFetch(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setModalOpen(false); setEditId(null); },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  const toggleStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) => apiFetch(`/users/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
     onError: (e: Error) => setError(e.message),
   });
 
@@ -113,6 +119,11 @@ export default function UsersPage() {
                   <td className="px-4 py-2 text-xs text-slate-400">{dateTime(r.createdAt)}</td>
                   <td className="px-4 py-2">
                     <div className="flex gap-0.5">
+                      <button
+                        onClick={() => toggleStatus.mutate({ id: r.id, status: r.status === 'active' ? 'inactive' : 'active' })}
+                        className={`rounded-lg p-1.5 hover:bg-slate-100 ${r.status === 'active' ? 'text-slate-500 hover:text-amber-600' : 'text-emerald-600 hover:bg-emerald-50'}`}
+                        title={r.status === 'active' ? 'Deactivate' : 'Activate'}
+                      ><Power className="h-4 w-4" /></button>
                       <button onClick={() => startEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Pencil className="h-4 w-4" /></button>
                       <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
                     </div>
@@ -154,7 +165,7 @@ export default function UsersPage() {
         open={!!deleteTarget}
         danger
         title="Delete User"
-        message={`Delete user "${deleteTarget?.fullName ?? ''}"? This cannot be undone.`}
+        message={`Delete user "${deleteTarget?.fullName ?? ''}" permanently? This removes them and cannot be undone.`}
         confirmLabel="Delete"
         loading={del.isPending}
         onCancel={() => setDeleteTarget(null)}

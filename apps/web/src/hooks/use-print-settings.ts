@@ -3,8 +3,13 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import {
+  decodePrintLayout,
+  defaultLayout,
+  type PrintLayoutConfig,
+} from '@/lib/print-layout';
 
-export type InvoiceTemplate = 'standard' | 'compact' | 'thermal';
+export type InvoiceTemplate = 'standard' | 'compact' | 'thermal' | 'custom';
 export type PrintFontSize = 'small' | 'normal' | 'large';
 export type PrintLogoSize = 'small' | 'medium' | 'large';
 export type PrintHeaderAlign = 'left' | 'center';
@@ -27,6 +32,7 @@ export interface PrintSettings {
   invoiceShowTaxCol: boolean;
   invoiceHeaderAlign: PrintHeaderAlign;
   showPageNumbers: boolean;
+  customLayout: PrintLayoutConfig | null;
 }
 
 export const PRINT_DEFAULTS: PrintSettings = {
@@ -47,6 +53,7 @@ export const PRINT_DEFAULTS: PrintSettings = {
   invoiceShowTaxCol: true,
   invoiceHeaderAlign: 'left',
   showPageNumbers: true,
+  customLayout: defaultLayout(),
 };
 
 const isTrue = (s?: string) => s === 'true';
@@ -74,7 +81,7 @@ export function usePrintSettings(): PrintSettings {
   const printScale = Number.isFinite(scaleRaw) ? Math.min(100, Math.max(50, scaleRaw)) : PRINT_DEFAULTS.printScale;
   const invoiceTemplate = pick(
     data?.['print.invoiceTemplate'],
-    ['standard', 'compact', 'thermal'] as const,
+    ['standard', 'compact', 'thermal', 'custom'] as const,
     PRINT_DEFAULTS.invoiceTemplate,
   );
   const fontSize = pick(
@@ -93,6 +100,9 @@ export function usePrintSettings(): PrintSettings {
     PRINT_DEFAULTS.invoiceHeaderAlign,
   );
   const showPageNumbers = data ? isTrue(data['print.showPageNumbers']) : PRINT_DEFAULTS.showPageNumbers;
+  const customLayout = data
+    ? (decodePrintLayout(data['print.layout']) ?? PRINT_DEFAULTS.customLayout)
+    : PRINT_DEFAULTS.customLayout;
 
   // Mirror paper/scale/template/page-numbers to localStorage so the synchronous
   // printElement() in a plain module can pick them up without a React context.
@@ -125,5 +135,6 @@ export function usePrintSettings(): PrintSettings {
     invoiceShowTaxCol: data ? isTrue(data['print.invoiceShowTaxCol']) : PRINT_DEFAULTS.invoiceShowTaxCol,
     invoiceHeaderAlign,
     showPageNumbers,
+    customLayout,
   };
 }

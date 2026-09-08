@@ -21,13 +21,26 @@ and this project follows [Semantic Versioning](https://semver.org/).
   Also fixed user create/update role assignment, which was rejected with a 400 by
   validation (`roleIds` was decorated `@IsString()` instead of an array of
   strings).
+- **Users: delete vs. deactivate are now distinct** — the Users page's delete
+  action now **permanently removes** a user (hard delete, with an audit entry) as
+  its label suggests, while a new toggle button cleanly **deactivates/activates**
+  an account (guarded by `users.update`) without losing its history. You can no
+  longer delete your own account. Related transactions keep records through
+  `SetNull`/cascade FK rules, so history stays intact after either action.
 - **Print Layout designer** — a new **System → Print Layout** page lets you design
   exactly how invoices print, with a live side-by-side preview of a sample invoice.
-  Pick a **template** — Standard (A4), Compact (tighter spacing) or **Thermal
-  (80mm receipt-style)** — plus paper size (A4/A5/Letter), print scale, font size,
-  logo size and header alignment (left/center). A Show/Hide panel controls which
-  sections appear: balance due, amount in words, invoice date, signature lines,
-  party contact info, item codes, discount column, tax column and page numbers.
+  Pick a **template** — Standard (A4), Compact (tighter spacing), **Thermal
+  (80mm receipt-style)** or **Custom (Designer)** — plus paper size (A4/A5/Letter),
+  print scale, font size, logo size and header alignment (left/center). A Show/Hide
+  panel controls which sections appear: balance due, amount in words, invoice date,
+  signature lines, party contact info, item codes, discount column, tax column and
+  page numbers. The **Custom designer** goes further: every block (logo, business
+  identity, invoice heading, meta, party, items table, totals, amount in words,
+  notes, signatures, terms footer) can be shown/hidden, reordered by dragging or
+  with the up/down buttons, and positioned to the pixel — horizontal offset
+  (−120…+120 px), margin above (0–60 px), vertical alignment (left/center/right),
+  per-block font size (or Auto) and bold. Blocks render in a live preview and the
+  layout is persisted as `print.layout` in the settings backup.
   Thermal printing switches the print output to a continuous 80mm receipt:
   `@page size: 80mm auto`, narrow margins and no pagination footer. Changes are
   saved as normal `print.*` settings and instantly apply to every document

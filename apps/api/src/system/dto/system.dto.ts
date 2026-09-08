@@ -183,7 +183,7 @@ export class UpdateSettingsDto {
 
   @IsString()
   @IsOptional()
-  @Matches(/^(standard|compact|thermal)$/, { message: 'Invoice template must be standard, compact or thermal' })
+  @Matches(/^(standard|compact|thermal|custom)$/, { message: 'Invoice template must be standard, compact, thermal or custom' })
   invoiceTemplate?: string;
 
   @IsString()

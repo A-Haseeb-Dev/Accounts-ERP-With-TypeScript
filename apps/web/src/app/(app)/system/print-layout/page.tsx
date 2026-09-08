@@ -1,7 +1,8 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Field, Select } from '@/components/ui/field';
@@ -16,6 +17,17 @@ import {
   type PrintLogoSize,
   type PrintSettings,
 } from '@/hooks/use-print-settings';
+import {
+  LAYOUT_BLOCK_LABELS,
+  blockFontSize,
+  decodePrintLayout,
+  defaultLayout,
+  encodePrintLayout,
+  type LayoutBlockAlign,
+  type LayoutBlockConfig,
+  type LayoutBlockKey,
+  type PrintLayoutConfig,
+} from '@/lib/print-layout';
 import type { TransactionDoc } from '@/lib/types';
 
 type Settings = Record<string, string>;
@@ -59,6 +71,12 @@ const SAMPLE_DETAIL: TransactionDoc = {
   ],
 };
 
+const ALIGN_BUTTONS: { value: LayoutBlockAlign; label: string }[] = [
+  { value: 'left', label: 'Left' },
+  { value: 'center', label: 'Center' },
+  { value: 'right', label: 'Right' },
+];
+
 export default function PrintLayoutPage() {
   const qc = useQueryClient();
 
@@ -68,7 +86,17 @@ export default function PrintLayoutPage() {
   });
 
   const [form, setForm] = useState<Settings>({});
+  const [layout, setLayout] = useState<PrintLayoutConfig | null>(null);
+  const [selectedBlock, setSelectedBlock] = useState<LayoutBlockKey | null>(null);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (data && layout === null) {
+      setLayout(decodePrintLayout(data['print.layout']) ?? defaultLayout());
+      setSelectedBlock(null);
+    }
+  }, [data, layout]);
 
   const set = (field: string, v: string) => setForm((f) => ({ ...f, [field]: v }));
 
@@ -83,8 +111,9 @@ export default function PrintLayoutPage() {
 
   const submit = () => {
     setError('');
-    const payload: Record<string, string> = {};
+    const payload: Record<string, unknown> = {};
     for (const field of Object.keys(FIELDS)) payload[field] = value(field);
+    if (layout) payload.values = { 'print.layout': encodePrintLayout(layout) };
     save.mutate(payload);
   };
 
@@ -93,8 +122,33 @@ export default function PrintLayoutPage() {
     const payload: Record<string, string> = {};
     for (const field of Object.keys(FIELDS)) payload[field] = FIELDS[field].def;
     setForm(payload);
-    save.mutate(payload);
+    const fresh = defaultLayout();
+    setLayout(fresh);
+    setSelectedBlock(null);
+    save.mutate({
+      ...payload,
+      values: { 'print.layout': encodePrintLayout(fresh) },
+    });
   };
+
+  // ---- Custom layout helpers ---------------------------------------------
+  const patchBlock = (key: LayoutBlockKey, patch: Partial<LayoutBlockConfig>) =>
+    setLayout((l) =>
+      l ? { ...l, blocks: l.blocks.map((b) => (b.key === key ? { ...b, ...patch } : b)) } : l,
+    );
+
+  const moveBlock = (from: number, to: number) =>
+    setLayout((l) => {
+      if (!l) return l;
+      const blocks = [...l.blocks];
+      const [moved] = blocks.splice(from, 1);
+      if (!moved) return l;
+      blocks.splice(to, 0, moved);
+      return { ...l, blocks };
+    });
+
+  const thermal = value('invoiceTemplate') === 'thermal';
+  const isCustom = value('invoiceTemplate') === 'custom';
 
   const fmtOverride: PrintSettings = {
     invoiceShowBalance: value('invoiceShowBalance') === 'true',
@@ -114,9 +168,9 @@ export default function PrintLayoutPage() {
     invoiceShowTaxCol: value('invoiceShowTaxCol') === 'true',
     invoiceHeaderAlign: value('invoiceHeaderAlign') as PrintHeaderAlign,
     showPageNumbers: value('showPageNumbers') === 'true',
+    customLayout: layout,
   };
 
-  const thermal = value('invoiceTemplate') === 'thermal';
   const yN = (field: string, label: string) => (
     <Field label={label}>
       <Select value={value(field)} onChange={(e) => set(field, e.target.value)}>
@@ -126,11 +180,40 @@ export default function PrintLayoutPage() {
     </Field>
   );
 
+  const selected = layout?.blocks.find((b) => b.key === selectedBlock) ?? null;
+
+  const range = (
+    label: string,
+    current: number,
+    min: number,
+    max: number,
+    onChange: (v: number) => void,
+    suffix = 'px',
+  ) => (
+    <div>
+      <div className="mb-1 flex items-center justify-between text-xs">
+        <span className="font-medium text-slate-600">{label}</span>
+        <span className="tabular-nums text-slate-400">
+          {current === 0 && suffix === 'px' && label === 'Font Size' ? 'Auto' : `${current}${suffix}`}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={1}
+        value={current}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full accent-teal-600"
+      />
+    </div>
+  );
+
   return (
     <div>
       <PageHeader
         title="Print Layout"
-        description="Design how invoices print — template, paper, font and which sections appear. Changes save to Settings and apply to every document you print."
+        description="Design how invoices print. Pick a preset template, or use the Custom designer to drag blocks and position every element to the pixel."
       />
 
       <Card>
@@ -149,6 +232,7 @@ export default function PrintLayoutPage() {
                         <option value="standard">Standard (A4)</option>
                         <option value="compact">Compact</option>
                         <option value="thermal">Thermal (80mm)</option>
+                        <option value="custom">Custom (Designer)</option>
                       </Select>
                     </Field>
                     <Field label="Paper Size" hint={thermal ? 'Thermal ignores paper size' : undefined}>
@@ -185,8 +269,8 @@ export default function PrintLayoutPage() {
                         <option value="large">Large</option>
                       </Select>
                     </Field>
-                    <Field label="Header Alignment">
-                      <Select value={value('invoiceHeaderAlign')} onChange={(e) => set('invoiceHeaderAlign', e.target.value)} disabled={thermal}>
+                    <Field label="Header Alignment" hint={isCustom ? 'Custom layout has per-block alignment' : undefined}>
+                      <Select value={value('invoiceHeaderAlign')} onChange={(e) => set('invoiceHeaderAlign', e.target.value)} disabled={thermal || isCustom}>
                         <option value="left">Left</option>
                         <option value="center">Center</option>
                       </Select>
@@ -194,20 +278,129 @@ export default function PrintLayoutPage() {
                   </div>
                 </div>
 
-                <div>
-                  <p className="mb-3 text-sm font-semibold text-slate-700">Show / Hide</p>
-                  <div className="grid grid-cols-2 gap-4">
-                    {yN('invoiceShowBalance', 'Balance Due')}
-                    {yN('invoiceShowAmountWords', 'Amount in Words')}
-                    {yN('invoiceShowDate', 'Invoice Date')}
-                    {yN('invoiceShowSignatures', 'Signature Lines')}
-                    {yN('invoiceShowPartyContact', 'Party Contact')}
-                    {yN('invoiceShowItemCode', 'Item Code')}
-                    {yN('invoiceShowDiscountCol', 'Discount Column')}
-                    {yN('invoiceShowTaxCol', 'Tax Column')}
-                    {yN('showPageNumbers', 'Page Numbers')}
+                {isCustom && (
+                  <div className="rounded-xl border border-slate-200 p-4">
+                    <div className="mb-1 flex items-center justify-between">
+                      <p className="text-sm font-semibold text-slate-700">Custom Designer</p>
+                      <span className="rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700">
+                        {layout?.blocks.filter((b) => b.enabled).length ?? 0} blocks shown
+                      </span>
+                    </div>
+                    <p className="mb-3 text-xs text-slate-400">
+                      Drag a block to change its vertical order. Click a block to fine-tune its exact position.
+                    </p>
+
+                    <div className="space-y-1.5">
+                      {layout?.blocks.map((b, i) => (
+                        <div
+                          key={b.key}
+                          draggable
+                          onDragStart={(e) => { setDragIdx(i); e.dataTransfer.effectAllowed = 'move'; }}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            if (dragIdx !== null && dragIdx !== i) moveBlock(dragIdx, i);
+                            setDragIdx(null);
+                          }}
+                          onClick={() => setSelectedBlock(b.key)}
+                          className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2 py-1.5 text-sm transition-colors ${
+                            selectedBlock === b.key
+                              ? 'border-teal-300 bg-teal-50/60 ring-1 ring-teal-200'
+                              : b.enabled
+                                ? 'border-slate-200 bg-white hover:border-slate-300'
+                                : 'border-dashed border-slate-200 bg-slate-50 opacity-60'
+                          }`}
+                        >
+                          <span className="cursor-grab text-slate-300" title="Drag to reorder"><GripVertical className="h-4 w-4" /></span>
+                          <input
+                            type="checkbox"
+                            checked={b.enabled}
+                            onChange={(e) => { e.stopPropagation(); patchBlock(b.key, { enabled: e.target.checked }); }}
+                            className="rounded border-slate-300"
+                          />
+                          <span className="flex-1 font-medium text-slate-700">{LAYOUT_BLOCK_LABELS[b.key]}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); if (i > 0) moveBlock(i, i - 1); }}
+                            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                            title="Move up"
+                          ><ChevronUp className="h-3.5 w-3.5" /></button>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); if (i < (layout?.blocks.length ?? 1) - 1) moveBlock(i, i + 1); }}
+                            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                            title="Move down"
+                          ><ChevronDown className="h-3.5 w-3.5" /></button>
+                        </div>
+                      ))}
+                    </div>
+
+                    {selected && (
+                      <div className="mt-4 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-semibold text-slate-700">{LAYOUT_BLOCK_LABELS[selected.key]}</p>
+                          <span className="text-xs tabular-nums text-slate-400">
+                            {blockFontSize(selected)}px default
+                          </span>
+                        </div>
+
+                        <div>
+                          <div className="mb-1 text-xs font-medium text-slate-600">Alignment</div>
+                          <div className="grid grid-cols-3 gap-1">
+                            {ALIGN_BUTTONS.map((a) => (
+                              <button
+                                key={a.value}
+                                type="button"
+                                onClick={() => patchBlock(selected.key, { align: a.value })}
+                                className={`rounded-md border px-2 py-1 text-xs font-medium transition-colors ${
+                                  selected.align === a.value
+                                    ? 'border-teal-400 bg-teal-600 text-white'
+                                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                                }`}
+                              >
+                                {a.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {range('Horizontal Offset', selected.offsetX, -120, 120, (v) => patchBlock(selected.key, { offsetX: v }))}
+                        {range('Margin Above', selected.marginTop, 0, 60, (v) => patchBlock(selected.key, { marginTop: v }))}
+                        {selected.key !== 'logo' &&
+                          range('Font Size (0 = Auto)', selected.fontSize, 0, 36, (v) => patchBlock(selected.key, { fontSize: v }))}
+
+                        {selected.key !== 'itemsTable' && selected.key !== 'signatures' && (
+                          <label className="flex items-center gap-2 text-sm text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={selected.bold}
+                              onChange={(e) => patchBlock(selected.key, { bold: e.target.checked })}
+                              className="rounded border-slate-300"
+                            />
+                            Bold text
+                          </label>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
+
+                {!isCustom && (
+                  <div>
+                    <p className="mb-3 text-sm font-semibold text-slate-700">Show / Hide</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      {yN('invoiceShowBalance', 'Balance Due')}
+                      {yN('invoiceShowAmountWords', 'Amount in Words')}
+                      {yN('invoiceShowDate', 'Invoice Date')}
+                      {yN('invoiceShowSignatures', 'Signature Lines')}
+                      {yN('invoiceShowPartyContact', 'Party Contact')}
+                      {yN('invoiceShowItemCode', 'Item Code')}
+                      {yN('invoiceShowDiscountCol', 'Discount Column')}
+                      {yN('invoiceShowTaxCol', 'Tax Column')}
+                      {yN('showPageNumbers', 'Page Numbers')}
+                    </div>
+                  </div>
+                )}
 
                 {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
                 <div className="flex items-center gap-3">

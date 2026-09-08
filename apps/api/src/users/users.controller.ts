@@ -53,7 +53,7 @@ export class UsersController {
 
   @Delete(':id')
   @Permissions('users.manage')
-  @ApiOperation({ summary: 'Deactivate a user' })
+  @ApiOperation({ summary: 'Delete a user permanently' })
   remove(@Param('id') id: string, @CurrentUser() actor: any) {
     return this.usersService.remove(id, actor?.id);
   }

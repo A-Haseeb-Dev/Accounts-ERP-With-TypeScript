@@ -171,41 +171,39 @@ describe('UsersService.findOne', () => {
 });
 
 describe('UsersService.remove', () => {
-  it('deactivates a user', async () => {
+  it('deletes a user permanently', async () => {
     const prisma = {
       user: {
         findUnique: vi.fn().mockResolvedValue(mockCreatedUser),
-        update: vi.fn().mockResolvedValue({}),
+        delete: vi.fn().mockResolvedValue(mockCreatedUser),
       },
-      userRole: { deleteMany: vi.fn() },
     };
     const { svc, audit } = buildService({ prisma });
 
     const result = await svc.remove('u1', 'admin-id');
-    expect(result.status).toBe('inactive');
+    expect(result).toEqual({ id: 'u1', deleted: true });
+    expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: 'u1' } });
     expect(audit.record).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'DEACTIVATE' }),
+      expect.objectContaining({ action: 'DELETE' }),
     );
   });
 
-  it('prevents self-deactivation', async () => {
+  it('prevents deleting your own account', async () => {
     const prisma = {
       user: {
         findUnique: vi.fn().mockResolvedValue(mockCreatedUser),
       },
-      userRole: { deleteMany: vi.fn() },
     };
     const { svc } = buildService({ prisma });
 
     const err = await extractError(svc.remove('u1', 'u1'));
     expect(err.status).toBe(422);
-    expect(err.message).toMatch(/cannot deactivate your own account/);
+    expect(err.message).toMatch(/cannot delete your own account/);
   });
 
   it('throws NOT_FOUND for missing user', async () => {
     const prisma = {
       user: { findUnique: vi.fn().mockResolvedValue(null) },
-      userRole: { deleteMany: vi.fn() },
     };
     const { svc } = buildService({ prisma });
 
