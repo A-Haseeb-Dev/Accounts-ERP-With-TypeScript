@@ -36,11 +36,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
   signature lines, party contact info, item codes, discount column, tax column and
   page numbers. The **Custom designer** goes further: every block (logo, business
   identity, invoice heading, meta, party, items table, totals, amount in words,
-  notes, signatures, terms footer) can be shown/hidden, reordered by dragging or
-  with the up/down buttons, and positioned to the pixel — horizontal offset
-  (−120…+120 px), margin above (0–60 px), vertical alignment (left/center/right),
-  per-block font size (or Auto) and bold. Blocks render in a live preview and the
-  layout is persisted as `print.layout` in the settings backup.
+  notes, signatures, terms footer) lives on a WYSIWYG **page canvas** measured in
+  pixels (A4 ≈ 794px, A5, Letter). **Click** any block to select it, **drag** it
+  anywhere on the page, and fine-tune with exact **X / Y** pixel inputs (plus box
+  width, font size or Auto, bold, left/center/right alignment). Each block can be
+  hidden, and Send-Backward/Send-Forward control the stacking order where blocks
+  overlap. A live preview renders the exact result, and legacy vertical-layout
+  settings are auto-migrated to coordinates on load. The layout is persisted as
+  `print.layout` in the settings backup.
 - **Per-scope custom layouts** — the Custom designer now lets you scope a layout:
   the base layout applies to all documents, and you can create overrides per
   document type (Sales Invoices, Purchase Bills, Sales/Purchase Returns) and, if

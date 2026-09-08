@@ -1,13 +1,19 @@
 /**
  * Custom print layout model.
  *
- * A custom layout is an ordered list of blocks. The order of the list is the
- * vertical order on the document. Each block can be positioned pixel-by-pixel:
- *  - align     left / center / right
- *  - offsetX   horizontal shift in px (negative moves left, positive right)
- *  - marginTop vertical gap above the block in px
- *  - fontSize  font size in px for the block (0 = use the block default)
+ * A custom layout is an absolute-positioned page: every block (logo, business
+ * name, title, party, items table, totals, …) has an (x, y) position in pixels
+ * measured from the top-left of the page canvas, plus optional width. You drag
+ * blocks anywhere on the designer canvas and fine-tune with exact pixel values.
+ *
+ * Extra per-block properties:
+ *  - align     left / center / right (aligns the text inside the block box)
+ *  - fontSize  font size in px (0 = use the block default)
  *  - bold      applies a bolder weight where the block is text
+ *  - width     box width in px (0 = auto; items table spans the page width)
+ *
+ * Legacy layouts saved as a vertical "flow" list (marginTop / offsetX / align)
+ * are migrated to absolute coordinates on decode, so existing data still works.
  *
  * Stored in the settings table under `print.layout` as a JSON string.
  */
@@ -32,13 +38,19 @@ export interface LayoutBlockConfig {
   key: LayoutBlockKey;
   enabled: boolean;
   align: LayoutBlockAlign;
-  /** Horizontal shift in px (-80..80). */
+  /** Legacy: horizontal shift in px for old flow-style layouts. */
   offsetX: number;
-  /** Vertical gap above the block in px (0..60). */
+  /** Legacy: vertical gap above the block for old flow-style layouts. */
   marginTop: number;
   /** Font size in px (0 = block default). */
   fontSize: number;
   bold: boolean;
+  /** Absolute left position in px within the page canvas. */
+  x: number;
+  /** Absolute top position in px within the page canvas. */
+  y: number;
+  /** Box width in px (0 = auto; items table spans the page width). */
+  width: number;
 }
 
 export interface PrintLayoutConfig {
@@ -75,40 +87,81 @@ export const LAYOUT_BLOCK_ORDER: LayoutBlockKey[] = [
   'termsFooter',
 ];
 
-export function defaultLayout(): PrintLayoutConfig {
-  const b = (
-    key: LayoutBlockKey,
-    cfg: Partial<Omit<LayoutBlockConfig, 'key'>> = {},
-  ): LayoutBlockConfig => ({
-    key,
-    enabled: true,
-    align: 'left',
-    offsetX: 0,
-    marginTop: 0,
-    fontSize: 0,
-    bold: false,
-    ...cfg,
-  });
+/** Designer canvas widths (px) for each paper size. 794px ≈ 210mm (A4). */
+export const PAPER_PX_WIDTH: Record<string, number> = {
+  A4: 794,
+  A5: 559,
+  Letter: 816,
+  thermal: 302,
+};
 
-  return {
-    blocks: [
-      b('logo', { align: 'left', fontSize: 0 }),
-      b('businessName', { align: 'left', fontSize: 21, bold: true }),
-      b('businessContact', { marginTop: 2, fontSize: 11 }),
-      b('invoiceTitle', { align: 'center', marginTop: 14, fontSize: 17, bold: true }),
-      b('invoiceMeta', { align: 'center', marginTop: 6, fontSize: 12 }),
-      b('party', { marginTop: 14, fontSize: 13 }),
-      b('itemsTable', { marginTop: 10, fontSize: 12 }),
-      b('totals', { align: 'right', marginTop: 10, fontSize: 14 }),
-      b('amountWords', { marginTop: 10, fontSize: 11 }),
-      b('notes', { marginTop: 8, fontSize: 10 }),
-      b('signatures', { marginTop: 42, fontSize: 10 }),
-      b('termsFooter', { marginTop: 18, fontSize: 10 }),
-    ],
-  };
+export function paperPxFor(paperSize: string | undefined, thermal: boolean): number {
+  if (thermal) return PAPER_PX_WIDTH.thermal;
+  return PAPER_PX_WIDTH[paperSize ?? 'A4'] ?? PAPER_PX_WIDTH.A4;
 }
 
-/** Block default font size when the config says 0. */
+/** Default box width (px) used when a block's width is 0 (auto). */
+export function estimateBlockWidth(key: LayoutBlockKey): number {
+  switch (key) {
+    case 'itemsTable':
+      return 0; // spans the full page width
+    case 'logo':
+      return 120;
+    case 'businessName':
+      return 320;
+    case 'businessContact':
+      return 420;
+    case 'invoiceTitle':
+      return 320;
+    case 'invoiceMeta':
+      return 300;
+    case 'party':
+      return 300;
+    case 'totals':
+      return 250;
+    case 'notes':
+    case 'amountWords':
+    case 'termsFooter':
+      return 420;
+    case 'signatures':
+      return 500;
+    default:
+      return 300;
+  }
+}
+
+/** Approximate rendered height (px) used by the canvas and legacy migration. */
+export function estimateBlockHeight(key: LayoutBlockKey): number {
+  switch (key) {
+    case 'logo':
+      return 60;
+    case 'businessName':
+      return 30;
+    case 'businessContact':
+      return 70;
+    case 'invoiceTitle':
+      return 26;
+    case 'invoiceMeta':
+      return 78;
+    case 'party':
+      return 88;
+    case 'itemsTable':
+      return 200;
+    case 'totals':
+      return 150;
+    case 'amountWords':
+      return 36;
+    case 'notes':
+      return 44;
+    case 'signatures':
+      return 72;
+    case 'termsFooter':
+      return 64;
+    default:
+      return 40;
+  }
+}
+
 export function blockFontSize(block: LayoutBlockConfig): number {
   if (block.fontSize > 0) return block.fontSize;
   switch (block.key) {
@@ -137,6 +190,77 @@ export function blockFontSize(block: LayoutBlockConfig): number {
   }
 }
 
+const clampNum = (v: number, min: number, max: number) =>
+  Math.max(min, Math.min(max, Math.round(v)));
+
+type AbsoluteableBlock = Omit<LayoutBlockConfig, 'x' | 'y'> & { x?: number; y?: number };
+
+/**
+ * Turn a flow-style block list into absolute coordinates. Blocks that already
+ * carry x/y are kept; the rest are laid out top-down using their legacy
+ * marginTop / offsetX / align properties.
+ */
+export function withAbsoluteCoordinates(blocks: AbsoluteableBlock[]): LayoutBlockConfig[] {
+  const WP = PAPER_PX_WIDTH.A4;
+  let cursor = 0;
+  return blocks.map((b) => {
+    const defW = b.key === 'itemsTable' ? 0 : estimateBlockWidth(b.key);
+    const defH = estimateBlockHeight(b.key);
+    const w = b.width > 0 ? b.width : defW;
+    let x = b.x;
+    let y = b.y;
+    if (typeof x !== 'number' || typeof y !== 'number') {
+      const alignX =
+        b.align === 'center' ? Math.round((WP - w) / 2) : b.align === 'right' ? WP - w : 0;
+      x = alignX + (b.offsetX || 0);
+      y = cursor + (b.marginTop || 0);
+    }
+    cursor = Math.max(cursor, y + defH + 8);
+    return {
+      ...b,
+      width: b.key === 'itemsTable' ? 0 : w,
+      x: clampNum(x, -600, 1600),
+      y: clampNum(y, -600, 2400),
+    };
+  });
+}
+
+export function defaultLayout(): PrintLayoutConfig {
+  const b = (
+    key: LayoutBlockKey,
+    cfg: Partial<Omit<LayoutBlockConfig, 'key'>> = {},
+  ): LayoutBlockConfig => ({
+    key,
+    enabled: true,
+    align: 'left',
+    offsetX: 0,
+    marginTop: 0,
+    fontSize: 0,
+    bold: false,
+    x: 0,
+    y: 0,
+    width: 0,
+    ...cfg,
+  });
+
+  const flow: LayoutBlockConfig[] = [
+    b('logo'),
+    b('businessName', { marginTop: 4, fontSize: 21, bold: true }),
+    b('businessContact', { marginTop: 2, fontSize: 11 }),
+    b('invoiceTitle', { align: 'center', marginTop: 14, fontSize: 17, bold: true }),
+    b('invoiceMeta', { align: 'center', marginTop: 6, fontSize: 12 }),
+    b('party', { marginTop: 14, fontSize: 13 }),
+    b('itemsTable', { marginTop: 10, fontSize: 12 }),
+    b('totals', { align: 'right', marginTop: 10, fontSize: 14 }),
+    b('amountWords', { marginTop: 10, fontSize: 11 }),
+    b('notes', { marginTop: 8, fontSize: 10 }),
+    b('signatures', { marginTop: 42, fontSize: 10 }),
+    b('termsFooter', { marginTop: 18, fontSize: 10 }),
+  ];
+
+  return { blocks: withAbsoluteCoordinates(flow) };
+}
+
 export function encodePrintLayout(layout: PrintLayoutConfig): string {
   return JSON.stringify(layout);
 }
@@ -147,8 +271,16 @@ export function decodePrintLayout(raw: string | undefined | null): PrintLayoutCo
     const parsed = JSON.parse(raw) as { blocks?: unknown };
     if (!Array.isArray(parsed.blocks) || parsed.blocks.length === 0) return null;
 
+    // A layout is treated as absolute if any saved block carries x/y.
+    const hasExplicit = parsed.blocks.some((rb) => {
+      if (!rb || typeof rb !== 'object') return false;
+      const r = rb as Record<string, unknown>;
+      return typeof r.x === 'number' && typeof r.y === 'number';
+    });
+
     const allowed = new Set<LayoutBlockKey>(LAYOUT_BLOCK_ORDER);
-    const blocks: LayoutBlockConfig[] = [];
+    type ParsedBlock = Omit<LayoutBlockConfig, 'x' | 'y'> & { x?: number; y?: number };
+    const blocks: ParsedBlock[] = [];
     for (const rawBlock of parsed.blocks) {
       if (!rawBlock || typeof rawBlock !== 'object') continue;
       const maybe = rawBlock as Record<string, unknown>;
@@ -156,22 +288,32 @@ export function decodePrintLayout(raw: string | undefined | null): PrintLayoutCo
       if (!allowed.has(key)) continue;
       const num = (v: unknown, fallback: number) =>
         typeof v === 'number' && Number.isFinite(v) ? v : fallback;
-      blocks.push({
+      const block: ParsedBlock = {
         key,
         enabled: maybe.enabled !== false,
         align: maybe.align === 'center' || maybe.align === 'right' ? maybe.align : 'left',
-        offsetX: Math.max(-120, Math.min(120, num(maybe.offsetX, 0))),
-        marginTop: Math.max(0, Math.min(60, num(maybe.marginTop, 0))),
-        fontSize: Math.max(0, Math.min(36, num(maybe.fontSize, 0))),
+        offsetX: clampNum(num(maybe.offsetX, 0), -120, 120),
+        marginTop: clampNum(num(maybe.marginTop, 0), 0, 60),
+        fontSize: clampNum(num(maybe.fontSize, 0), 0, 36),
         bold: maybe.bold === true,
-      });
+        width: clampNum(num(maybe.width, 0), 0, 1200),
+      };
+      if (typeof maybe.x === 'number') block.x = clampNum(maybe.x, -600, 1600);
+      if (typeof maybe.y === 'number') block.y = clampNum(maybe.y, -600, 2400);
+      blocks.push(block);
     }
 
     // Make sure every block exists in the returned layout (missing ones get
     // their defaults) so a corrupt/older saved layout still renders fully.
     const seen = new Set(blocks.map((cb) => cb.key));
     const missing = defaultLayout().blocks.filter((cb) => !seen.has(cb.key));
-    return { blocks: [...missing, ...blocks] };
+    const assembled: AbsoluteableBlock[] = [...missing, ...blocks];
+
+    // Existing absolute-positioned layouts are kept as-is; legacy flow layouts
+    // are converted to absolute coordinates.
+    return hasExplicit
+      ? { blocks: assembled.map((cb) => ({ ...cb, x: cb.x ?? 0, y: cb.y ?? 0 })) }
+      : { blocks: withAbsoluteCoordinates(assembled) };
   } catch {
     return null;
   }

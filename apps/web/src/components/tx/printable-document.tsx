@@ -16,15 +16,18 @@
  * are stripped from the copy by printElement before printing.
  */
 import { useQuery } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
 import { apiFetch } from '@/lib/api';
 import { money, num, dateTime, amountInWords } from '@/lib/utils';
 import { usePrintSettings, type PrintSettings } from '@/hooks/use-print-settings';
 import {
   blockFontSize,
   defaultLayout,
+  estimateBlockHeight,
+  estimateBlockWidth,
+  paperPxFor,
   resolveLayout,
   type LayoutBlockConfig,
+  type LayoutBlockKey,
 } from '@/lib/print-layout';
 import type { BrandingSetting, TransactionDoc, DocLine } from '@/lib/types';
 
@@ -162,199 +165,189 @@ export function PrintableDocument({
     const blocks = layout.blocks.filter((b) => b.enabled);
     const bs = (cfg: LayoutBlockConfig) => Math.round(blockFontSize(cfg) * fz);
 
-    const Box = ({ cfg, children }: { cfg: LayoutBlockConfig; children: ReactNode }) => (
-      <div
-        style={{
-          marginTop: cfg.marginTop,
-          textAlign: cfg.align,
-          position: 'relative',
-          left: cfg.offsetX,
-          breakInside: 'avoid',
-        }}
-      >
-        {children}
-      </div>
-    );
-
-    const showNumCol = true;
-    const colCount = 1 + 1 + 1 + 1 + (fmt.invoiceShowDiscountCol ? 1 : 0) + (fmt.invoiceShowTaxCol ? 1 : 0) + 1;
+    const canvasW = paperPxFor(fmt.paperSize, false);
+    const blockH = (k: LayoutBlockKey, count: number) =>
+      k === 'itemsTable' ? 40 + Math.max(count, 1) * 26 : estimateBlockHeight(k);
+    const canvasH = blocks.reduce((maxH, b) => Math.max(maxH, (b.y || 0) + blockH(b.key, items.length)), 0) + 60;
+    const boxW = (b: LayoutBlockConfig) =>
+      b.width > 0 ? b.width : b.key === 'itemsTable' ? canvasW : estimateBlockWidth(b.key);
 
     return (
       <div id={containerId} style={containerStyle}>
-        {blocks.map((cfg) => {
-          switch (cfg.key) {
-            case 'logo':
-              return branding?.logoUrl ? (
-                <Box key={cfg.key} cfg={cfg}>
-                  <img src={branding.logoUrl} alt="" style={{ height: Math.max(32, bs(cfg)), maxWidth: '45%', objectFit: 'contain' }} />
-                </Box>
-              ) : null;
-            case 'businessName':
-              return (
-                <Box key={cfg.key} cfg={cfg}>
-                  <div style={{ fontSize: bs(cfg), fontWeight: cfg.bold ? 700 : 600, color: primary }}>
-                    {String(branding?.businessName ?? 'Your Business')}
-                  </div>
-                </Box>
-              );
-            case 'businessContact':
-              return (
-                <Box key={cfg.key} cfg={cfg}>
-                  {!!branding?.shortName && <div style={{ color: muted }}>{String(branding.shortName)}</div>}
-                  {!!branding?.address && <div style={{ color: muted }}>{String(branding.address)}</div>}
-                  {(!!branding?.phone || !!branding?.email) && (
-                    <div style={{ color: muted }}>{[branding.phone, branding.email].filter(Boolean).join(' · ')}</div>
-                  )}
-                  {!!branding?.ntn && <div style={{ color: muted }}>NTN: {String(branding.ntn)}</div>}
-                </Box>
-              );
-            case 'invoiceTitle':
-              return (
-                <Box key={cfg.key} cfg={cfg}>
-                  <div style={{ fontSize: bs(cfg), fontWeight: cfg.bold ? 800 : 700, letterSpacing: 1, textTransform: 'uppercase' }}>
-                    {title}
-                  </div>
-                </Box>
-              );
-            case 'invoiceMeta':
-              return (
-                <Box key={cfg.key} cfg={cfg}>
-                  <div style={{ fontWeight: 600 }}>#{String(detail.number ?? detail.code ?? '')}</div>
-                  {fmt.invoiceShowDate && <div style={{ color: muted }}>{dateTime(detail[dateField] ?? new Date())}</div>}
-                  {location && <div style={{ color: muted }}>{location.name}</div>}
-                  {paymentStatus && (
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        marginTop: 4,
-                        padding: '2px 10px',
-                        borderRadius: 999,
-                        fontSize: font(9),
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        letterSpacing: 0.5,
-                        color: '#ffffff',
-                        background: statusColor,
-                      }}
-                    >
-                      {paymentStatus}
-                    </span>
-                  )}
-                </Box>
-              );
-            case 'party':
-              return (
-                <Box key={cfg.key} cfg={cfg}>
-                  <div style={{ fontSize: font(9), textTransform: 'uppercase', letterSpacing: 1, color: lighter, fontWeight: 600 }}>
-                    {partyLabel}
-                  </div>
-                  <div style={{ fontSize: bs(cfg), fontWeight: cfg.bold ? 700 : 600, marginTop: 2 }}>
-                    {party?.name || '—'}
-                  </div>
-                  {fmt.invoiceShowPartyContact && party?.phone && <div style={{ color: '#475569' }}>{party.phone}</div>}
-                  {fmt.invoiceShowPartyContact && party?.address && <div style={{ color: muted }}>{party.address}</div>}
-                </Box>
-              );
-            case 'itemsTable':
-              return (
-                <Box key={cfg.key} cfg={cfg}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: '1px solid #e2e8f0' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '2px solid ' + dark, fontSize: Math.round(10 * fz), textTransform: 'uppercase', letterSpacing: 1, color: '#334155' }}>
-                        {showNumCol && <th style={{ padding: headPad, textAlign: 'left', width: 22 }}>#</th>}
-                        <th style={{ padding: headPad, textAlign: 'left' }}>Item</th>
-                        <th style={{ padding: headPad, textAlign: 'right' }}>Qty</th>
-                        <th style={{ padding: headPad, textAlign: 'right' }}>{priceKey === 'unitCost' ? 'Unit Cost' : 'Rate'}</th>
-                        {fmt.invoiceShowDiscountCol && <th style={{ padding: headPad, textAlign: 'right' }}>Disc</th>}
-                        {fmt.invoiceShowTaxCol && <th style={{ padding: headPad, textAlign: 'right' }}>Tax</th>}
-                        <th style={{ padding: headPad, textAlign: 'right' }}>Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((l, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid #e2e8f0', breakInside: 'avoid', fontSize: bs(cfg) }}>
-                          {showNumCol && <td style={{ padding: rowPad, color: lighter }}>{i + 1}</td>}
-                          <td style={{ padding: rowPad }}>
-                            <span style={{ fontWeight: 600 }}>{l.item?.name ?? '—'}</span>
-                            {fmt.invoiceShowItemCode && l.item?.code && (
-                              <span style={{ color: lighter, fontSize: Math.round(bs(cfg) * 0.85) }}> ({l.item.code})</span>
-                            )}
-                          </td>
-                          <td style={{ padding: rowPad, textAlign: 'right' }}>{num(l.quantity)}</td>
-                          <td style={{ padding: rowPad, textAlign: 'right' }}>{money(unit(l), 'PKR')}</td>
-                          {fmt.invoiceShowDiscountCol && <td style={{ padding: rowPad, textAlign: 'right' }}>{Number(l.discount ?? 0) ? money(l.discount, 'PKR') : '—'}</td>}
-                          {fmt.invoiceShowTaxCol && <td style={{ padding: rowPad, textAlign: 'right' }}>{Number(l.tax ?? 0) ? money(l.tax, 'PKR') : '—'}</td>}
-                          <td style={{ padding: rowPad, textAlign: 'right', fontWeight: 600 }}>{money(lineAmount(l), 'PKR')}</td>
-                        </tr>
-                      ))}
-                      {items.length === 0 && (
-                        <tr><td colSpan={colCount} style={{ padding: 12, textAlign: 'center', color: lighter }}>No lines</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </Box>
-              );
-            case 'totals':
-              return (
-                <Box key={cfg.key} cfg={cfg}>
-                  <div style={{ display: 'inline-block', minWidth: 240, textAlign: 'left' }}>
-                    <TotalsRow label="Subtotal" value={money(sub, 'PKR')} fz={fz} thermal={false} base={bs(cfg)} />
-                    {discount > 0 && <TotalsRow label="Discount" value={`- ${money(discount, 'PKR')}`} fz={fz} thermal={false} base={bs(cfg)} />}
-                    {tax > 0 && <TotalsRow label="Tax" value={money(tax, 'PKR')} fz={fz} thermal={false} base={bs(cfg)} />}
-                    <TotalsRow label="Grand total" value={money(grandTotal, 'PKR')} strong fz={fz} thermal={false} base={bs(cfg)} />
-                    {showAmountPaid && <TotalsRow label="Amount paid" value={money(amountPaid, 'PKR')} fz={fz} thermal={false} base={bs(cfg)} />}
-                    {showAmountPaid && fmt.invoiceShowBalance && <TotalsRow label="Balance due" value={money(balance, 'PKR')} strong fz={fz} thermal={false} base={bs(cfg)} />}
-                  </div>
-                </Box>
-              );
-            case 'amountWords':
-              if (grandTotal <= 0 || !fmt.invoiceShowAmountWords) return null;
-              return (
-                <Box key={cfg.key} cfg={cfg}>
-                  <div style={{ color: '#334155' }}>
-                    <span style={{ fontWeight: 700 }}>Amount in words: </span>
-                    {amountInWords(grandTotal)}
-                  </div>
-                </Box>
-              );
-            case 'notes':
-              if (!detail.reference && !detail.note) return null;
-              return (
-                <Box key={cfg.key} cfg={cfg}>
-                  {!!detail.reference && <p style={{ color: muted, margin: 0, fontSize: bs(cfg) }}>Reference: {String(detail.reference)}</p>}
-                  {!!detail.note && <p style={{ color: muted, marginTop: 2, fontSize: bs(cfg) }}>Note: {String(detail.note)}</p>}
-                </Box>
-              );
-            case 'signatures':
-              if (!fmt.invoiceShowSignatures) return null;
-              return (
-                <Box key={cfg.key} cfg={cfg}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <div style={{ textAlign: 'center', width: '45%' }}>
-                      <div style={{ borderTop: '1px solid #94a3b8', paddingTop: 6, fontSize: bs(cfg), color: muted }}>Prepared by</div>
-                    </div>
-                    <div style={{ textAlign: 'center', width: '45%' }}>
-                      <div style={{ borderTop: '1px solid #94a3b8', paddingTop: 6, fontSize: bs(cfg), color: muted }}>
-                        {partyLabel === 'Supplier' ? 'Received by (Supplier)' : 'Received by (Customer)'}
+        <div style={{ position: 'relative', width: canvasW, height: canvasH, margin: '0 auto' }}>
+          {blocks.map((cfg) => (
+            <div
+              key={cfg.key}
+              style={{
+                position: 'absolute',
+                left: cfg.x,
+                top: cfg.y,
+                width: boxW(cfg),
+                textAlign: cfg.align,
+                breakInside: 'avoid',
+              }}
+            >
+              {(() => {
+                switch (cfg.key) {
+                  case 'logo':
+                    return branding?.logoUrl ? (
+                      <img src={branding.logoUrl} alt="" style={{ height: Math.max(32, bs(cfg)), maxWidth: '100%', objectFit: 'contain' }} />
+                    ) : null;
+                  case 'businessName':
+                    return (
+                      <div style={{ fontSize: bs(cfg), fontWeight: cfg.bold ? 700 : 600, color: primary }}>
+                        {String(branding?.businessName ?? 'Your Business')}
                       </div>
-                    </div>
-                  </div>
-                </Box>
-              );
-            case 'termsFooter':
-              if (!docTerms && !docFooter) return null;
-              return (
-                <Box key={cfg.key} cfg={cfg}>
-                  <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 10, fontSize: bs(cfg), color: muted }}>
-                    {!!docTerms && <p style={{ margin: 0, marginBottom: 4 }}>{docTerms}</p>}
-                    {!!docFooter && <p style={{ margin: 0 }}>{docFooter}</p>}
-                  </div>
-                </Box>
-              );
-            default:
-              return null;
-          }
-        })}
+                    );
+                  case 'businessContact':
+                    return (
+                      <div>
+                        {!!branding?.shortName && <div style={{ color: muted }}>{String(branding.shortName)}</div>}
+                        {!!branding?.address && <div style={{ color: muted }}>{String(branding.address)}</div>}
+                        {(!!branding?.phone || !!branding?.email) && (
+                          <div style={{ color: muted }}>{[branding.phone, branding.email].filter(Boolean).join(' · ')}</div>
+                        )}
+                        {!!branding?.ntn && <div style={{ color: muted }}>NTN: {String(branding.ntn)}</div>}
+                      </div>
+                    );
+                  case 'invoiceTitle':
+                    return (
+                      <div style={{ fontSize: bs(cfg), fontWeight: cfg.bold ? 800 : 700, letterSpacing: 1, textTransform: 'uppercase' }}>
+                        {title}
+                      </div>
+                    );
+                  case 'invoiceMeta':
+                    return (
+                      <div>
+                        <div style={{ fontWeight: 600 }}>#{String(detail.number ?? detail.code ?? '')}</div>
+                        {fmt.invoiceShowDate && <div style={{ color: muted }}>{dateTime(detail[dateField] ?? new Date())}</div>}
+                        {location && <div style={{ color: muted }}>{location.name}</div>}
+                        {paymentStatus && (
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              marginTop: 4,
+                              padding: '2px 10px',
+                              borderRadius: 999,
+                              fontSize: font(9),
+                              fontWeight: 700,
+                              textTransform: 'uppercase',
+                              letterSpacing: 0.5,
+                              color: '#ffffff',
+                              background: statusColor,
+                            }}
+                          >
+                            {paymentStatus}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  case 'party':
+                    return (
+                      <div>
+                        <div style={{ fontSize: font(9), textTransform: 'uppercase', letterSpacing: 1, color: lighter, fontWeight: 600 }}>
+                          {partyLabel}
+                        </div>
+                        <div style={{ fontSize: bs(cfg), fontWeight: cfg.bold ? 700 : 600, marginTop: 2 }}>
+                          {party?.name || '—'}
+                        </div>
+                        {fmt.invoiceShowPartyContact && party?.phone && <div style={{ color: '#475569' }}>{party.phone}</div>}
+                        {fmt.invoiceShowPartyContact && party?.address && <div style={{ color: muted }}>{party.address}</div>}
+                      </div>
+                    );
+                  case 'itemsTable':
+                    return (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: '1px solid #e2e8f0' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid ' + dark, fontSize: Math.round(10 * fz), textTransform: 'uppercase', letterSpacing: 1, color: '#334155' }}>
+                            {showNumCol && <th style={{ padding: headPad, textAlign: 'left', width: 22 }}>#</th>}
+                            <th style={{ padding: headPad, textAlign: 'left' }}>Item</th>
+                            <th style={{ padding: headPad, textAlign: 'right' }}>Qty</th>
+                            <th style={{ padding: headPad, textAlign: 'right' }}>{priceKey === 'unitCost' ? 'Unit Cost' : 'Rate'}</th>
+                            {fmt.invoiceShowDiscountCol && <th style={{ padding: headPad, textAlign: 'right' }}>Disc</th>}
+                            {fmt.invoiceShowTaxCol && <th style={{ padding: headPad, textAlign: 'right' }}>Tax</th>}
+                            <th style={{ padding: headPad, textAlign: 'right' }}>Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {items.map((l, i) => (
+                            <tr key={i} style={{ borderBottom: '1px solid #e2e8f0', breakInside: 'avoid', fontSize: bs(cfg) }}>
+                              {showNumCol && <td style={{ padding: rowPad, color: lighter }}>{i + 1}</td>}
+                              <td style={{ padding: rowPad }}>
+                                <span style={{ fontWeight: 600 }}>{l.item?.name ?? '—'}</span>
+                                {fmt.invoiceShowItemCode && l.item?.code && (
+                                  <span style={{ color: lighter, fontSize: Math.round(bs(cfg) * 0.85) }}> ({l.item.code})</span>
+                                )}
+                              </td>
+                              <td style={{ padding: rowPad, textAlign: 'right' }}>{num(l.quantity)}</td>
+                              <td style={{ padding: rowPad, textAlign: 'right' }}>{money(unit(l), 'PKR')}</td>
+                              {fmt.invoiceShowDiscountCol && <td style={{ padding: rowPad, textAlign: 'right' }}>{Number(l.discount ?? 0) ? money(l.discount, 'PKR') : '—'}</td>}
+                              {fmt.invoiceShowTaxCol && <td style={{ padding: rowPad, textAlign: 'right' }}>{Number(l.tax ?? 0) ? money(l.tax, 'PKR') : '—'}</td>}
+                              <td style={{ padding: rowPad, textAlign: 'right', fontWeight: 600 }}>{money(lineAmount(l), 'PKR')}</td>
+                            </tr>
+                          ))}
+                          {items.length === 0 && (
+                            <tr><td colSpan={colCount} style={{ padding: 12, textAlign: 'center', color: lighter }}>No lines</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    );
+                  case 'totals':
+                    return (
+                      <div style={{ display: 'inline-block', minWidth: 240, textAlign: 'left' }}>
+                        <TotalsRow label="Subtotal" value={money(sub, 'PKR')} fz={fz} thermal={false} base={bs(cfg)} />
+                        {discount > 0 && <TotalsRow label="Discount" value={`- ${money(discount, 'PKR')}`} fz={fz} thermal={false} base={bs(cfg)} />}
+                        {tax > 0 && <TotalsRow label="Tax" value={money(tax, 'PKR')} fz={fz} thermal={false} base={bs(cfg)} />}
+                        <TotalsRow label="Grand total" value={money(grandTotal, 'PKR')} strong fz={fz} thermal={false} base={bs(cfg)} />
+                        {showAmountPaid && <TotalsRow label="Amount paid" value={money(amountPaid, 'PKR')} fz={fz} thermal={false} base={bs(cfg)} />}
+                        {showAmountPaid && fmt.invoiceShowBalance && <TotalsRow label="Balance due" value={money(balance, 'PKR')} strong fz={fz} thermal={false} base={bs(cfg)} />}
+                      </div>
+                    );
+                  case 'amountWords':
+                    if (grandTotal <= 0 || !fmt.invoiceShowAmountWords) return null;
+                    return (
+                      <div style={{ color: '#334155' }}>
+                        <span style={{ fontWeight: 700 }}>Amount in words: </span>
+                        {amountInWords(grandTotal)}
+                      </div>
+                    );
+                  case 'notes':
+                    if (!detail.reference && !detail.note) return null;
+                    return (
+                      <div>
+                        {!!detail.reference && <p style={{ color: muted, margin: 0, fontSize: bs(cfg) }}>Reference: {String(detail.reference)}</p>}
+                        {!!detail.note && <p style={{ color: muted, marginTop: 2, fontSize: bs(cfg) }}>Note: {String(detail.note)}</p>}
+                      </div>
+                    );
+                  case 'signatures':
+                    if (!fmt.invoiceShowSignatures) return null;
+                    return (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <div style={{ textAlign: 'center', width: '45%' }}>
+                          <div style={{ borderTop: '1px solid #94a3b8', paddingTop: 6, fontSize: bs(cfg), color: muted }}>Prepared by</div>
+                        </div>
+                        <div style={{ textAlign: 'center', width: '45%' }}>
+                          <div style={{ borderTop: '1px solid #94a3b8', paddingTop: 6, fontSize: bs(cfg), color: muted }}>
+                            {partyLabel === 'Supplier' ? 'Received by (Supplier)' : 'Received by (Customer)'}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  case 'termsFooter':
+                    if (!docTerms && !docFooter) return null;
+                    return (
+                      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 10, fontSize: bs(cfg), color: muted }}>
+                        {!!docTerms && <p style={{ margin: 0, marginBottom: 4 }}>{docTerms}</p>}
+                        {!!docFooter && <p style={{ margin: 0 }}>{docFooter}</p>}
+                      </div>
+                    );
+                  default:
+                    return null;
+                }
+              })()}
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

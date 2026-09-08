@@ -1,8 +1,8 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Field, Select } from '@/components/ui/field';
@@ -27,6 +27,9 @@ import {
   defaultLayout,
   encodeLayoutOverrides,
   encodePrintLayout,
+  estimateBlockHeight,
+  estimateBlockWidth,
+  paperPxFor,
   resolveLayout,
   type LayoutBlockAlign,
   type LayoutBlockConfig,
@@ -61,6 +64,12 @@ const FIELDS: Record<string, { key: string; def: string }> = {
 type Scope = { docType: 'default' | PrintDocType; warehouseId: string };
 const DEFAULT_SCOPE: Scope = { docType: 'default', warehouseId: '*' };
 
+/** Canvas display scale in the editor (50%). Pointer deltas are divided by this. */
+const EDIT_SCALE = 0.5;
+
+/** Snap increment for arrow nudging in the inspector. */
+const NUDGE = 1;
+
 const SAMPLE_DETAIL: TransactionDoc = {
   id: 'layout-preview',
   number: 'SI-2026-000123',
@@ -87,8 +96,19 @@ const ALIGN_BUTTONS: { value: LayoutBlockAlign; label: string }[] = [
   { value: 'right', label: 'Right' },
 ];
 
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, Math.round(v)));
+
 const cloneOverrides = (ov: PrintLayoutOverrides): PrintLayoutOverrides =>
   Object.fromEntries(Object.entries(ov).map(([k, v]) => [k, { ...v }]));
+
+interface DragState {
+  key: LayoutBlockKey;
+  startX: number;
+  startY: number;
+  origX: number;
+  origY: number;
+  moved: boolean;
+}
 
 export default function PrintLayoutPage() {
   const qc = useQueryClient();
@@ -105,8 +125,8 @@ export default function PrintLayoutPage() {
   const [scope, setScope] = useState<Scope>(DEFAULT_SCOPE);
   const [layout, setLayout] = useState<PrintLayoutConfig | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<LayoutBlockKey | null>(null);
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [error, setError] = useState('');
+  const dragRef = useRef<DragState | null>(null);
 
   useEffect(() => {
     if (data && layout === null) {
@@ -215,8 +235,51 @@ export default function PrintLayoutPage() {
     }
   };
 
+  // ---- Canvas drag --------------------------------------------------------
+  const onBlockPointerDown = (e: React.PointerEvent<HTMLDivElement>, b: LayoutBlockConfig) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setSelectedBlock(b.key);
+    dragRef.current = {
+      key: b.key,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: b.x,
+      origY: b.y,
+      moved: false,
+    };
+  };
+
+  const onBlockPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = (e.clientX - d.startX) / EDIT_SCALE;
+    const dy = (e.clientY - d.startY) / EDIT_SCALE;
+    if (!d.moved && (Math.abs(dx) < 1.5 || Math.abs(dy) < 1.5)) {
+      // Only treat as a drag once the pointer really moves.
+      if (Math.abs(e.clientX - d.startX) < 3 && Math.abs(e.clientY - d.startY) < 3) return;
+    }
+    d.moved = true;
+    patchBlock(d.key, {
+      x: clamp(d.origX + Math.round(dx), -200, 1600),
+      y: clamp(d.origY + Math.round(dy), -200, 2400),
+    });
+  };
+
+  const endDrag = () => {
+    dragRef.current = null;
+  };
+
   const thermal = value('invoiceTemplate') === 'thermal';
   const isCustom = value('invoiceTemplate') === 'custom';
+
+  const canvasW = paperPxFor(value('paperSize'), false);
+  const canvasH = (layout?.blocks ?? []).reduce(
+    (m, b) => Math.max(m, (b.y || 0) + estimateBlockHeight(b.key) + 16),
+    240,
+  );
+  const editorBoxW = (b: LayoutBlockConfig) =>
+    b.width > 0 ? b.width : b.key === 'itemsTable' ? canvasW : estimateBlockWidth(b.key);
 
   const fmtOverride: PrintSettings = {
     invoiceShowBalance: value('invoiceShowBalance') === 'true',
@@ -250,30 +313,42 @@ export default function PrintLayoutPage() {
   );
 
   const selected = layout?.blocks.find((b) => b.key === selectedBlock) ?? null;
+  const selectedIdx = layout?.blocks.findIndex((b) => b.key === selectedBlock) ?? -1;
 
-  const range = (
+  const numField = (
     label: string,
     current: number,
     min: number,
     max: number,
     onChange: (v: number) => void,
-    suffix = 'px',
+    step = 1,
   ) => (
-    <div>
-      <div className="mb-1 flex items-center justify-between text-xs">
-        <span className="font-medium text-slate-600">{label}</span>
-        <span className="tabular-nums text-slate-400">
-          {current === 0 && suffix === 'px' && label === 'Font Size' ? 'Auto' : `${current}${suffix}`}
-        </span>
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium text-slate-600">{label}</span>
+        <div className="flex overflow-hidden rounded-md border border-slate-200">
+          <button
+            type="button"
+            onClick={() => onChange(clamp(current - step, min, max))}
+            className="px-1.5 py-0.5 text-slate-500 hover:bg-slate-100"
+            title={`${label} −${step}`}
+          >−</button>
+          <button
+            type="button"
+            onClick={() => onChange(clamp(current + step, min, max))}
+            className="border-l border-slate-200 px-1.5 py-0.5 text-slate-500 hover:bg-slate-100"
+            title={`${label} +${step}`}
+          >+</button>
+        </div>
       </div>
       <input
-        type="range"
+        type="number"
         min={min}
         max={max}
-        step={1}
+        step={step}
         value={current}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-teal-600"
+        onChange={(e) => onChange(clamp(Number(e.target.value) || 0, min, max))}
+        className="w-20 rounded-md border border-slate-200 bg-white px-2 py-1 text-right text-xs tabular-nums text-slate-700 outline-none focus:border-teal-400"
       />
     </div>
   );
@@ -289,7 +364,7 @@ export default function PrintLayoutPage() {
     <div>
       <PageHeader
         title="Print Layout"
-        description="Design how invoices print. Pick a preset template, or use the Custom designer to drag blocks and position every element to the pixel. Custom layouts can be scoped per document type and per warehouse."
+        description="Design how invoices print. Pick a preset template, or use the Custom designer to click, drag, and pixel-position every element exactly where you want it."
       />
 
       <Card>
@@ -414,66 +489,114 @@ export default function PrintLayoutPage() {
                       )}
                     </div>
 
-                    <p className="mb-3 text-xs text-slate-400">
-                      Drag a block to change its vertical order. Click a block to fine-tune its exact position.
+                    <p className="mb-2 text-xs text-slate-400">
+                      <b>Click</b> a block to select it. <b>Drag</b> it anywhere on the page. Fine-tune pixels in the
+                      panel below.
                     </p>
 
-                    <div className="space-y-1.5">
-                      {layout?.blocks.map((b, i) => (
+                    {/* Page canvas */}
+                    <div className="mt-1 overflow-auto rounded-xl border border-slate-200 bg-slate-100 p-4">
+                      <div className="mb-1.5 text-[11px] font-medium text-slate-400">
+                        Page {canvasW} × {canvasH} px · {value('paperSize')} · coordinates from the top-left corner
+                      </div>
+                      <div style={{ width: canvasW * EDIT_SCALE + 2, height: canvasH * EDIT_SCALE + 2 }}>
                         <div
-                          key={b.key}
-                          draggable
-                          onDragStart={(e) => { setDragIdx(i); e.dataTransfer.effectAllowed = 'move'; }}
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            if (dragIdx !== null && dragIdx !== i) moveBlock(dragIdx, i);
-                            setDragIdx(null);
+                          style={{
+                            position: 'relative',
+                            width: canvasW,
+                            height: canvasH,
+                            transform: `scale(${EDIT_SCALE})`,
+                            transformOrigin: 'top left',
+                            background: '#ffffff',
+                            borderRadius: 4,
+                            boxShadow: '0 1px 6px rgba(15, 23, 42, .18)',
                           }}
-                          onClick={() => setSelectedBlock(b.key)}
-                          className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2 py-1.5 text-sm transition-colors ${
-                            selectedBlock === b.key
-                              ? 'border-teal-300 bg-teal-50/60 ring-1 ring-teal-200'
-                              : b.enabled
-                                ? 'border-slate-200 bg-white hover:border-slate-300'
-                                : 'border-dashed border-slate-200 bg-slate-50 opacity-60'
-                          }`}
                         >
-                          <span className="cursor-grab text-slate-300" title="Drag to reorder"><GripVertical className="h-4 w-4" /></span>
-                          <input
-                            type="checkbox"
-                            checked={b.enabled}
-                            onChange={(e) => { e.stopPropagation(); patchBlock(b.key, { enabled: e.target.checked }); }}
-                            className="rounded border-slate-300"
-                          />
-                          <span className="flex-1 font-medium text-slate-700">{LAYOUT_BLOCK_LABELS[b.key]}</span>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); if (i > 0) moveBlock(i, i - 1); }}
-                            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                            title="Move up"
-                          ><ChevronUp className="h-3.5 w-3.5" /></button>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); if (i < (layout?.blocks.length ?? 1) - 1) moveBlock(i, i + 1); }}
-                            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                            title="Move down"
-                          ><ChevronDown className="h-3.5 w-3.5" /></button>
+                          {(layout?.blocks ?? []).map((b, idx) => {
+                            const isSel = selectedBlock === b.key;
+                            return (
+                              <div
+                                key={b.key}
+                                onPointerDown={(e) => onBlockPointerDown(e, b)}
+                                onPointerMove={onBlockPointerMove}
+                                onPointerUp={endDrag}
+                                onPointerCancel={endDrag}
+                                className={`pointer-events-auto flex items-center rounded-md border px-2 text-[11px] font-semibold ${
+                                  isSel
+                                    ? 'border-teal-500 bg-teal-50 text-teal-700'
+                                    : b.enabled
+                                      ? 'border-dashed border-slate-300 bg-slate-50 text-slate-500'
+                                      : 'border-dotted border-slate-200 bg-slate-100 text-slate-300'
+                                }`}
+                                style={{
+                                  position: 'absolute',
+                                  left: b.x,
+                                  top: b.y,
+                                  width: editorBoxW(b),
+                                  height: estimateBlockHeight(b.key),
+                                  cursor: 'move',
+                                  userSelect: 'none',
+                                  touchAction: 'none',
+                                  zIndex: idx + 1,
+                                  opacity: b.enabled ? 1 : 0.6,
+                                  boxSizing: 'border-box',
+                                }}
+                              >
+                                <span className="truncate">
+                                  {LAYOUT_BLOCK_LABELS[b.key]}
+                                  {isSel ? ` · ${b.x}, ${b.y}` : ''}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
-                      ))}
+                      </div>
                     </div>
 
-                    {selected && (
+                    {/* Inspector */}
+                    {selected ? (
                       <div className="mt-4 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
                         <div className="flex items-center justify-between">
                           <p className="text-sm font-semibold text-slate-700">{LAYOUT_BLOCK_LABELS[selected.key]}</p>
-                          <span className="text-xs tabular-nums text-slate-400">
-                            {blockFontSize(selected)}px default
-                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => selectedIdx > 0 && moveBlock(selectedIdx, selectedIdx - 1)}
+                              className="rounded-md border border-slate-200 bg-white p-1 text-slate-500 hover:bg-slate-100"
+                              title="Send backward (behind other blocks that overlap)"
+                            ><ChevronUp className="h-3.5 w-3.5" /></button>
+                            <button
+                              type="button"
+                              onClick={() => selectedIdx >= 0 && selectedIdx < (layout?.blocks.length ?? 1) - 1 && moveBlock(selectedIdx, selectedIdx + 1)}
+                              className="rounded-md border border-slate-200 bg-white p-1 text-slate-500 hover:bg-slate-100"
+                              title="Send forward (on top of other blocks that overlap)"
+                            ><ChevronDown className="h-3.5 w-3.5" /></button>
+                            <label className="flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600">
+                              <input
+                                type="checkbox"
+                                checked={selected.enabled}
+                                onChange={(e) => patchBlock(selected.key, { enabled: e.target.checked })}
+                                className="rounded border-slate-300"
+                              />
+                              Show
+                            </label>
+                          </div>
+                        </div>
+                        <p className="-mt-2 text-xs text-slate-400">
+                          X = distance in px from the page's left edge · Y = distance from the top edge.
+                        </p>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          {numField('X', selected.x, -200, 1600, (v) => patchBlock(selected.key, { x: v }), NUDGE)}
+                          {numField('Y', selected.y, -200, 2400, (v) => patchBlock(selected.key, { y: v }), NUDGE)}
                         </div>
 
+                        {selected.key !== 'itemsTable' && (
+                          numField('Width (0 = auto)', selected.width, 0, 1200, (v) => patchBlock(selected.key, { width: v }), 4)
+                        )}
+
                         <div>
-                          <div className="mb-1 text-xs font-medium text-slate-600">Alignment</div>
+                          <div className="mb-1 text-xs font-medium text-slate-600">Text alignment</div>
                           <div className="grid grid-cols-3 gap-1">
                             {ALIGN_BUTTONS.map((a) => (
                               <button
@@ -492,10 +615,25 @@ export default function PrintLayoutPage() {
                           </div>
                         </div>
 
-                        {range('Horizontal Offset', selected.offsetX, -120, 120, (v) => patchBlock(selected.key, { offsetX: v }))}
-                        {range('Margin Above', selected.marginTop, 0, 60, (v) => patchBlock(selected.key, { marginTop: v }))}
-                        {selected.key !== 'logo' &&
-                          range('Font Size (0 = Auto)', selected.fontSize, 0, 36, (v) => patchBlock(selected.key, { fontSize: v }))}
+                        {selected.key !== 'logo' && (
+                          <div>
+                            <div className="mb-1 flex items-center justify-between text-xs">
+                              <span className="font-medium text-slate-600">Font Size</span>
+                              <span className="tabular-nums text-slate-400">
+                                {selected.fontSize === 0 ? 'Auto' : `${selected.fontSize}px`}
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min={0}
+                              max={36}
+                              step={1}
+                              value={selected.fontSize}
+                              onChange={(e) => patchBlock(selected.key, { fontSize: Number(e.target.value) })}
+                              className="w-full accent-teal-600"
+                            />
+                          </div>
+                        )}
 
                         {selected.key !== 'itemsTable' && selected.key !== 'signatures' && (
                           <label className="flex items-center gap-2 text-sm text-slate-600">
@@ -509,6 +647,10 @@ export default function PrintLayoutPage() {
                           </label>
                         )}
                       </div>
+                    ) : (
+                      <p className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-400">
+                        Click a block on the page above to fine-tune its exact position and style.
+                      </p>
                     )}
                   </div>
                 )}
