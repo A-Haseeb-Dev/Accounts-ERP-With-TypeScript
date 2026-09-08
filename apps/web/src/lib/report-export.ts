@@ -18,6 +18,7 @@ export function printElement(id: string, title?: string, overlay?: string): void
 
   const { paper, scale, invoiceTemplate, showPageNumbers } = printPrefs();
   const thermal = invoiceTemplate === 'thermal';
+  const isCustom = invoiceTemplate === 'custom';
   // An 80mm receipt prints as a continuous strip — the iframe just needs to be
   // tall enough to hold the whole document so the print dialog can paginate it.
   const frameSize = thermal ? { width: 302, height: 2000 } : PAPER_PX[paper] ?? PAPER_PX.A4;
@@ -59,7 +60,7 @@ export function printElement(id: string, title?: string, overlay?: string): void
   printable.style.height = 'auto';
 
   let bodyHTML = printable.outerHTML;
-  if (title) {
+  if (title && !isCustom) {
     bodyHTML = `<div style="text-align:center;font-size:16px;font-weight:700;margin:8px 24px 12px;">${escapeHtml(title)}</div>${bodyHTML}`;
   }
   if (overlay) {
@@ -70,10 +71,10 @@ export function printElement(id: string, title?: string, overlay?: string): void
     showPageNumbers && !thermal
       ? '@bottom-center{content:"Page " counter(page) " of " counter(pages);font-family:sans-serif;font-size:10px;color:#64748b;}'
       : '';
-  const pageCss = `@media print{@page{size:${thermal ? '80mm auto' : paper};margin:${thermal ? '4mm 2mm' : '12mm'};${pageFooterCss}}body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}`;
+  const pageCss = `@media print{@page{size:${thermal ? '80mm auto' : paper};margin:${thermal ? '4mm 2mm' : '0 0 12mm 0'};${pageFooterCss}}body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}`;
 
   doc.open();
-  doc.write(`<!doctype html><html><head>${headHTML}<style>${pageCss}</style></head><body style="padding:16px;font-family:Inter,ui-sans-serif,system-ui,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;zoom:${scale / 100};">${bodyHTML}</body></html>`);
+  doc.write(`<!doctype html><html><head>${headHTML}<style>${pageCss}</style></head><body style="padding:0;margin:0;font-family:Inter,ui-sans-serif,system-ui,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;zoom:${scale / 100};">${bodyHTML}</body></html>`);
   doc.close();
 
   // Give the browser a tick to parse styles, then print.
