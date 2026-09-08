@@ -92,11 +92,30 @@ export class DefaultAccountsService implements OnModuleInit {
         this.logger.log(`Created default main account ${acc.name} (${acc.code})`);
       }
       if (acc.settingKey && account) {
-        await this.prisma.systemSetting.upsert({
-          where: { key_organizationId: { key: acc.settingKey, organizationId: 'default-org' } },
-          create: { key: acc.settingKey, value: account.id, organizationId: 'default-org' },
-          update: {},
+        const saved = await this.prisma.systemSetting.findFirst({
+          where: { key: acc.settingKey },
         });
+        if (!saved) {
+          await this.prisma.systemSetting.create({
+            data: { key: acc.settingKey, value: account.id, organizationId: 'default-org' },
+          });
+        } else {
+          // Self-heal stale pointers: if the stored value references a main
+          // account that no longer exists (e.g. chart-of-accounts reset), point
+          // it back at this default account. Admins who linked a different
+          // existing account keep their choice — the value is only repaired when
+          // its target is gone or empty.
+          const valid = saved.value
+            ? await this.prisma.mainAccount.findFirst({ where: { id: saved.value } })
+            : null;
+          if (!valid && saved.value !== account.id) {
+            await this.prisma.systemSetting.update({
+              where: { id: saved.id },
+              data: { value: account.id },
+            });
+            this.logger.log(`Repaired stale ${acc.settingKey} -> ${account.name} (${account.code})`);
+          }
+        }
       }
     }
   }
