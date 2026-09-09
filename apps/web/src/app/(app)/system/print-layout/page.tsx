@@ -409,7 +409,7 @@ export default function PrintLayoutPage() {
           ) : (
             <>
               {/* Controls */}
-              <div className="max-w-sm flex-1 space-y-5">
+              <div className={`${isCustom ? 'min-w-0 flex-1' : 'max-w-sm flex-1'} space-y-5`}>
                 <div>
                   <p className="mb-3 text-sm font-semibold text-slate-700">Layout</p>
                   <div className="grid grid-cols-2 gap-4">
@@ -529,12 +529,13 @@ export default function PrintLayoutPage() {
                       resize its size. Fine-tune position, size and <b>padding</b> (e.g. logo inset) in the panel below.
                     </p>
 
-                    {/* Page canvas */}
-                    <div className="mt-1 overflow-auto rounded-xl border border-slate-200 bg-slate-100 p-4">
-                      <div className="mb-1.5 text-[11px] font-medium text-slate-400">
-                        Page {canvasW} × {canvasH} px · {value('paperSize')} · coordinates from the top-left corner
-                      </div>
-                      <div style={{ width: canvasW * EDIT_SCALE + 2, height: canvasH * EDIT_SCALE + 2 }}>
+                    {/* Canvas + real-time preview */}
+                    <div className="mt-1 grid gap-4 lg:grid-cols-2">
+                      <div className="overflow-auto rounded-xl border border-slate-200 bg-slate-100 p-4">
+                        <div className="mb-1.5 text-[11px] font-medium text-slate-400">
+                          Page {canvasW} × {canvasH} px · {value('paperSize')} · coordinates from the top-left corner
+                        </div>
+                        <div style={{ width: canvasW * EDIT_SCALE + 2, height: canvasH * EDIT_SCALE + 2 }}>
                         <div
                           style={{
                             position: 'relative',
@@ -596,6 +597,27 @@ export default function PrintLayoutPage() {
                               </div>
                             );
                           })}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="overflow-auto rounded-xl border border-slate-200 bg-white p-6">
+                        <div className="mb-1.5 text-[11px] font-medium text-slate-400">
+                          Real-time Preview — updates live as you drag / resize / change padding
+                        </div>
+                        <div style={{ zoom: 0.5 }}>
+                          <PrintableDocument
+                            open
+                            preview
+                            detail={SAMPLE_DETAIL}
+                            title="Sales Invoice"
+                            partyLabel="Customer"
+                            dateField="saleDate"
+                            priceKey="unitPrice"
+                            showAmountPaid
+                            docType={scope.docType === 'default' ? 'sale' : scope.docType}
+                            fmtOverride={fmtOverride}
+                          />
                         </div>
                       </div>
                     </div>
@@ -737,8 +759,9 @@ export default function PrintLayoutPage() {
                 </p>
               </div>
 
-              {/* Live preview */}
-              <div className="min-w-0 flex-1 basis-96">
+              {/* Live preview (rendered beside the canvas when in custom mode) */}
+              {!isCustom && (
+                <div className="min-w-0 flex-1 basis-96">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Live Preview</p>
                 <div className="overflow-auto rounded-xl border border-slate-200 bg-slate-100 p-6">
                   <div style={{ zoom: thermal ? 0.85 : 0.55 }}>
@@ -754,9 +777,10 @@ export default function PrintLayoutPage() {
                       docType={scope.docType === 'default' ? 'sale' : scope.docType}
                       fmtOverride={fmtOverride}
                     />
+</div>
                   </div>
                 </div>
-              </div>
+              )}
             </>
           )}
         </div>
