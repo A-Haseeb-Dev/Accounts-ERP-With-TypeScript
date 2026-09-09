@@ -39,7 +39,7 @@ export default function PurchaseBookPage() {
   });
 
   const rows = data?.rows ?? [];
-  const totalPurchases = rows.reduce((s, r) => s + r.grandTotal, 0);
+  const totalPurchases = rows.reduce((s, r) => s + Number(r.grandTotal), 0);
 
   return (
     <div>

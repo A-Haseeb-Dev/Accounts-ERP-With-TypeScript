@@ -1,5 +1,12 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
+
+// Prisma Decimals serialize to strings over JSON, which made the browser
+// concatenate money values instead of summing them (e.g. Purchase Book total).
+// Emit them as plain numbers so every money field behaves in the web app.
+(Prisma.Decimal.prototype as unknown as { toJSON: () => number }).toJSON = function toJSON() {
+  return Number(this.toString());
+};
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {

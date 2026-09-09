@@ -100,8 +100,8 @@ function VoucherDetailModal({
   onClose: () => void;
 }) {
   const entries: VoucherEntry[] = detail?.entries ?? [];
-  const tDebit = entries.reduce((s, en) => s + (en.debit ?? 0), 0);
-  const tCredit = entries.reduce((s, en) => s + (en.credit ?? 0), 0);
+  const tDebit = entries.reduce((s, en) => s + Number(en.debit ?? 0), 0);
+  const tCredit = entries.reduce((s, en) => s + Number(en.credit ?? 0), 0);
 
   return (
     <Modal open={open} onClose={onClose} title={`Voucher ${detail?.number ?? ''}`} size="lg">

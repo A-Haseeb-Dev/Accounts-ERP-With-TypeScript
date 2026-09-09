@@ -40,8 +40,8 @@ export default function SalesBookPage() {
   });
 
   const rows = data?.rows ?? [];
-  const totalSales = rows.reduce((s, r) => s + r.grandTotal, 0);
-  const totalPaid = rows.reduce((s, r) => s + r.amountPaid, 0);
+  const totalSales = rows.reduce((s, r) => s + Number(r.grandTotal), 0);
+  const totalPaid = rows.reduce((s, r) => s + Number(r.amountPaid), 0);
 
   return (
     <div>
