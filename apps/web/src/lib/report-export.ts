@@ -170,3 +170,54 @@ export function downloadTableCSV(id: string, filename: string): void {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+/**
+ * Exports the first <table> inside an element (by id) to a PDF file. The data
+ * is laid out as a real table (headers + rows, zebra striping, page-break
+ * aware) using jspdf + jspdf-autotable.
+ */
+export async function downloadTablePDF(id: string, filename: string, title?: string): Promise<void> {
+  const source = document.getElementById(id);
+  if (!source) return;
+  const table = source.querySelector('table');
+  if (!table) return;
+
+  const head: string[] = [];
+  const thead = table.querySelector('thead');
+  if (thead) {
+    thead.querySelectorAll('th').forEach((th) => head.push((th.textContent ?? '').replace(/\s+/g, ' ').trim()));
+  }
+
+  const body: string[][] = [];
+  table.querySelectorAll('tbody tr').forEach((tr) => {
+    const cells: string[] = [];
+    tr.querySelectorAll('td, th').forEach((td) => cells.push((td.textContent ?? '').replace(/\s+/g, ' ').trim()));
+    if (cells.length) body.push(cells);
+  });
+
+  const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+
+  const doc = new jsPDF({ orientation: head.length > 6 ? 'landscape' : 'portrait', unit: 'pt', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  let startY = 24;
+  if (title) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text(title, pageWidth / 2, startY, { align: 'center' });
+    startY += 16;
+  }
+
+  autoTable(doc, {
+    ...(head.length ? { head: [head] } : {}),
+    body,
+    startY,
+    margin: { left: 24, right: 24 },
+    styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak', textColor: [30, 41, 59] },
+    headStyles: { fillColor: [15, 118, 110], textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    theme: 'striped',
+  });
+
+  doc.save(/\.pdf$/i.test(filename) ? filename : `${filename}.pdf`);
+}
