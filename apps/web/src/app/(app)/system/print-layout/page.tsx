@@ -27,8 +27,8 @@ import {
   defaultLayout,
   encodeLayoutOverrides,
   encodePrintLayout,
-  estimateBlockHeight,
   estimateBlockWidth,
+  layoutBlockHeight,
   paperPxFor,
   resolveLayout,
   type LayoutBlockAlign,
@@ -103,10 +103,13 @@ const cloneOverrides = (ov: PrintLayoutOverrides): PrintLayoutOverrides =>
 
 interface DragState {
   key: LayoutBlockKey;
+  mode: 'move' | 'resize';
   startX: number;
   startY: number;
   origX: number;
   origY: number;
+  origW: number;
+  origH: number;
   moved: boolean;
 }
 
@@ -242,17 +245,38 @@ export default function PrintLayoutPage() {
     setSelectedBlock(b.key);
     dragRef.current = {
       key: b.key,
+      mode: 'move',
       startX: e.clientX,
       startY: e.clientY,
       origX: b.x,
       origY: b.y,
+      origW: 0,
+      origH: 0,
+      moved: false,
+    };
+  };
+
+  const onResizePointerDown = (e: React.PointerEvent<HTMLSpanElement>, b: LayoutBlockConfig) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setSelectedBlock(b.key);
+    dragRef.current = {
+      key: b.key,
+      mode: 'resize',
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: b.x,
+      origY: b.y,
+      origW: editorBoxW(b),
+      origH: layoutBlockHeight(b, 2),
       moved: false,
     };
   };
 
   const onBlockPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = dragRef.current;
-    if (!d) return;
+    if (!d || d.mode !== 'move') return;
     const dx = (e.clientX - d.startX) / EDIT_SCALE;
     const dy = (e.clientY - d.startY) / EDIT_SCALE;
     if (!d.moved && (Math.abs(dx) < 1.5 || Math.abs(dy) < 1.5)) {
@@ -266,6 +290,17 @@ export default function PrintLayoutPage() {
     });
   };
 
+  const onResizePointerMove = (e: React.PointerEvent<HTMLSpanElement>) => {
+    const d = dragRef.current;
+    if (!d || d.mode !== 'resize') return;
+    const dx = (e.clientX - d.startX) / EDIT_SCALE;
+    const dy = (e.clientY - d.startY) / EDIT_SCALE;
+    patchBlock(d.key, {
+      width: clamp(d.origW + Math.round(dx), 40, 1200),
+      height: clamp(d.origH + Math.round(dy), 0, 1200),
+    });
+  };
+
   const endDrag = () => {
     dragRef.current = null;
   };
@@ -275,7 +310,7 @@ export default function PrintLayoutPage() {
 
   const canvasW = paperPxFor(value('paperSize'), false);
   const canvasH = (layout?.blocks ?? []).reduce(
-    (m, b) => Math.max(m, (b.y || 0) + estimateBlockHeight(b.key) + 16),
+    (m, b) => Math.max(m, (b.y || 0) + layoutBlockHeight(b, 2) + 16),
     240,
   );
   const editorBoxW = (b: LayoutBlockConfig) =>
@@ -490,8 +525,8 @@ export default function PrintLayoutPage() {
                     </div>
 
                     <p className="mb-2 text-xs text-slate-400">
-                      <b>Click</b> a block to select it. <b>Drag</b> it anywhere on the page. Fine-tune pixels in the
-                      panel below.
+                      <b>Click</b> a block to select it. <b>Drag</b> it anywhere on the page. Drag the <b>square corner</b> to
+                      resize its size. Fine-tune position, size and <b>padding</b> (e.g. logo inset) in the panel below.
                     </p>
 
                     {/* Page canvas */}
@@ -533,7 +568,8 @@ export default function PrintLayoutPage() {
                                   left: b.x,
                                   top: b.y,
                                   width: editorBoxW(b),
-                                  height: estimateBlockHeight(b.key),
+                                  height: layoutBlockHeight(b, 2),
+                                  padding: b.padding || 0,
                                   cursor: 'move',
                                   userSelect: 'none',
                                   touchAction: 'none',
@@ -546,6 +582,17 @@ export default function PrintLayoutPage() {
                                   {LAYOUT_BLOCK_LABELS[b.key]}
                                   {isSel ? ` · ${b.x}, ${b.y}` : ''}
                                 </span>
+                                {isSel && b.key !== 'itemsTable' && (
+                                  <span
+                                    onPointerDown={(e) => onResizePointerDown(e, b)}
+                                    onPointerMove={onResizePointerMove}
+                                    onPointerUp={endDrag}
+                                    onPointerCancel={endDrag}
+                                    className="absolute -bottom-2 -right-2 z-10 h-4 w-4 cursor-nwse-resize rounded-[4px] border-2 border-teal-500 bg-white shadow-sm"
+                                    style={{ touchAction: 'none' }}
+                                    title="Drag the corner to resize this block"
+                                  />
+                                )}
                               </div>
                             );
                           })}
@@ -594,6 +641,12 @@ export default function PrintLayoutPage() {
                         {selected.key !== 'itemsTable' && (
                           numField('Width (0 = auto)', selected.width, 0, 1200, (v) => patchBlock(selected.key, { width: v }), 4)
                         )}
+
+                        {selected.key !== 'itemsTable' && (
+                          numField('Height (0 = auto)', selected.height, 0, 1200, (v) => patchBlock(selected.key, { height: v }), 4)
+                        )}
+
+                        {numField('Padding', selected.padding, 0, 120, (v) => patchBlock(selected.key, { padding: v }), 2)}
 
                         <div>
                           <div className="mb-1 text-xs font-medium text-slate-600">Text alignment</div>

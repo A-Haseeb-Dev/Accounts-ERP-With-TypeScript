@@ -22,8 +22,8 @@ import { usePrintSettings, type PrintSettings } from '@/hooks/use-print-settings
 import {
   blockFontSize,
   defaultLayout,
-  estimateBlockHeight,
   estimateBlockWidth,
+  layoutBlockHeight,
   paperPxFor,
   resolveLayout,
   type LayoutBlockConfig,
@@ -166,9 +166,7 @@ export function PrintableDocument({
     const bs = (cfg: LayoutBlockConfig) => Math.round(blockFontSize(cfg) * fz);
 
     const canvasW = paperPxFor(fmt.paperSize, false);
-    const blockH = (k: LayoutBlockKey, count: number) =>
-      k === 'itemsTable' ? 40 + Math.max(count, 1) * 26 : estimateBlockHeight(k);
-    const canvasH = blocks.reduce((maxH, b) => Math.max(maxH, (b.y || 0) + blockH(b.key, items.length)), 0) + 60;
+    const canvasH = blocks.reduce((maxH, b) => Math.max(maxH, (b.y || 0) + layoutBlockHeight(b, items.length)), 0) + 60;
     const boxW = (b: LayoutBlockConfig) =>
       b.width > 0 ? b.width : b.key === 'itemsTable' ? canvasW : estimateBlockWidth(b.key);
 
@@ -183,6 +181,9 @@ export function PrintableDocument({
                 left: cfg.x,
                 top: cfg.y,
                 width: boxW(cfg),
+                height: cfg.height > 0 ? cfg.height : undefined,
+                padding: cfg.padding || 0,
+                boxSizing: 'border-box',
                 textAlign: cfg.align,
                 breakInside: 'avoid',
               }}

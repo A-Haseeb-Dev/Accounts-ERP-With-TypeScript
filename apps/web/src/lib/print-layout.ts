@@ -11,6 +11,8 @@
  *  - fontSize  font size in px (0 = use the block default)
  *  - bold      applies a bolder weight where the block is text
  *  - width     box width in px (0 = auto; items table spans the page width)
+ *  - height    box height in px (0 = auto: sized by the content)
+ *  - padding   internal padding in px around the block content (e.g. logo inset)
  *
  * Legacy layouts saved as a vertical "flow" list (marginTop / offsetX / align)
  * are migrated to absolute coordinates on decode, so existing data still works.
@@ -51,6 +53,10 @@ export interface LayoutBlockConfig {
   y: number;
   /** Box width in px (0 = auto; items table spans the page width). */
   width: number;
+  /** Box height in px (0 = auto: sized by the content). */
+  height: number;
+  /** Internal padding in px inside the block box (e.g. logo inset). */
+  padding: number;
 }
 
 export interface PrintLayoutConfig {
@@ -162,6 +168,21 @@ export function estimateBlockHeight(key: LayoutBlockKey): number {
   }
 }
 
+/**
+ * Effective rendered height (px) of a block: its explicit `height` when set,
+ * otherwise the default. The items table grows with its number of rows. The
+ * block's padding is added on top so the canvas box matches the real footprint.
+ */
+export function layoutBlockHeight(cfg: LayoutBlockConfig, rows = 0): number {
+  const pad = (cfg.padding || 0) * 2;
+  if (cfg.height > 0) return Math.round(cfg.height + pad);
+  const base =
+    cfg.key === 'itemsTable'
+      ? 40 + Math.max(rows, 1) * 26
+      : estimateBlockHeight(cfg.key);
+  return Math.round(base + pad);
+}
+
 export function blockFontSize(block: LayoutBlockConfig): number {
   if (block.fontSize > 0) return block.fontSize;
   switch (block.key) {
@@ -240,6 +261,8 @@ export function defaultLayout(): PrintLayoutConfig {
     x: 0,
     y: 0,
     width: 0,
+    height: 0,
+    padding: 0,
     ...cfg,
   });
 
@@ -297,6 +320,8 @@ export function decodePrintLayout(raw: string | undefined | null): PrintLayoutCo
         fontSize: clampNum(num(maybe.fontSize, 0), 0, 36),
         bold: maybe.bold === true,
         width: clampNum(num(maybe.width, 0), 0, 1200),
+        height: clampNum(num(maybe.height, 0), 0, 2000),
+        padding: clampNum(num(maybe.padding, 0), 0, 120),
       };
       if (typeof maybe.x === 'number') block.x = clampNum(maybe.x, -600, 1600);
       if (typeof maybe.y === 'number') block.y = clampNum(maybe.y, -600, 2400);
