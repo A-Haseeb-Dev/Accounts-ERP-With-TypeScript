@@ -298,9 +298,12 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
                 {lineTax > 0 && <TotalsRow label="Line tax" value={money(lineTax, 'PKR')} />}
 
                 <div className="grid grid-cols-2 gap-3 border-t border-slate-200 pt-3">
-                  <Field label="Discount"><Input type="number" min={0} step="0.01" value={String(form.discount ?? 0)} onChange={(e) => setForm((f) => ({ ...f, discount: Number(e.target.value) || 0 }))} /></Field>
-                  <Field label="Tax"><Input type="number" min={0} step="0.01" value={String(form.tax ?? 0)} onChange={(e) => setForm((f) => ({ ...f, tax: Number(e.target.value) || 0 }))} /></Field>
+                  <Field label="Discount (₨)"><Input type="number" min={0} step="0.01" placeholder="Fixed amount" value={String(form.discount ?? 0)} onChange={(e) => setForm((f) => ({ ...f, discount: Number(e.target.value) || 0 }))} /></Field>
+                  <Field label="Tax (₨)"><Input type="number" min={0} step="0.01" placeholder="Fixed amount" value={String(form.tax ?? 0)} onChange={(e) => setForm((f) => ({ ...f, tax: Number(e.target.value) || 0 }))} /></Field>
                 </div>
+                <p className="text-[11px] leading-snug text-slate-400">
+                  Whole-bill discount &amp; tax in rupees (₨), not percentages — applied on top of the item lines.
+                </p>
 
                 <div className="flex items-center justify-between border-t-2 border-slate-800 pt-2.5">
                   <span className="text-sm font-semibold text-slate-800">Grand total</span>

@@ -91,8 +91,8 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey, defaultPri
               <th className="px-3 py-2">Item</th>
               <th className="w-20 px-3 py-2 text-right">Qty</th>
               <th className="w-28 px-3 py-2 text-right">{priceKey === 'unitCost' ? 'Unit Cost' : 'Unit Price'}</th>
-              <th className="w-24 px-3 py-2 text-right" title="Per-line discount">Disc.</th>
-              <th className="w-24 px-3 py-2 text-right" title="Per-line tax">Tax</th>
+              <th className="w-28 px-3 py-2 text-right" title="Per-line discount — fixed amount in rupees, not a percentage">Disc. (₨)</th>
+              <th className="w-28 px-3 py-2 text-right" title="Per-line tax — fixed amount in rupees, not a percentage">Tax (₨)</th>
               <th className="w-24 px-3 py-2 text-right">Line Total</th>
               <th className="w-10 px-3 py-2"></th>
             </tr>
@@ -139,6 +139,7 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey, defaultPri
                       type="number"
                       min={0}
                       step="0.01"
+                      placeholder="Amount"
                       value={String(i.discount || 0)}
                       onChange={(e) => update(i.key, { discount: Number(e.target.value) || 0 })}
                       onKeyDown={(e) => onEnterFrom(idx, e)}
@@ -150,6 +151,7 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey, defaultPri
                       type="number"
                       min={0}
                       step="0.01"
+                      placeholder="Amount"
                       value={String(i.tax || 0)}
                       onChange={(e) => update(i.key, { tax: Number(e.target.value) || 0 })}
                       onKeyDown={(e) => onEnterFrom(idx, e)}
@@ -179,6 +181,10 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey, defaultPri
       <Button type="button" variant="secondary" size="sm" onClick={addLine} className="mt-2">
         <Plus className="h-4 w-4" /> Add line
       </Button>
+      <p className="mt-1.5 text-xs text-slate-400">
+        Discount and Tax are fixed amounts in rupees (₨) per line — not percentages.
+        Line total = Qty × Price − Discount + Tax.
+      </p>
 
       <div className="mt-3 space-y-1 rounded-lg bg-slate-50 px-4 py-3 text-sm">
         <SummaryRow label="Subtotal" value={money(subtotal, 'PKR')} />
