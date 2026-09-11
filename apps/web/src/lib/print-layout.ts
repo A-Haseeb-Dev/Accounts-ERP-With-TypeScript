@@ -101,9 +101,24 @@ export const PAPER_PX_WIDTH: Record<string, number> = {
   thermal: 302,
 };
 
+/** Designer canvas heights (px) for each fixed paper size. Thermal is a
+ * continuous strip, so its height is defined by the content on the page. */
+export const PAPER_PX_HEIGHT: Record<string, number> = {
+  A4: 1123,
+  A5: 794,
+  Letter: 1056,
+};
+
 export function paperPxFor(paperSize: string | undefined, thermal: boolean): number {
   if (thermal) return PAPER_PX_WIDTH.thermal;
   return PAPER_PX_WIDTH[paperSize ?? 'A4'] ?? PAPER_PX_WIDTH.A4;
+}
+
+/** Height of a fixed-size page in designer px; `null` for the continuous
+ * thermal strip (canvas height is then driven by the block content). */
+export function paperPxHeightFor(paperSize: string | undefined, thermal: boolean): number | null {
+  if (thermal) return null;
+  return PAPER_PX_HEIGHT[paperSize ?? 'A4'] ?? PAPER_PX_HEIGHT.A4;
 }
 
 /** Default box width (px) used when a block's width is 0 (auto). */
@@ -441,4 +456,54 @@ export function resolveLayout(
   warehouseId: string | null,
 ): PrintLayoutConfig {
   return getLayoutOverride(overrides, docType, warehouseId) ?? base;
+}
+
+// ---------------------------------------------------------------------------
+// Named layout presets
+//
+// A named format is a full snapshot of the print designer: every field value
+// (template, paper size, scale, show/hide flags, …) plus the base layout and
+// its per-scope overrides. Stored in the settings table under `print.layouts`
+// as a JSON map:
+//
+//   { "<name>": { "settings": { "<field>": "<value>", … },
+//                 "layout": "<base layout JSON>", "overrides": "<overrides JSON>" } }
+// ---------------------------------------------------------------------------
+
+export interface NamedPrintLayout {
+  settings: Record<string, string>;
+  layout: string;
+  overrides: string;
+}
+
+export type NamedPrintLayouts = Record<string, NamedPrintLayout>;
+
+export function encodeNamedLayouts(layouts: NamedPrintLayouts): string {
+  return JSON.stringify(layouts);
+}
+
+export function decodeNamedLayouts(raw: string | undefined | null): NamedPrintLayouts {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== 'object') return {};
+    const out: NamedPrintLayouts = {};
+    for (const name of Object.keys(parsed)) {
+      const entry = parsed[name];
+      if (!entry || typeof entry !== 'object') continue;
+      const e = entry as Record<string, unknown>;
+      if (typeof e.layout !== 'string') continue;
+      out[name] = {
+        settings:
+          e.settings && typeof e.settings === 'object'
+            ? (e.settings as Record<string, string>)
+            : {},
+        layout: e.layout,
+        overrides: typeof e.overrides === 'string' ? e.overrides : '{}',
+      };
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }

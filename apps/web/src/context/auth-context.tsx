@@ -20,6 +20,7 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   can: (permission: string) => boolean;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -65,6 +66,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [router]);
 
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    const res = await apiFetch<{ accessToken: string; refreshToken: string; user: SessionUser }>(
+      '/auth/change-password',
+      { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }), retryAuth: false },
+    );
+    if (res.accessToken && res.refreshToken) {
+      setTokens(res.accessToken, res.refreshToken);
+    } else {
+      clearTokens();
+    }
+    setUser(res.user ?? null);
+  }, []);
+
   const can = useCallback(
     (permission: string) => {
       if (!user) return false;
@@ -75,8 +89,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ user, loading, login, logout, refresh, can }),
-    [user, loading, login, logout, refresh, can],
+    () => ({ user, loading, login, logout, refresh, can, changePassword }),
+    [user, loading, login, logout, refresh, can, changePassword],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

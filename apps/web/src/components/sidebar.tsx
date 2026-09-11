@@ -7,6 +7,7 @@ import {
   Building2,
   ChevronDown,
   Home,
+  KeyRound,
   LogOut,
   X,
 } from 'lucide-react';
@@ -14,6 +15,9 @@ import { useAuth } from '@/context/auth-context';
 import { filterNavigation, NAV_ITEMS } from '@/lib/navigation';
 import { useFeatureFlags } from '@/hooks/use-feature-flags';
 import { cn, initials } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input, Field } from '@/components/ui/field';
+import { Modal } from '@/components/ui/modal';
 
 export function Sidebar({
   mobileOpen,
@@ -34,6 +38,7 @@ export function Sidebar({
   });
   const topLevel = items.filter((i) => i.children);
 
+  const [pwOpen, setPwOpen] = useState(false);
   const close = () => onMobileToggle(false);
 
   return (
@@ -111,6 +116,13 @@ export function Sidebar({
               <p className="truncate text-xs text-slate-400">@{user?.username}</p>
             </div>
             <button
+              onClick={() => setPwOpen(true)}
+              title="Change password"
+              className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            >
+              <KeyRound className="h-4 w-4" />
+            </button>
+            <button
               onClick={() => logout()}
               title="Sign out"
               className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
@@ -120,7 +132,89 @@ export function Sidebar({
           </div>
         </div>
       </aside>
+
+      <ChangePasswordModal open={pwOpen} onClose={() => setPwOpen(false)} />
     </>
+  );
+}
+
+function ChangePasswordModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { changePassword } = useAuth();
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setError('');
+    if (!current || !next) {
+      setError('Please fill in both password fields.');
+      return;
+    }
+    if (next.length < 8) {
+      setError('New password must be at least 8 characters.');
+      return;
+    }
+    if (next !== confirm) {
+      setError('New password and confirmation do not match.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await changePassword(current, next);
+      setCurrent('');
+      setNext('');
+      setConfirm('');
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not change password.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Change Password" size="sm">
+      <div className="space-y-4">
+        <p className="text-xs text-slate-500">
+          After changing your password all other sessions are signed out. You will stay logged in here.
+        </p>
+        <Field label="Current password">
+          <Input
+            type="password"
+            value={current}
+            autoComplete="current-password"
+            onChange={(e) => setCurrent(e.target.value)}
+          />
+        </Field>
+        <Field label="New password">
+          <Input
+            type="password"
+            value={next}
+            autoComplete="new-password"
+            onChange={(e) => setNext(e.target.value)}
+          />
+        </Field>
+        <Field label="Confirm new password">
+          <Input
+            type="password"
+            value={confirm}
+            autoComplete="new-password"
+            onChange={(e) => setConfirm(e.target.value)}
+          />
+        </Field>
+        {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={submit} loading={saving}>
+            Update Password
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

@@ -23,17 +23,21 @@ import {
   PRINT_DOC_TYPES,
   blockFontSize,
   decodeLayoutOverrides,
+  decodeNamedLayouts,
   decodePrintLayout,
   defaultLayout,
   encodeLayoutOverrides,
+  encodeNamedLayouts,
   encodePrintLayout,
   estimateBlockWidth,
   layoutBlockHeight,
   paperPxFor,
+  paperPxHeightFor,
   resolveLayout,
   type LayoutBlockAlign,
   type LayoutBlockConfig,
   type LayoutBlockKey,
+  type NamedPrintLayouts,
   type PrintDocType,
   type PrintLayoutConfig,
   type PrintLayoutOverrides,
@@ -125,6 +129,8 @@ export default function PrintLayoutPage() {
   const [form, setForm] = useState<Settings>({});
   const [baseLayout, setBaseLayout] = useState<PrintLayoutConfig | null>(null);
   const [overrides, setOverrides] = useState<PrintLayoutOverrides>({});
+  const [namedLayouts, setNamedLayouts] = useState<NamedPrintLayouts>({});
+  const [namedSel, setNamedSel] = useState('');
   const [scope, setScope] = useState<Scope>(DEFAULT_SCOPE);
   const [layout, setLayout] = useState<PrintLayoutConfig | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<LayoutBlockKey | null>(null);
@@ -137,6 +143,7 @@ export default function PrintLayoutPage() {
       const ov = decodeLayoutOverrides(data['print.layoutOverrides']);
       setBaseLayout(base);
       setOverrides(ov);
+      setNamedLayouts(decodeNamedLayouts(data['print.layouts']));
       setLayout(layoutForScope(DEFAULT_SCOPE, base, ov));
       setSelectedBlock(null);
     }
@@ -191,6 +198,67 @@ export default function PrintLayoutPage() {
       ...payload,
       values: { 'print.layout': encodePrintLayout(fresh), 'print.layoutOverrides': '{}' },
     });
+  };
+
+  // ---- Named layout formats ----------------------------------------------
+  const persistNamedLayouts = (next: NamedPrintLayouts) => {
+    setError('');
+    save.mutate({ values: { 'print.layouts': encodeNamedLayouts(next) } });
+  };
+
+  /** Snapshots every current field + the base layout + overrides under a name. */
+  const saveCurrentAsNamed = () => {
+    if (!layout) return;
+    const key = window.prompt('Name this layout format', '');
+    if (!key || !key.trim()) return;
+    const settings: Record<string, string> = {};
+    for (const field of Object.keys(FIELDS)) settings[field] = value(field);
+    const next: NamedPrintLayouts = {
+      ...namedLayouts,
+      [key.trim()]: {
+        settings,
+        layout: encodePrintLayout(baseLayout ?? layout),
+        overrides: encodeLayoutOverrides(overrides),
+      },
+    };
+    setNamedLayouts(next);
+    setNamedSel(key.trim());
+    persistNamedLayouts(next);
+  };
+
+  /** Restores a saved format into the editor and makes it live immediately. */
+  const loadNamedFormat = () => {
+    const named = namedLayouts[namedSel];
+    if (!named) return;
+    const form2: Record<string, string> = {};
+    for (const field of Object.keys(FIELDS)) {
+      const v = named.settings[field];
+      if (v !== undefined) form2[field] = v;
+    }
+    setForm(form2);
+    const base = decodePrintLayout(named.layout) ?? defaultLayout();
+    const ov = decodeLayoutOverrides(named.overrides);
+    setBaseLayout(base);
+    setOverrides(ov);
+    setScope(DEFAULT_SCOPE);
+    setLayout(base);
+    setSelectedBlock(null);
+    setError('');
+    const payload: Record<string, string> = {};
+    for (const field of Object.keys(FIELDS)) payload[field] = form2[field] ?? value(field);
+    save.mutate({
+      ...payload,
+      values: { 'print.layout': encodePrintLayout(base), 'print.layoutOverrides': encodeLayoutOverrides(ov) },
+    });
+  };
+
+  const deleteNamedFormat = () => {
+    if (!namedLayouts[namedSel]) return;
+    const next = { ...namedLayouts };
+    delete next[namedSel];
+    setNamedLayouts(next);
+    setNamedSel('');
+    persistNamedLayouts(next);
   };
 
   // ---- Custom layout helpers ---------------------------------------------
@@ -308,11 +376,14 @@ export default function PrintLayoutPage() {
   const thermal = value('invoiceTemplate') === 'thermal';
   const isCustom = value('invoiceTemplate') === 'custom';
 
-  const canvasW = paperPxFor(value('paperSize'), false);
-  const canvasH = (layout?.blocks ?? []).reduce(
-    (m, b) => Math.max(m, (b.y || 0) + layoutBlockHeight(b, 2) + 16),
-    240,
-  );
+  const canvasW = paperPxFor(value('paperSize'), thermal);
+  const fixedH = paperPxHeightFor(value('paperSize'), thermal);
+  const canvasH =
+    fixedH ??
+    (layout?.blocks ?? []).reduce(
+      (m, b) => Math.max(m, (b.y || 0) + layoutBlockHeight(b, 2) + 16),
+      240,
+    );
   const editorBoxW = (b: LayoutBlockConfig) =>
     b.width > 0 ? b.width : b.key === 'itemsTable' ? canvasW : estimateBlockWidth(b.key);
 
@@ -410,6 +481,42 @@ export default function PrintLayoutPage() {
             <>
               {/* Controls */}
               <div className={`${isCustom ? 'min-w-0 flex-1' : 'max-w-sm flex-1'} space-y-5`}>
+                <div>
+                  <p className="mb-3 text-sm font-semibold text-slate-700">Saved Formats</p>
+                  <div className="flex flex-wrap items-start gap-2">
+                    <Field label="Format" className="min-w-40 flex-1">
+                      <Select value={namedSel} onChange={(e) => setNamedSel(e.target.value)}>
+                        <option value="">— none selected —</option>
+                        {Object.keys(namedLayouts).map((name) => (
+                          <option key={name} value={name}>{name}</option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" size="sm" className="h-9" onClick={loadNamedFormat} disabled={!namedSel}>
+                        Load
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="h-9" onClick={saveCurrentAsNamed}>
+                        Save as format…
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 text-red-600 hover:border-red-200 hover:bg-red-50"
+                        onClick={deleteNamedFormat}
+                        disabled={!namedSel}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-400">
+                    Save the current template + settings as a named format and switch between them anytime
+                    (e.g. “A4 Standard”, “Thermal Receipt”).
+                  </p>
+                </div>
+
                 <div>
                   <p className="mb-3 text-sm font-semibold text-slate-700">Layout</p>
                   <div className="grid grid-cols-2 gap-4">
@@ -533,7 +640,7 @@ export default function PrintLayoutPage() {
                     <div className="mt-1 grid gap-4 lg:grid-cols-2">
                       <div className="overflow-auto rounded-xl border border-slate-200 bg-slate-100 p-4">
                         <div className="mb-1.5 text-[11px] font-medium text-slate-400">
-                          Page {canvasW} × {canvasH} px · {value('paperSize')} · coordinates from the top-left corner
+                          Page {canvasW} × {canvasH} px · {thermal ? 'Thermal (80mm)' : value('paperSize')} · coordinates from the top-left corner
                         </div>
                         <div style={{ width: canvasW * EDIT_SCALE + 2, height: canvasH * EDIT_SCALE + 2 }}>
                         <div
