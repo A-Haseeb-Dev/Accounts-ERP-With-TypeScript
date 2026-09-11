@@ -40,6 +40,20 @@ export default function RolesPage() {
     return map;
   }, [permissions]);
 
+function humanize(segments: string[]): string {
+  return segments
+    .flatMap((s) => s.split('-'))
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function permissionLabel(p: Permission): string {
+  const parts = (p.name ?? '').split('.');
+  const section = parts.length > 2 ? parts.slice(1, -1) : [];
+  const label = section.length > 0 ? humanize(section) : humanize([p.module]);
+  return `${label} · ${humanize([p.action])}`;
+}
+
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState<RoleForm>({ name: '', description: '' });
   const [selectedPerms, setSelectedPerms] = useState<Set<string>>(new Set());
@@ -172,14 +186,14 @@ export default function RolesPage() {
                   <div key={mod}>
                     <label className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
                       <input type="checkbox" checked={allSel} onChange={() => toggleAllModule(perms)} className="rounded border-slate-300" />
-                      {mod}
+{humanize([mod])}
                     </label>
                     <div className="ml-5 flex flex-wrap gap-1.5">
                       {perms.map((p) => (
-                        <button type="button" key={p.id} onClick={() => togglePerm(p.id)}
+                        <button type="button" key={p.id} onClick={() => togglePerm(p.id)} title={p.description ?? p.name}
                           className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${selectedPerms.has(p.id) ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-300' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                         >
-                          {p.action}
+                          {permissionLabel(p)}
                         </button>
                       ))}
                     </div>
