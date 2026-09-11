@@ -135,43 +135,6 @@ function escapeHtml(value: string): string {
 }
 
 /**
- * Exports the first <table> inside an element (by id) to a CSV file that
- * opens cleanly in Excel / LibreOffice. Column headers are read from the
- * table's <th> cells; rows are read from <tbody>.
- */
-export function downloadTableCSV(id: string, filename: string): void {
-  const source = document.getElementById(id);
-  if (!source) return;
-  const table = source.querySelector('table');
-  if (!table) return;
-
-  const rows = Array.from(table.querySelectorAll('thead tr, tbody tr'));
-
-  const lines = rows.map((tr) => {
-    const cells = Array.from(tr.querySelectorAll('th, td'));
-    return cells
-      .map((cell) => {
-        let text = String((cell as HTMLElement).innerText ?? '').replace(/\s+/g, ' ').trim();
-        text = text.replace(new RegExp(',', 'g'), ' ');
-        text = text.replace(new RegExp('\r?\n', 'g'), ' ');
-        return `"${text.replace(/"/g, '""')}"`;
-      })
-      .join(',');
-  });
-
-  const csv = '\uFEFF' + lines.join('\r\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = /\.csv$/i.test(filename) ? filename : `${filename}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-/**
  * Exports the first <table> inside an element (by id) to a PDF file. The data
  * is laid out as a real table (headers + rows, zebra striping, page-break
  * aware) using jspdf + jspdf-autotable.

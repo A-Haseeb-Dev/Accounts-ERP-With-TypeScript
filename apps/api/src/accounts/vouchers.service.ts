@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NumberingService } from '../common/services/numbering.service';
@@ -15,8 +15,6 @@ const TYPE_PREFIX: Record<string, string> = {
 
 @Injectable()
 export class VouchersService {
-  private readonly logger = new Logger(VouchersService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -238,41 +236,37 @@ export class VouchersService {
     const totalDebit = round2(dto.entries.reduce((s, e) => s + Number(e.debit ?? 0), 0));
     const totalCredit = round2(dto.entries.reduce((s, e) => s + Number(e.credit ?? 0), 0));
 
-    try {
-      const updated = await this.prisma.runInTransaction(async (tx) => {
-        await tx.voucherEntry.deleteMany({ where: { voucherId: id } });
-        return tx.voucher.update({
-          where: { id },
-          data: {
-            voucherDate: new Date(dto.voucherDate),
-            description: dto.description ?? null,
-            reference: dto.reference ?? null,
-            totalDebit,
-            totalCredit,
-            entries: {
-              create: dto.entries.map((e) => ({
-                mainAccountId: e.mainAccountId,
-                debit: Number(e.debit ?? 0),
-                credit: Number(e.credit ?? 0),
-                narration: e.narration ?? null,
-              })),
-            },
+    const updated = await this.prisma.runInTransaction(async (tx) => {
+      await tx.voucherEntry.deleteMany({ where: { voucherId: id } });
+      return tx.voucher.update({
+        where: { id },
+        data: {
+          voucherDate: new Date(dto.voucherDate),
+          description: dto.description ?? null,
+          reference: dto.reference ?? null,
+          totalDebit,
+          totalCredit,
+          entries: {
+            create: dto.entries.map((e) => ({
+              mainAccountId: e.mainAccountId,
+              debit: Number(e.debit ?? 0),
+              credit: Number(e.credit ?? 0),
+              narration: e.narration ?? null,
+            })),
           },
-          include: { entries: true },
-        });
+        },
+        include: { entries: true },
       });
-      this.audit.record({
-        userId: actorId,
-        action: 'UPDATE',
-        module: 'VOUCHER',
-        entity: 'Voucher',
-        entityId: id,
-        message: `${voucher.voucherType} voucher ${voucher.number} updated`,
-      });
-      return updated;
-    } catch (err) {
-      throw err;
-    }
+    });
+    this.audit.record({
+      userId: actorId,
+      action: 'UPDATE',
+      module: 'VOUCHER',
+      entity: 'Voucher',
+      entityId: id,
+      message: `${voucher.voucherType} voucher ${voucher.number} updated`,
+    });
+    return updated;
   }
 
   async remove(id: string, actorId?: string) {

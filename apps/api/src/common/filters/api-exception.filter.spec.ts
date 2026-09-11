@@ -3,7 +3,7 @@ import { ApiExceptionFilter } from './api-exception.filter';
 import { ApiException } from '../exceptions/api.exception';
 import { HttpException, HttpStatus } from '@nestjs/common';
 
-function createMockHost(exception: unknown) {
+function createMockHost(_exception: unknown) {
   const response = { status: vi.fn().mockReturnThis(), json: vi.fn() };
   const request = { method: 'GET', url: '/api/test' };
   return {

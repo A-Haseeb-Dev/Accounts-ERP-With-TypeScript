@@ -96,6 +96,7 @@ model Role {
   permissions  RolePermission[]
 
   @@unique([name, organizationId])
+  @@index([organizationId])
 }
 
 model Permission {
@@ -195,6 +196,8 @@ model SubHead {
   mainAccounts  MainAccount[]
 
   @@unique([code, headAccountId])
+  @@index([headAccountId])
+  @@index([organizationId])
 }
 
 model MainAccount {
@@ -399,6 +402,8 @@ model Voucher {
   status         String   @default("draft") // draft | posted | cancelled
   totalDebit     Decimal  @default(0) @db.Decimal(18, 2)
   totalCredit    Decimal  @default(0) @db.Decimal(18, 2)
+  postedById     String?
+  postedAt       DateTime?
   cancelledAt    DateTime?
   cancelReason   String?
   cancelledBy    String?

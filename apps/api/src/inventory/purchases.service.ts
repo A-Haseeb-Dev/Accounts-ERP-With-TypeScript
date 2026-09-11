@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NumberingService } from '../common/services/numbering.service';
@@ -12,8 +12,6 @@ import { CreatePurchaseDto } from './dto/inventory.dto';
 
 @Injectable()
 export class PurchasesService {
-  private readonly logger = new Logger(PurchasesService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -122,12 +120,6 @@ export class PurchasesService {
       purchase.items.reduce((s, i) => s + Number(i.quantity) * Number(i.unitCost), 0),
     );
 
-    // Negative inventory is controlled by a system setting.
-    const negativeSetting = await this.prisma.systemSetting.findFirst({
-      where: { key: 'inventory.negative_stock' },
-    });
-    const allowNegative = negativeSetting?.value === 'true';
-
     const result = await this.prisma.runInTransaction(async (tx) => {
       // 1. Inventory in-transactions for each line.
       for (const line of purchase.items) {
@@ -147,11 +139,11 @@ export class PurchasesService {
       const voucherEntries: VoucherEntryInput[] = [
         { mainAccountId: inventoryAccountId, debit: inventoryTotal, narration: `Purchase ${purchase.number}` },
         // Post the full grand total against supplier (or payable control).
-        ...splitByParty({
+        {
           mainAccountId: payableAccountId,
           credit: Number(purchase.grandTotal),
           narration: `Purchase ${purchase.number}`,
-        }),
+        },
       ];
 
       // Any difference between item cost and the grand total is purchase tax
@@ -309,8 +301,4 @@ function round2(n: number): number {
 
 function supplierAccountId(supplier: any): string | null {
   return supplier.mainAccountId ?? null;
-}
-
-function splitByParty(entry: { mainAccountId: string; credit: number; narration?: string }) {
-  return [{ mainAccountId: entry.mainAccountId, credit: entry.credit, narration: entry.narration }];
 }

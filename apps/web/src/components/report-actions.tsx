@@ -1,6 +1,6 @@
 'use client';
 
-import { Download, FileSpreadsheet, FileText, Printer } from 'lucide-react';
+import { FileSpreadsheet, FileText, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { downloadTablePDF, printElement } from '@/lib/report-export';
 import { downloadTableXLSX } from '@/lib/export-xlsx';

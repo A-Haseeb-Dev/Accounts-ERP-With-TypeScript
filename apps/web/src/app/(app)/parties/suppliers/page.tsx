@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Check, Eye, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { Eye, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { parseDeleteGuard } from '@/lib/delete-guard';
 import { useFlatOptions } from '@/hooks/use-options';

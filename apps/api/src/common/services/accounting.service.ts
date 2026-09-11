@@ -100,7 +100,7 @@ export class AccountingService {
 
     return tx.voucher.update({
       where: { id: voucherId },
-      data: { status: 'posted' },
+      data: { status: 'posted', postedById: postedById ?? null, postedAt: new Date() },
       include: { entries: true },
     });
   }

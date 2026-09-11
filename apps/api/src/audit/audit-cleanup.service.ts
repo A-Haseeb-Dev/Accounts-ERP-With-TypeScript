@@ -14,7 +14,7 @@ const RUN_INTERVAL_MS = 24 * 60 * 60 * 1000; // once a day
 @Injectable()
 export class AuditCleanupService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(AuditCleanupService.name);
-  private timer?: NodeJS.Timeout;
+  private timer?: ReturnType<typeof setInterval>;
 
   constructor(
     private readonly prisma: PrismaService,

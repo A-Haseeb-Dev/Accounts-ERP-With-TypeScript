@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NumberingService } from '../common/services/numbering.service';
@@ -11,8 +11,6 @@ import { CreatePurchaseReturnDto } from './dto/inventory.dto';
 
 @Injectable()
 export class PurchaseReturnsService {
-  private readonly logger = new Logger(PurchaseReturnsService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,

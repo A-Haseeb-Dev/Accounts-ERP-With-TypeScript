@@ -57,12 +57,6 @@ export class CreateVoucherDto {
   entries: VoucherEntryDto[];
 }
 
-export class PostVoucherDto {
-  @IsString()
-  @IsOptional()
-  id?: string;
-}
-
 export class CancelVoucherDto {
   @IsString()
   @IsNotEmpty({ message: 'Cancellation reason is required' })

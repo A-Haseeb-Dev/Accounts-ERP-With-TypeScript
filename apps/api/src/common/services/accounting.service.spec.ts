@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AccountingService, VoucherEntryInput } from './accounting.service';
-import { ApiException } from '../exceptions/api.exception';
 
 interface ApiErrorShape {
   status: number;
@@ -194,13 +193,13 @@ describe('AccountingService.postVoucher', () => {
         { mainAccountId: 'b', debit: 0, credit: 100 },
       ],
     });
-    tx.voucher.update.mockResolvedValue({ id: 'v1', status: 'posted' });
+    tx.voucher.update.mockResolvedValue({ id: 'v1', status: 'posted', postedById: 'u1' });
     const result = await svc.postVoucher(tx, 'v1', 'u1');
     expect(result.status).toBe('posted');
     expect(tx.voucher.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'v1' },
-        data: { status: 'posted' },
+        data: expect.objectContaining({ status: 'posted', postedById: 'u1' }),
       }),
     );
   });

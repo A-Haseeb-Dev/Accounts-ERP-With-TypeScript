@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, HttpException, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuditService } from './audit.service';
 import { AuditCleanupService } from './audit-cleanup.service';

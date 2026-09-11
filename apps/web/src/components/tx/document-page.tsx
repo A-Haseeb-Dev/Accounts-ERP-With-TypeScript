@@ -21,7 +21,7 @@ import { printElement } from '@/lib/report-export';
 import { useAuth } from '@/context/auth-context';
 import { PrintableDocument } from '@/components/tx/printable-document';
 import type { Option } from '@/hooks/use-options';
-import type { AuditEntry, Paginated, TransactionDoc, DocLine } from '@/lib/types';
+import type { AuditEntry, Paginated, TransactionDoc } from '@/lib/types';
 
 export interface DocumentConfig {
   resource: string;

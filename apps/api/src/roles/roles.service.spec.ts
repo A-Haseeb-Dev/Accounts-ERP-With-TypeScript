@@ -178,7 +178,7 @@ describe('RolesService.assignPermissions', () => {
       },
     };
     const { svc, audit } = buildService({ prisma });
-    const result = await svc.assignPermissions('r1', ['perm-1', 'perm-2']);
+    await svc.assignPermissions('r1', ['perm-1', 'perm-2']);
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'PERMISSIONS_CHANGED' }),
     );

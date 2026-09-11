@@ -1,4 +1,4 @@
-import { IsArray, IsNotEmpty, IsOptional, IsString, MaxLength, IsEnum, IsNumber } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, MaxLength, IsEnum, IsNumber } from 'class-validator';
 
 export type Status = 'active' | 'inactive';
 

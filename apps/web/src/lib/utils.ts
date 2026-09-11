@@ -22,13 +22,6 @@ export const num = (value: unknown): string => {
   return new Intl.NumberFormat('en-PK', { maximumFractionDigits: 2 }).format(n);
 };
 
-export const date = (value: unknown): string => {
-  if (!value) return '-';
-  const d = new Date(String(value));
-  if (Number.isNaN(d.getTime())) return '-';
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-};
-
 export const dateTime = (value: unknown): string => {
   if (!value) return '-';
   const d = new Date(String(value));
@@ -45,17 +38,6 @@ export const initials = (name?: string | null): string => {
     .map((p) => p[0]?.toUpperCase())
     .join('');
 };
-
-export function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
 
 const ONES = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
 const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];

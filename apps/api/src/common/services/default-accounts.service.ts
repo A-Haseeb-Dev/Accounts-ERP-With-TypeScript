@@ -135,10 +135,4 @@ export class DefaultAccountsService implements OnModuleInit {
     });
     return byName?.id ?? null;
   }
-
-  async resolveCashAccount(): Promise<string> {
-    const id = await this.resolveAccount('accounting.cash_account', 'Cash Account');
-    if (!id) throw new Error('Cash account not configured');
-    return id;
-  }
 }

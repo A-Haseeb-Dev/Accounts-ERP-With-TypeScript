@@ -14,10 +14,15 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { dateTime } from '@/lib/utils';
+import { useAuth } from '@/context/auth-context';
 import type { SubHead, Paginated } from '@/lib/types';
 
 export default function SubHeadsPage() {
   const qc = useQueryClient();
+  const { can } = useAuth();
+  const canCreate = can('administration.sub-heads.create');
+  const canUpdate = can('administration.sub-heads.update');
+  const canDelete = can('administration.sub-heads.delete');
   const { options: headOptions, isLoading: headsLoading } = useFlatOptions('head-accounts');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -62,9 +67,11 @@ export default function SubHeadsPage() {
         title="Sub Heads"
         description="Second level of the chart of accounts hierarchy, grouped under head accounts."
         actions={
-          <Button onClick={() => { setEditing(null); setForm({}); setError(''); setModalOpen(true); }}>
-            <Plus className="h-4 w-4" /> New Sub Head
-          </Button>
+          canCreate && (
+            <Button onClick={() => { setEditing(null); setForm({}); setError(''); setModalOpen(true); }}>
+              <Plus className="h-4 w-4" /> New Sub Head
+            </Button>
+          )
         }
       />
 
@@ -86,8 +93,8 @@ export default function SubHeadsPage() {
               key: 'actions', header: 'Actions',
               render: (r) => (
                 <div className="flex items-center gap-1">
-                  <button onClick={() => { setEditing(r); setForm(r); setError(''); setModalOpen(true); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-teal-700"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                  {canUpdate && <button onClick={() => { setEditing(r); setForm(r); setError(''); setModalOpen(true); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-teal-700"><Pencil className="h-4 w-4" /></button>}
+                  {canDelete && <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>}
                 </div>
               ),
             },

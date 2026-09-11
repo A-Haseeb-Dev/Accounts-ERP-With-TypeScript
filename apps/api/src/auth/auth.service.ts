@@ -7,7 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ApiException } from '../common/exceptions/api.exception';
 import { JwtPayload, JwtRefreshPayload } from './interfaces/jwt-payload.interface';
-import { LoginDto, RefreshDto } from './dto/auth.dto';
+import { LoginDto } from './dto/auth.dto';
 
 export const MAX_LOGIN_ATTEMPTS = 5;
 

@@ -67,7 +67,6 @@ export const PERMISSION_CATALOG: { name: string; module: string; action: string;
   { name: 'roles.view', module: 'roles', action: 'view' },
   { name: 'roles.manage', module: 'roles', action: 'manage' },
   { name: 'permissions.view', module: 'permissions', action: 'view' },
-  { name: 'permissions.manage', module: 'permissions', action: 'manage' },
 
   // Accounting
   { name: 'accounts.vouchers.view', module: 'accounts', action: 'view' },
@@ -116,8 +115,8 @@ export const PERMISSION_CATALOG: { name: string; module: string; action: string;
   { name: 'reports.export', module: 'reports', action: 'export' },
 
   // System
-  { name: 'system.branding.manage', module: 'system', action: 'view' },
-  { name: 'system.settings.manage', module: 'system', action: 'view' },
+  { name: 'system.branding.manage', module: 'system', action: 'manage' },
+  { name: 'system.settings.manage', module: 'system', action: 'manage' },
   { name: 'system.audit.view', module: 'system', action: 'view' },
   { name: 'system.audit.purge', module: 'system', action: 'purge', description: 'Purge old audit logs' },
   { name: 'system.features.manage', module: 'system', action: 'manage', description: 'Toggle company features (Developer role only)' },

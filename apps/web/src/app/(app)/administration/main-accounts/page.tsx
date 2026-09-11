@@ -17,6 +17,7 @@ import { Card } from '@/components/ui/card';
 import { StatusBadge, Badge } from '@/components/ui/badge';
 import { dateTime, num } from '@/lib/utils';
 import { nextMainAccountCode } from '@/lib/accounts';
+import { useAuth } from '@/context/auth-context';
 import type { MainAccount, SubHead, Paginated } from '@/lib/types';
 
 const ACCOUNT_TYPES = [
@@ -29,6 +30,10 @@ const ACCOUNT_TYPES = [
 
 export default function MainAccountsPage() {
   const qc = useQueryClient();
+  const { can } = useAuth();
+  const canCreate = can('administration.main-accounts.create');
+  const canUpdate = can('administration.main-accounts.update');
+  const canDelete = can('administration.main-accounts.delete');
   const { options: subHeadOptions, data: subHeadData, isLoading: subHeadsLoading } = useFlatOptions<SubHead>('sub-heads');
   const { data: allAccounts } = useFlatOptions<MainAccount>('main-accounts');
   const [search, setSearch] = useState('');
@@ -102,9 +107,11 @@ export default function MainAccountsPage() {
         title="Main Accounts"
         description="Leaf accounts in the chart of accounts where voucher entries are posted."
         actions={
-          <Button onClick={() => { setEditing(null); setForm({ status: 'active', accountType: 'ASSET' }); setError(''); setModalOpen(true); }}>
-            <Plus className="h-4 w-4" /> New Main Account
-          </Button>
+          canCreate && (
+            <Button onClick={() => { setEditing(null); setForm({ status: 'active', accountType: 'ASSET' }); setError(''); setModalOpen(true); }}>
+              <Plus className="h-4 w-4" /> New Main Account
+            </Button>
+          )
         }
       />
 
@@ -132,8 +139,8 @@ export default function MainAccountsPage() {
               key: 'actions', header: 'Actions',
               render: (r) => (
                 <div className="flex items-center gap-1">
-                  <button onClick={() => { setEditing(r); setForm(r); setError(''); setModalOpen(true); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-teal-700"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                  {canUpdate && <button onClick={() => { setEditing(r); setForm(r); setError(''); setModalOpen(true); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-teal-700"><Pencil className="h-4 w-4" /></button>}
+                  {canDelete && <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>}
                 </div>
               ),
             },

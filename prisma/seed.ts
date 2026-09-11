@@ -5,99 +5,22 @@ const prisma = new PrismaClient();
 // app to run and log in. No sample chart of accounts, no demo products,
 // no sample parties, and no demo transactions — those ship as empty so the
 // user builds real data from a clean slate.
+//
+// SAFE BY DESIGN: this seed never hard-deletes user-created records. It only
+// upserts system rows (organization, roles, permissions, the two bootstrap
+// users, and default settings) and re-links system roles for the bootstrap
+// users. Passwords of existing accounts are preserved so re-running the seed
+// can never lock anyone out or surprise them with a reset password.
 
 async function main() {
   console.log('Seeding minimal bootstrap data...');
 
-  await cleanupDemoData();
   await seedOrganization();
   await seedRolesAndPermissions();
   await seedUsers();
   await seedSettings();
 
   console.log('Seeding complete.');
-}
-
-// Remove any leftover demo/placeholder records from previous seeding so they
-// never persist or duplicate across redeploys. Deletes are guarded so real
-// accounting data (accounts with voucher activity) is never touched.
-async function cleanupDemoData() {
-  try {
-    // Demo vouchers / transactions by their known placeholder numbers.
-    const demoVoucherNumbers = ['PV-000001', 'SV-000001', 'JV-000001'];
-    const demoVouchers = await prisma.voucher.findMany({ where: { number: { in: demoVoucherNumbers } } });
-    for (const v of demoVouchers) {
-      await prisma.voucherEntry.deleteMany({ where: { voucherId: v.id } });
-    }
-    await prisma.voucher.deleteMany({ where: { number: { in: demoVoucherNumbers } } });
-
-    const demoPurchases = await prisma.purchase.findMany({ where: { number: { in: ['PI-000001'] } } });
-    for (const p of demoPurchases) {
-      await prisma.purchaseItem.deleteMany({ where: { purchaseId: p.id } });
-      await prisma.inventoryTransaction.deleteMany({ where: { referenceType: 'Purchase', referenceId: p.id } });
-    }
-    await prisma.purchase.deleteMany({ where: { number: { in: ['PI-000001'] } } });
-
-    const demoSales = await prisma.sale.findMany({ where: { number: { in: ['SI-000001'] } } });
-    for (const s of demoSales) {
-      await prisma.saleItem.deleteMany({ where: { saleId: s.id } });
-      await prisma.inventoryTransaction.deleteMany({ where: { referenceType: 'Sale', referenceId: s.id } });
-    }
-    await prisma.sale.deleteMany({ where: { number: { in: ['SI-000001'] } } });
-
-    // Demo customers / suppliers by their placeholder codes.
-    await prisma.customer.deleteMany({ where: { code: { in: ['CUS-001', 'CUS-002', 'CUS-003'] } } });
-    await prisma.supplier.deleteMany({ where: { code: { in: ['SUP-001', 'SUP-002', 'SUP-003'] } } });
-
-    // Demo products and their master data.
-    const demoItems = await prisma.item.findMany({ where: { code: { startsWith: 'ITM-' } } });
-    const demoItemIds = demoItems.map((i) => i.id);
-    if (demoItemIds.length > 0) {
-      await prisma.inventoryTransaction.deleteMany({ where: { itemId: { in: demoItemIds } } });
-      await prisma.purchaseItem.deleteMany({ where: { itemId: { in: demoItemIds } } });
-      await prisma.saleItem.deleteMany({ where: { itemId: { in: demoItemIds } } });
-      await prisma.purchaseReturnItem.deleteMany({ where: { itemId: { in: demoItemIds } } });
-      await prisma.salesReturnItem.deleteMany({ where: { itemId: { in: demoItemIds } } });
-      await prisma.item.deleteMany({ where: { id: { in: demoItemIds } } });
-    }
-    await prisma.stockLocation.deleteMany({ where: { code: 'SL-001' } });
-    for (const name of ['Groceries', 'Beverages', 'Electronics', 'General Goods']) {
-      await prisma.itemType.deleteMany({ where: { name } });
-    }
-    for (const name of ['Nestle', 'PepsiCo', 'Coca Cola', 'Lipton', 'Unilever']) {
-      await prisma.brand.deleteMany({ where: { name } });
-    }
-    for (const name of ['Lahore', 'Karachi', 'Faisalabad', 'Multan']) {
-      await prisma.town.deleteMany({ where: { name } });
-    }
-
-    // Obsolete inactive chart-of-accounts heads from the old seed (01-05) and
-    // their now-empty sub heads / main accounts. Only touched when inactive so
-    // no live account data is removed.
-    const oldHeads = await prisma.headAccount.findMany({ where: { code: { in: ['01', '02', '03', '04', '05'] }, status: 'inactive' } });
-    for (const head of oldHeads) {
-      const subs = await prisma.subHead.findMany({ where: { headAccountId: head.id, status: 'inactive' } });
-      for (const sub of subs) {
-        const accounts = await prisma.mainAccount.findMany({
-          where: { subHeadId: sub.id },
-          include: { _count: { select: { voucherEntries: true, customers: true, suppliers: true } } },
-        });
-        const onlyUnused = accounts.every((a) => a._count.voucherEntries + a._count.customers + a._count.suppliers === 0);
-        if (onlyUnused) {
-          await prisma.mainAccount.deleteMany({ where: { subHeadId: sub.id } });
-          await prisma.subHead.delete({ where: { id: sub.id } });
-        }
-      }
-      const remaining = await prisma.subHead.count({ where: { headAccountId: head.id } });
-      if (remaining === 0) {
-        await prisma.headAccount.delete({ where: { id: head.id } });
-      }
-    }
-
-    console.log('  Cleanup complete.');
-  } catch (e) {
-    console.log('  Cleanup skipped (no matching demo data).', e instanceof Error ? e.message : '');
-  }
 }
 
 async function seedOrganization() {
@@ -180,13 +103,11 @@ async function seedUsers() {
 
   for (const def of defs) {
     const existing = await prisma.user.findUnique({ where: { username: def.username } });
-    const passwordHash = await argon2.hash(def.password);
     if (!existing) {
+      const passwordHash = await argon2.hash(def.password);
       await prisma.user.create({
         data: { fullName: def.fullName, username: def.username, passwordHash, email: def.email, status: 'active' },
       });
-    } else {
-      await prisma.user.update({ where: { id: existing.id }, data: { fullName: def.fullName, passwordHash, email: def.email, status: 'active' } });
     }
 
     const user = await prisma.user.findUnique({ where: { username: def.username } });
