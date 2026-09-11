@@ -63,10 +63,18 @@ export default function VouchersPage() {
     enabled: !!detailId,
   });
 
+  const { data: nextNumber } = useQuery<string>({
+    queryKey: ['vouchers', 'next-number', type],
+    queryFn: () => apiFetch<{ number: string }>(`/vouchers/next-number?voucherType=${type}`).then((r) => r.number),
+    enabled: modalOpen && !editId,
+    staleTime: 0,
+  });
+
   const create = useMutation({
     mutationFn: (payload: VoucherPayload) => createVoucher(payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vouchers'] });
+      qc.invalidateQueries({ queryKey: ['vouchers', 'next-number'] });
       setModalOpen(false);
       setEntries([]);
       setDescription('');
@@ -83,6 +91,7 @@ export default function VouchersPage() {
     mutationFn: (payload: VoucherPayload) => updateVoucher(editId!, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vouchers'] });
+      qc.invalidateQueries({ queryKey: ['vouchers', 'next-number'] });
       setModalOpen(false);
       setEditId(null);
       setEntries([]);
@@ -248,11 +257,12 @@ export default function VouchersPage() {
                 <option value="DEBIT">Debit Note</option>
               </Select>
             </Field>
-            <div className="col-span-2">
-              <Field label="Reference">
-                <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="optional" />
-              </Field>
-            </div>
+            <Field label="Number">
+              <Input value={nextNumber ?? ''} disabled className="font-mono" title="Auto-generated on save" />
+            </Field>
+            <Field label="Reference">
+              <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="optional" />
+            </Field>
           </div>
           <Field label="Description"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
 

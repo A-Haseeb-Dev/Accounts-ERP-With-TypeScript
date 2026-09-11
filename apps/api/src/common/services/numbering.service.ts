@@ -87,8 +87,10 @@ export class NumberingService {
     settingKey: string,
     prefix: string,
     padLength = 6,
+    options: { year?: boolean } = {},
   ): Promise<string> {
-    const key = this.scopedKey(settingKey, true);
+    const useYear = options.year !== false;
+    const key = this.scopedKey(settingKey, useYear);
     const rows: { value: string }[] = await this.prisma.$queryRawUnsafe(
       `SELECT "value" FROM "SystemSetting"
        WHERE "key" = $1 AND "organizationId" = $2`,
@@ -97,7 +99,7 @@ export class NumberingService {
     );
     const current = Number(rows[0]?.value ?? 0);
     const nextPrefix = (await this.configuredPrefix(settingKey)) ?? prefix;
-    return this.format(nextPrefix, current + 1, padLength, true);
+    return this.format(nextPrefix, current + 1, padLength, useYear);
   }
 
   private async configuredPrefix(settingKey: string): Promise<string | undefined> {

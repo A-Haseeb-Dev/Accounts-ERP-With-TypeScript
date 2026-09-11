@@ -18,7 +18,7 @@ export default function StockLocationsPage() {
           { key: 'description', header: 'Description', render: (r) => r.description ? <span className="text-slate-500">{r.description}</span> : '-' },
         ],
         fields: [
-          { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. WH01' },
+          { name: 'code', label: 'Code', type: 'text', auto: true, placeholder: 'Auto-generated' },
           { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Main Warehouse' },
           { name: 'description', label: 'Description', type: 'textarea' },
           { name: 'status', label: 'Status', type: 'status' },

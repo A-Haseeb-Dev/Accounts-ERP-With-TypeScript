@@ -26,6 +26,7 @@ export interface FieldDef {
   options?: { value: string; label: string }[];
   required?: boolean;
   placeholder?: string;
+  auto?: boolean;
 }
 
 export interface SimpleMasterConfig<TRecord extends { id: string }> {
@@ -62,6 +63,19 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
       apiFetch(config.apiPath + qs({ page, pageSize: 20, search: search || undefined, status: status || undefined })),
   });
 
+  const autoField = config.fields.find((f) => f.auto);
+
+  const { data: nextCode } = useQuery<string>({
+    queryKey: [config.apiPath, 'next-code'],
+    queryFn: async () => {
+      if (!autoField) return '';
+      const res = await apiFetch<{ code?: string }>(`${config.apiPath}/next-code`);
+      return res?.code ?? '';
+    },
+    enabled: modalOpen && !!autoField && !editing,
+    staleTime: 0,
+  });
+
   const saveMutation = useMutation({
     mutationFn: async (payload: unknown) => {
       if (editing?.id) {
@@ -71,6 +85,7 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [config.apiPath] });
+      if (autoField) qc.invalidateQueries({ queryKey: [config.apiPath, 'next-code'] });
       setModalOpen(false);
       setEditing(null);
       setForm({});
@@ -256,11 +271,16 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
                 </Select>
               </Field>
             ) : (
-              <Field key={field.name} label={field.label} required={field.required}>
+              <Field
+                key={field.name}
+                label={field.label}
+                required={field.required && !field.auto}
+                hint={field.auto ? 'Auto-generated. You can change it if needed.' : undefined}
+              >
                 <Input
                   type={field.type === 'number' ? 'number' : 'text'}
                   step={field.type === 'number' ? '0.01' : undefined}
-                  value={String(form[field.name] ?? '')}
+                  value={String(field.auto && !editing ? (form[field.name] ?? nextCode ?? '') : (form[field.name] ?? ''))}
                   placeholder={field.placeholder}
                   onChange={(e) =>
                     onFieldChange(field.name, field.type === 'number' ? (e.target.value === '' ? 0 : Number(e.target.value)) : e.target.value)

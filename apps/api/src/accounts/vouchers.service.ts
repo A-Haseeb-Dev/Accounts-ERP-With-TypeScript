@@ -25,6 +25,14 @@ export class VouchersService {
     private readonly fiscal: FiscalPeriodGuard,
   ) {}
 
+  previewNumber(voucherType?: string) {
+    const type = (voucherType ?? 'JOURNAL').toUpperCase();
+    return this.numbering.preview(
+      `voucher_${type.toLowerCase()}`,
+      TYPE_PREFIX[type] ?? 'JV',
+    );
+  }
+
   async create(dto: CreateVoucherDto, actorId?: string) {
     if (!dto.entries.some((e) => Number(e.debit ?? 0) > 0)) {
       throw ApiException.validation('A debit entry is required');

@@ -78,6 +78,8 @@ export class StockLocationsController {
   }
   @Get('flat') @Permissions('administration.stock-locations.view') @ApiOperation({ summary: 'List stock locations (for selects)' })
   findAllFlat() { return this.service.findAllFlat(this.model, true); }
+  @Get('next-code') @Permissions('administration.stock-locations.view') @ApiOperation({ summary: 'Next auto-generated stock location code' })
+  async nextCode() { const code = await this.service.previewCode(this.model); return code ? { code } : {}; }
   @Get(':id') @Permissions('administration.stock-locations.view') @ApiOperation({ summary: 'Get a stock location' })
   findOne(@Param('id') id: string) { return this.service.findOne(this.model, id); }
   @Patch(':id') @Permissions('administration.stock-locations.update') @ApiOperation({ summary: 'Update a stock location' })
@@ -111,6 +113,9 @@ export class ItemsController {
   search(@Query('q') q = '', @Query('limit') limit = '10') {
     return this.service.searchItems({ search: q, limit: Number(limit) });
   }
+
+  @Get('next-code') @Permissions('administration.items.view') @ApiOperation({ summary: 'Next auto-generated item code' })
+  async nextCode() { return { code: await this.service.previewCode() }; }
 
   @Get(':id') @Permissions('administration.items.view') @ApiOperation({ summary: 'Get an item with stock' })
   findOne(@Param('id') id: string) { return this.service.findOne(id); }

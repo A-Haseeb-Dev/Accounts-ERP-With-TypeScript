@@ -27,7 +27,7 @@ export class SalesController {
   ) { return this.service.findAll({ page: Number(page), pageSize: Number(pageSize), search, status, customerId, from, to }); }
 
   @Get('next-number') @Permissions('sales.invoice.view') @ApiOperation({ summary: 'Preview the next auto-generated invoice number' })
-  nextNumber() { return this.service.previewNumber(); }
+  async nextNumber() { return { number: await this.service.previewNumber() }; }
 
   @Get(':id') @Permissions('sales.invoice.view') @ApiOperation({ summary: 'Get a sales invoice' })
   findOne(@Param('id') id: string) { return this.service.findOne(id); }
@@ -60,7 +60,7 @@ export class SalesReturnsController {
   ) { return this.service.findAll({ page: Number(page), pageSize: Number(pageSize), search, status, customerId, from, to }); }
 
   @Get('next-number') @Permissions('sales.return.view') @ApiOperation({ summary: 'Preview the next auto-generated sales return number' })
-  nextNumber() { return this.service.previewNumber(); }
+  async nextNumber() { return { number: await this.service.previewNumber() }; }
 
   @Get(':id') @Permissions('sales.return.view') @ApiOperation({ summary: 'Get a sales return' })
   findOne(@Param('id') id: string) { return this.service.findOne(id); }

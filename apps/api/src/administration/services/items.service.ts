@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { ApiException } from '../../common/exceptions/api.exception';
+import { NumberingService } from '../../common/services/numbering.service';
 import { CreateItemDto, UpdateItemDto } from '../dto/products.dto';
 
 @Injectable()
@@ -9,10 +10,17 @@ export class ItemsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly numbering: NumberingService,
   ) {}
 
+  previewCode() {
+    return this.numbering.preview('item', 'ITM', 4, { year: false });
+  }
+
   async create(dto: CreateItemDto, actorId?: string) {
-    const existing = await this.prisma.item.findUnique({ where: { code: dto.code } });
+    const requestedCode = dto.code?.trim();
+    const code = requestedCode || (await this.numbering.next('item', 'ITM', undefined, 4, { year: false }));
+    const existing = await this.prisma.item.findUnique({ where: { code } });
     if (existing) throw ApiException.duplicateCode('Item code');
     if (dto.barcode) {
       const byBarcode = await this.prisma.item.findUnique({ where: { barcode: dto.barcode } });
@@ -21,7 +29,7 @@ export class ItemsService {
 
     const item = await this.prisma.item.create({
       data: {
-        code: dto.code,
+        code,
         barcode: dto.barcode ?? null,
         name: dto.name,
         unit: dto.unit ?? 'pcs',

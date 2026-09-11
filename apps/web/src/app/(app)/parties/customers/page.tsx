@@ -40,6 +40,13 @@ export default function CustomersPage() {
     queryFn: () => apiFetch('/customers' + qs({ page, pageSize: 20, search: search || undefined, townId: townFilter || undefined })),
   });
 
+  const { data: nextCode } = useQuery<string>({
+    queryKey: ['customers', 'next-code'],
+    queryFn: () => apiFetch<{ code: string }>('/customers/next-code').then((r) => r.code),
+    enabled: modalOpen && !editing,
+    staleTime: 0,
+  });
+
   const save = useMutation({
     mutationFn: (payload: Partial<Customer>) =>
       editing?.id
@@ -48,6 +55,7 @@ export default function CustomersPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['customers'] });
       qc.invalidateQueries({ queryKey: ['flat', 'customers'] });
+      qc.invalidateQueries({ queryKey: ['customers', 'next-code'] });
       setModalOpen(false);
       setEditing(null);
       setForm({});
@@ -139,8 +147,8 @@ export default function CustomersPage() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Customer' : 'New Customer'} size="lg">
         <form onSubmit={(e) => { e.preventDefault(); setError(''); save.mutate(form); }} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Code" hint="Leave blank to auto-generate.">
-              <Input value={form.code ?? ''} onChange={(e) => set('code', e.target.value)} placeholder="Auto-generated" />
+            <Field label="Code" hint="Auto-generated. You can change it if needed.">
+              <Input value={form.code ?? (editing ? '' : (nextCode ?? ''))} onChange={(e) => set('code', e.target.value)} placeholder="Auto-generated" />
             </Field>
             <Field label="Name" required>
               <Input value={form.name ?? ''} onChange={(e) => set('name', e.target.value)} required />

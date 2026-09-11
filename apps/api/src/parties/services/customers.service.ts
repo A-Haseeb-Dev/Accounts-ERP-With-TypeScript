@@ -13,13 +13,17 @@ export class CustomersService {
     private readonly numbering: NumberingService,
   ) {}
 
+  previewCode() {
+    return this.numbering.preview('customer', 'C', 3, { year: false });
+  }
+
   async create(dto: CreateCustomerDto, actorId?: string) {
     const requestedCode = dto.code?.trim();
     if (requestedCode) {
       const existing = await this.prisma.customer.findUnique({ where: { code: requestedCode } });
       if (existing) throw ApiException.duplicateCode('Customer code');
     }
-    const code = requestedCode || (await this.numbering.next('customer', 'CST', undefined, 6, { year: false }));
+    const code = requestedCode || (await this.numbering.next('customer', 'C', undefined, 3, { year: false }));
     if (dto.townId) {
       const town = await this.prisma.town.findUnique({ where: { id: dto.townId } });
       if (!town) throw ApiException.notFound('Town');

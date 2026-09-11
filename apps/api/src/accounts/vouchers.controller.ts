@@ -55,6 +55,13 @@ export class VouchersController {
     return this.service.cashBook({ page: Number(page), pageSize: Number(pageSize), from, to, search });
   }
 
+  @Get('next-number')
+  @Permissions('accounts.vouchers.view')
+  @ApiOperation({ summary: 'Preview the next voucher number for a type' })
+  async nextNumber(@Query('voucherType') voucherType?: string) {
+    return { number: await this.service.previewNumber(voucherType) };
+  }
+
   @Get(':id')
   @Permissions('accounts.vouchers.view')
   @ApiOperation({ summary: 'Get a voucher' })

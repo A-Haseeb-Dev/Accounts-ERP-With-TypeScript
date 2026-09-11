@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { ApiException } from '../../common/exceptions/api.exception';
+import { NumberingService } from '../../common/services/numbering.service';
 
 /**
  * Generic CRUD for simple single-entity master data
@@ -13,6 +14,7 @@ export class SimpleMasterService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly numbering: NumberingService,
   ) {}
 
   private resolveDelegate(model: 'itemType' | 'brand' | 'stockLocation') {
@@ -43,16 +45,24 @@ export class SimpleMasterService {
     if (existing) throw ApiException.duplicateCode('Name');
   }
 
+  previewCode(model: 'itemType' | 'brand' | 'stockLocation') {
+    if (model !== 'stockLocation') return undefined;
+    return this.numbering.preview('stockLocation', 'SL', 4, { year: false });
+  }
+
   async create(model: 'itemType' | 'brand' | 'stockLocation', dto: { code?: string; name: string; description?: string; status?: string }, actorId?: string) {
     await this.checkUnique(model, dto.name);
-    if (model === 'stockLocation' && dto.code) {
-      const existing = await (this.resolveDelegate(model) as any).findUnique({ where: { code: dto.code } });
+    const code = model === 'stockLocation' && !dto.code?.trim()
+      ? await this.numbering.next('stockLocation', 'SL', undefined, 4, { year: false })
+      : dto.code?.trim();
+    if (model === 'stockLocation' && code) {
+      const existing = await (this.resolveDelegate(model) as any).findUnique({ where: { code } });
       if (existing) throw ApiException.duplicateCode('Location code');
     }
     const delegate = this.resolveDelegate(model) as any;
     const item = await delegate.create({
       data: {
-        ...(dto.code ? { code: dto.code } : {}),
+        ...(code ? { code } : {}),
         name: dto.name,
         description: dto.description ?? null,
         status: dto.status ?? 'active',

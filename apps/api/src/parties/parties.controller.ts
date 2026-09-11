@@ -50,6 +50,8 @@ export class CustomersController {
   }
   @Get('flat') @Permissions('administration.customers.view') @ApiOperation({ summary: 'List customers (for selects)' })
   findAllFlat() { return this.service.findAllFlat(); }
+  @Get('next-code') @Permissions('administration.customers.view') @ApiOperation({ summary: 'Next auto-generated customer code' })
+  async nextCode() { return { code: await this.service.previewCode() }; }
   @Get(':id') @Permissions('administration.customers.view') @ApiOperation({ summary: 'Get a customer with profile' })
   findOne(@Param('id') id: string) { return this.service.findOne(id); }
   @Get(':id/sales') @Permissions('administration.customers.view') @ApiOperation({ summary: 'Customer sales history' })
@@ -84,6 +86,8 @@ export class SuppliersController {
   }
   @Get('flat') @Permissions('administration.suppliers.view') @ApiOperation({ summary: 'List suppliers (for selects)' })
   findAllFlat() { return this.service.findAllFlat(); }
+  @Get('next-code') @Permissions('administration.suppliers.view') @ApiOperation({ summary: 'Next auto-generated supplier code' })
+  async nextCode() { return { code: await this.service.previewCode() }; }
   @Get(':id') @Permissions('administration.suppliers.view') @ApiOperation({ summary: 'Get a supplier with profile' })
   findOne(@Param('id') id: string) { return this.service.findOne(id); }
   @Get(':id/purchases') @Permissions('administration.suppliers.view') @ApiOperation({ summary: 'Supplier purchase history' })

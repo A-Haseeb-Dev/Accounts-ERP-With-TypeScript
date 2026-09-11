@@ -55,22 +55,22 @@ function buildService(overrides?: { prisma?: Partial<MockSuppliersPrisma> }) {
   return { svc, prisma, audit, numbering };
 }
 
-const created = { id: 's1', code: 'SUP-000001', name: 'Test Supplier', status: 'active' };
+const created = { id: 's1', code: 'S-002', name: 'Test Supplier', status: 'active' };
 
 describe('SuppliersService.create code generation', () => {
   it('auto-generates a sequential code when code is omitted', async () => {
     const { svc, prisma, numbering } = buildService();
-    numbering.next.mockResolvedValue('SUP-000001');
+    numbering.next.mockResolvedValue('S-002');
     (prisma.supplier?.create as ReturnType<typeof vi.fn>).mockResolvedValue(created);
 
     const result = await svc.create({ name: 'Test Supplier' }, 'u1');
 
-    expect(numbering.next).toHaveBeenCalledWith('supplier', 'SUP', undefined, 6, { year: false });
+    expect(numbering.next).toHaveBeenCalledWith('supplier', 'S', undefined, 3, { year: false });
     expect(prisma.supplier?.findUnique).not.toHaveBeenCalled();
     expect(prisma.supplier?.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ code: 'SUP-000001' }) }),
+      expect.objectContaining({ data: expect.objectContaining({ code: 'S-002' }) }),
     );
-    expect(result.code).toBe('SUP-000001');
+    expect(result.code).toBe('S-002');
   });
 
   it('respects an explicitly provided code', async () => {

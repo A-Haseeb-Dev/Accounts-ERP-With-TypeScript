@@ -37,6 +37,13 @@ export default function ItemsPage() {
     queryFn: () => apiFetch('/items' + qs({ page, pageSize: 20, search: search || undefined })),
   });
 
+  const { data: nextCode } = useQuery<string>({
+    queryKey: ['items', 'next-code'],
+    queryFn: () => apiFetch<{ code: string }>('/items/next-code').then((r) => r.code),
+    enabled: modalOpen && !editing,
+    staleTime: 0,
+  });
+
   const save = useMutation({
     mutationFn: (payload: Partial<Item>) =>
       editing?.id
@@ -45,6 +52,7 @@ export default function ItemsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['items'] });
       qc.invalidateQueries({ queryKey: ['flat', 'items'] });
+      qc.invalidateQueries({ queryKey: ['items', 'next-code'] });
       setModalOpen(false);
       setEditing(null);
       setForm({});
@@ -126,8 +134,8 @@ export default function ItemsPage() {
           className="space-y-4"
         >
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Code" required>
-              <Input value={form.code ?? ''} onChange={(e) => set('code', e.target.value)} placeholder="e.g. SKU-001" required />
+            <Field label="Code" hint="Auto-generated. You can change it if needed.">
+              <Input value={form.code ?? (editing ? '' : (nextCode ?? ''))} onChange={(e) => set('code', e.target.value)} placeholder="Auto-generated" title="Auto-generated on save" />
             </Field>
             <Field label="Name" required>
               <Input value={form.name ?? ''} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Soft Drink 250ml" required />

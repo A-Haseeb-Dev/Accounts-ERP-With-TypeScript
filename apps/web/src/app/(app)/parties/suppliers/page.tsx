@@ -40,6 +40,13 @@ export default function SuppliersPage() {
     queryFn: () => apiFetch('/suppliers' + qs({ page, pageSize: 20, search: search || undefined, townId: townFilter || undefined })),
   });
 
+  const { data: nextCode } = useQuery<string>({
+    queryKey: ['suppliers', 'next-code'],
+    queryFn: () => apiFetch<{ code: string }>('/suppliers/next-code').then((r) => r.code),
+    enabled: modalOpen && !editing,
+    staleTime: 0,
+  });
+
   const save = useMutation({
     mutationFn: (payload: Partial<Supplier>) =>
       editing?.id
@@ -48,6 +55,7 @@ export default function SuppliersPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['suppliers'] });
       qc.invalidateQueries({ queryKey: ['flat', 'suppliers'] });
+      qc.invalidateQueries({ queryKey: ['suppliers', 'next-code'] });
       setModalOpen(false);
       setEditing(null);
       setForm({});
@@ -134,7 +142,7 @@ export default function SuppliersPage() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Supplier' : 'New Supplier'} size="lg">
         <form onSubmit={(e) => { e.preventDefault(); setError(''); save.mutate(form); }} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Code" hint="Leave blank to auto-generate."><Input value={form.code ?? ''} onChange={(e) => set('code', e.target.value)} placeholder="Auto-generated" /></Field>
+            <Field label="Code" hint="Auto-generated. You can change it if needed."><Input value={form.code ?? (editing ? '' : (nextCode ?? ''))} onChange={(e) => set('code', e.target.value)} placeholder="Auto-generated" /></Field>
             <Field label="Name" required><Input value={form.name ?? ''} onChange={(e) => set('name', e.target.value)} required /></Field>
           </div>
           <div className="grid grid-cols-2 gap-4">

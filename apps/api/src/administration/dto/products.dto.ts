@@ -76,9 +76,9 @@ export class UpdateBrandDto {
 
 export class CreateItemDto {
   @IsString()
-  @IsNotEmpty({ message: 'Item code is required' })
+  @IsOptional()
   @MaxLength(50)
-  code: string;
+  code?: string;
 
   @IsString()
   @IsOptional()
@@ -186,9 +186,9 @@ export class UpdateItemDto {
 
 export class CreateStockLocationDto {
   @IsString()
-  @IsNotEmpty({ message: 'Location code is required' })
+  @IsOptional()
   @MaxLength(20)
-  code: string;
+  code?: string;
 
   @IsString()
   @IsNotEmpty({ message: 'Location name is required' })
