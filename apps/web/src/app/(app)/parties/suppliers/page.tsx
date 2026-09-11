@@ -17,10 +17,15 @@ import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { dateTime, money } from '@/lib/utils';
+import { useAuth } from '@/context/auth-context';
 import type { Supplier, Paginated } from '@/lib/types';
 
 export default function SuppliersPage() {
   const qc = useQueryClient();
+  const { can } = useAuth();
+  const canCreate = can('administration.suppliers.create');
+  const canUpdate = can('administration.suppliers.update');
+  const canDelete = can('administration.suppliers.delete');
   const { options: townOptions } = useFlatOptions('towns');
   const { options: accountOptions } = useFlatOptions('main-accounts');
   const [search, setSearch] = useState('');
@@ -96,7 +101,7 @@ export default function SuppliersPage() {
       <PageHeader
         title="Suppliers"
         description="Your vendors and their payables ledger."
-        actions={<Button onClick={() => { setEditing(null); setForm({ status: 'active' }); setError(''); setModalOpen(true); }}><Plus className="h-4 w-4" /> New Supplier</Button>}
+        actions={canCreate ? <Button onClick={() => { setEditing(null); setForm({ status: 'active' }); setError(''); setModalOpen(true); }}><Plus className="h-4 w-4" /> New Supplier</Button> : null}
       />
 
       <Card>
@@ -123,8 +128,12 @@ export default function SuppliersPage() {
               render: (r) => (
                 <div className="flex items-center gap-1">
                   <button onClick={() => { setDetail(r); setDetailTab('ledger'); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Eye className="h-4 w-4" /></button>
-                  <button onClick={() => { setEditing(r); setForm(r); setError(''); setModalOpen(true); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-teal-700"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                  {canUpdate && (
+                    <button onClick={() => { setEditing(r); setForm(r); setError(''); setModalOpen(true); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-teal-700"><Pencil className="h-4 w-4" /></button>
+                  )}
+                  {canDelete && (
+                    <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                  )}
                 </div>
               ),
             },

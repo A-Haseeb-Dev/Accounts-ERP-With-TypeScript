@@ -63,6 +63,16 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
   const { can } = useAuth();
   const canPrint = can(printPerm);
 
+  const permBase =
+    resource === 'purchases' ? 'inventory.purchase'
+    : resource === 'sales-returns' ? 'sales.return'
+    : resource === 'purchase-returns' ? 'inventory.purchase-return'
+    : resource === 'stock-transfers' ? 'inventory.transfer'
+    : 'sales.invoice';
+  const canCreate = can(`${permBase}.create`);
+  const canPost = can(`${permBase}.post`);
+  const canCancel = can(`${permBase}.cancel`);
+
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
@@ -176,16 +186,18 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
         title={title}
         description={description}
         actions={
-          <Button
-            onClick={() => {
-              setForm({ [dateField]: new Date().toISOString().slice(0, 10), [partyField]: '', stockLocationId: '' });
-              setLines([]);
-              setError('');
-              setModalOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" /> New {config.newLabel ?? 'Document'}
-          </Button>
+          canCreate ? (
+            <Button
+              onClick={() => {
+                setForm({ [dateField]: new Date().toISOString().slice(0, 10), [partyField]: '', stockLocationId: '' });
+                setLines([]);
+                setError('');
+                setModalOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" /> New {config.newLabel ?? 'Document'}
+            </Button>
+          ) : null
         }
       />
 
@@ -222,8 +234,12 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
                   <button onClick={() => setDetailId(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
                   {r.status === 'draft' && (
                     <>
-                      <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
-                      <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
+                      {canPost && (
+                        <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
+                      )}
+                      {canCancel && (
+                        <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
+                      )}
                     </>
                   )}
                 </div>

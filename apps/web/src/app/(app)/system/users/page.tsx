@@ -13,6 +13,7 @@ import { PageHeader } from '@/components/page-header';
 import { useFlatOptions } from '@/hooks/use-options';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { dateTime } from '@/lib/utils';
+import { useAuth } from '@/context/auth-context';
 import type { Paginated, User } from '@/lib/types';
 
 interface UserForm {
@@ -27,6 +28,8 @@ interface UserForm {
 
 export default function UsersPage() {
   const qc = useQueryClient();
+  const { can } = useAuth();
+  const canManage = can('users.manage');
   const { options: roleOptions } = useFlatOptions('roles');
 
   const { data, isLoading } = useQuery<Paginated<User>>({
@@ -92,7 +95,7 @@ export default function UsersPage() {
 
   return (
     <div>
-      <PageHeader title="Users" description="Manage team access and user accounts." actions={<Button onClick={startCreate}><Plus className="h-4 w-4" /> New User</Button>} />
+      <PageHeader title="Users" description="Manage team access and user accounts." actions={canManage ? <Button onClick={startCreate}><Plus className="h-4 w-4" /> New User</Button> : null} />
 
       <Card>
         <div className="overflow-x-auto">
@@ -119,13 +122,19 @@ export default function UsersPage() {
                   <td className="px-4 py-2 text-xs text-slate-400">{dateTime(r.createdAt)}</td>
                   <td className="px-4 py-2">
                     <div className="flex gap-0.5">
-                      <button
-                        onClick={() => toggleStatus.mutate({ id: r.id, status: r.status === 'active' ? 'inactive' : 'active' })}
-                        className={`rounded-lg p-1.5 hover:bg-slate-100 ${r.status === 'active' ? 'text-slate-500 hover:text-amber-600' : 'text-emerald-600 hover:bg-emerald-50'}`}
-                        title={r.status === 'active' ? 'Deactivate' : 'Activate'}
-                      ><Power className="h-4 w-4" /></button>
-                      <button onClick={() => startEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Pencil className="h-4 w-4" /></button>
-                      <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                      {canManage && (
+                        <button
+                          onClick={() => toggleStatus.mutate({ id: r.id, status: r.status === 'active' ? 'inactive' : 'active' })}
+                          className={`rounded-lg p-1.5 hover:bg-slate-100 ${r.status === 'active' ? 'text-slate-500 hover:text-amber-600' : 'text-emerald-600 hover:bg-emerald-50'}`}
+                          title={r.status === 'active' ? 'Deactivate' : 'Activate'}
+                        ><Power className="h-4 w-4" /></button>
+                      )}
+                      {canManage && (
+                        <button onClick={() => startEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Pencil className="h-4 w-4" /></button>
+                      )}
+                      {canManage && (
+                        <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                      )}
                     </div>
                   </td>
                 </tr>

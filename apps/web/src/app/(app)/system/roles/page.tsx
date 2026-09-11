@@ -10,6 +10,7 @@ import { Modal } from '@/components/ui/modal';
 import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/page-header';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { useAuth } from '@/context/auth-context';
 import type { Permission, Role } from '@/lib/types';
 
 interface RoleForm {
@@ -19,6 +20,8 @@ interface RoleForm {
 
 export default function RolesPage() {
   const qc = useQueryClient();
+  const { can } = useAuth();
+  const canManage = can('roles.manage');
 
   const { data: roles, isLoading: rolesLoading } = useQuery<Role[]>({
     queryKey: ['roles'],
@@ -131,7 +134,7 @@ function permissionLabel(p: Permission): string {
 
   return (
     <div>
-      <PageHeader title="Roles & Permissions" description="Manage role-based access control." actions={<Button onClick={startCreate}><Plus className="h-4 w-4" /> New Role</Button>} />
+      <PageHeader title="Roles & Permissions" description="Manage role-based access control." actions={canManage ? <Button onClick={startCreate}><Plus className="h-4 w-4" /> New Role</Button> : null} />
 
       <Card>
         <div className="overflow-x-auto">
@@ -156,8 +159,12 @@ function permissionLabel(p: Permission): string {
                   <td className="px-4 py-2">{r.isSystem ? <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">System</span> : '—'}</td>
                   <td className="px-4 py-2">
                     <div className="flex gap-0.5">
-                      <button onClick={() => startEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="Edit"><Pencil className="h-4 w-4" /></button>
-                      {!r.isSystem && <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>}
+                      {canManage && (
+                        <button onClick={() => startEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="Edit"><Pencil className="h-4 w-4" /></button>
+                      )}
+                      {canManage && !r.isSystem && (
+                        <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>
+                      )}
                     </div>
                   </td>
                 </tr>

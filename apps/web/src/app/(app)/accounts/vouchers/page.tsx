@@ -18,6 +18,7 @@ import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { StatusBadge } from '@/components/ui/badge';
 import { dateTime, money } from '@/lib/utils';
+import { useAuth } from '@/context/auth-context';
 import type { Paginated, Voucher, VoucherEntry } from '@/lib/types';
 
 interface Entry {
@@ -31,6 +32,12 @@ interface Entry {
 
 export default function VouchersPage() {
   const qc = useQueryClient();
+  const { can } = useAuth();
+  const canCreate = can('accounts.vouchers.create');
+  const canUpdate = can('accounts.vouchers.update');
+  const canDelete = can('accounts.vouchers.delete');
+  const canPost = can('accounts.vouchers.post');
+  const canCancel = can('accounts.vouchers.cancel');
   const { options: accountOptions } = useAccountingAccounts();
   const { post, cancel } = useDocumentMutations('vouchers', 'vouchers', { noun: 'voucher' });
 
@@ -182,9 +189,11 @@ export default function VouchersPage() {
         title="Vouchers"
         description="Double-entry journals for manual and recurring accounting entries."
         actions={
-          <Button onClick={() => { setDate(new Date().toISOString().slice(0, 10)); setType('JOURNAL'); setReference(''); setDescription(''); setEntries([]); setEditId(null); setError(''); setModalOpen(true); }}>
-            <Plus className="h-4 w-4" /> New Voucher
-          </Button>
+          canCreate ? (
+            <Button onClick={() => { setDate(new Date().toISOString().slice(0, 10)); setType('JOURNAL'); setReference(''); setDescription(''); setEntries([]); setEditId(null); setError(''); setModalOpen(true); }}>
+              <Plus className="h-4 w-4" /> New Voucher
+            </Button>
+          ) : null
         }
       />
 
@@ -224,10 +233,18 @@ export default function VouchersPage() {
                   <button onClick={() => setDetailId(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
                   {r.status === 'draft' && (
                     <>
-                      <button onClick={() => openEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="Edit"><Pencil className="h-4 w-4" /></button>
-                      <button onClick={() => { setDeleteTarget(r); setDeleteError(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>
-                      <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
-                      <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
+                      {canUpdate && (
+                        <button onClick={() => openEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="Edit"><Pencil className="h-4 w-4" /></button>
+                      )}
+                      {canDelete && (
+                        <button onClick={() => { setDeleteTarget(r); setDeleteError(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>
+                      )}
+                      {canPost && (
+                        <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
+                      )}
+                      {canCancel && (
+                        <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
+                      )}
                     </>
                   )}
                 </div>

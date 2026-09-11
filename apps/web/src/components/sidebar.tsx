@@ -76,14 +76,16 @@ export function Sidebar({
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
-          <NavItem
-            href="/"
-            active={pathname === '/'}
-            onNavigate={close}
-            icon={<Home className="h-4 w-4 shrink-0" />}
-          >
-            Dashboard
-          </NavItem>
+          {can('dashboard.view') && (
+            <NavItem
+              href="/"
+              active={pathname === '/'}
+              onNavigate={close}
+              icon={<Home className="h-4 w-4 shrink-0" />}
+            >
+              Dashboard
+            </NavItem>
+          )}
 
           {topLevel.map((group) => (
             <NavGroup

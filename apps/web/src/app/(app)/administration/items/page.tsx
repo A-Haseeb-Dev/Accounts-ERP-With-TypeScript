@@ -16,10 +16,15 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge, Badge } from '@/components/ui/badge';
 import { dateTime, money } from '@/lib/utils';
+import { useAuth } from '@/context/auth-context';
 import type { Item, Paginated } from '@/lib/types';
 
 export default function ItemsPage() {
   const qc = useQueryClient();
+  const { can } = useAuth();
+  const canCreate = can('administration.items.create');
+  const canUpdate = can('administration.items.update');
+  const canDelete = can('administration.items.delete');
   const { options: typeOptions } = useFlatOptions('item-types');
   const { options: brandOptions } = useFlatOptions('brands');
   const { options: locationOptions } = useFlatOptions('stock-locations');
@@ -84,9 +89,11 @@ export default function ItemsPage() {
         title="Items"
         description="Products / SKUs tracked in inventory with pricing and stock levels."
         actions={
-          <Button onClick={() => { setEditing(null); setForm({ status: 'active' }); setError(''); setModalOpen(true); }}>
-            <Plus className="h-4 w-4" /> New Item
-          </Button>
+          canCreate ? (
+            <Button onClick={() => { setEditing(null); setForm({ status: 'active' }); setError(''); setModalOpen(true); }}>
+              <Plus className="h-4 w-4" /> New Item
+            </Button>
+          ) : null
         }
       />
 
@@ -112,8 +119,12 @@ export default function ItemsPage() {
               key: 'actions', header: 'Actions',
               render: (r) => (
                 <div className="flex items-center gap-1">
-                  <button onClick={() => { setEditing(r); setForm(r); setError(''); setModalOpen(true); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-teal-700"><Pencil className="h-4 w-4" /></button>
-                  <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                  {canUpdate && (
+                    <button onClick={() => { setEditing(r); setForm(r); setError(''); setModalOpen(true); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-teal-700"><Pencil className="h-4 w-4" /></button>
+                  )}
+                  {canDelete && (
+                    <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                  )}
                 </div>
               ),
             },

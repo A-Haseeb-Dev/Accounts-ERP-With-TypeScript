@@ -15,6 +15,7 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { dateTime } from '@/lib/utils';
+import { useAuth } from '@/context/auth-context';
 import type { Paginated, StockTransfer } from '@/lib/types';
 
 interface TransferLine {
@@ -26,6 +27,10 @@ interface TransferLine {
 
 export default function StockTransfersPage() {
   const qc = useQueryClient();
+  const { can } = useAuth();
+  const canCreate = can('inventory.transfer.create');
+  const canPost = can('inventory.transfer.post');
+  const canCancel = can('inventory.transfer.cancel');
   const { options: locationOptions } = useFlatOptions('stock-locations');
   const { options: itemOptions } = useItemOptions();
   const { post, cancel } = useDocumentMutations('stock-transfers', 'stock-transfers', { noun: 'transfer' });
@@ -100,9 +105,11 @@ export default function StockTransfersPage() {
         title="Stock Transfers"
         description="Move quantities between your stock locations."
         actions={
-          <Button onClick={() => { setDate(new Date().toISOString().slice(0, 10)); setLines([]); setError(''); setModalOpen(true); }}>
-            <Plus className="h-4 w-4" /> New Transfer
-          </Button>
+          canCreate ? (
+            <Button onClick={() => { setDate(new Date().toISOString().slice(0, 10)); setLines([]); setError(''); setModalOpen(true); }}>
+              <Plus className="h-4 w-4" /> New Transfer
+            </Button>
+          ) : null
         }
       />
 
@@ -136,8 +143,12 @@ export default function StockTransfersPage() {
                   <button onClick={() => setDetailId(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
                   {r.status === 'draft' && (
                     <>
-                      <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
-                      <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
+                      {canPost && (
+                        <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
+                      )}
+                      {canCancel && (
+                        <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
+                      )}
                     </>
                   )}
                 </div>
