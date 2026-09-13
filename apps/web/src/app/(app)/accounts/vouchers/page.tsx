@@ -154,7 +154,7 @@ export default function VouchersPage() {
   const totalCredit = entries.reduce((s, e) => s + e.credit, 0);
   const balanced = Math.abs(totalDebit - totalCredit) < 0.01;
 
-  const submit = (e: React.FormEvent) => {
+  const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (entries.length < 2) {
@@ -287,7 +287,7 @@ export default function VouchersPage() {
       </Card>
 
       <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditId(null); }} title={editId ? 'Edit Voucher' : 'New Voucher'} size="lg">
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={handleFormSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Field label="Voucher Date" required>
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />

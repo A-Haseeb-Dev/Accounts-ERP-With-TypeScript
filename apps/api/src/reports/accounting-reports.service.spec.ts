@@ -107,7 +107,7 @@ describe('AccountingReportsService.trialBalance', () => {
       (args: unknown[]) => (args[0] as { where: { voucher?: Record<string, unknown> } }).where.voucher?.NOT,
     );
     expect(movementsCall).toBeTruthy();
-    expect((movementsCall[0] as { where: { voucher?: Record<string, unknown> } }).where.voucher).toMatchObject({
+    expect((movementsCall![0] as { where: { voucher?: Record<string, unknown> } }).where.voucher).toMatchObject({
       status: 'posted',
       voucherDate: { lte: new Date('2026-09-01') },
     });

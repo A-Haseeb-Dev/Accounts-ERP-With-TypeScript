@@ -71,7 +71,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
     : 'sales.invoice';
   const canCreate = can(`${permBase}.create`);
   const canPost = can(`${permBase}.post`);
-  const canSubmit = can(`${permBase}.submit`);
+  const canSubmitAction = can(`${permBase}.submit`);
   const canReject = can(`${permBase}.reject`);
   const canUpdate = can(`${permBase}.update`);
   const canDelete = can(`${permBase}.delete`);
@@ -160,7 +160,18 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
       items,
     };
     if (editId) {
-      update.mutate({ id: editId, payload });
+      update.mutate(
+        { id: editId, payload },
+        {
+          onSuccess: (data: unknown) => {
+            if (autoPrintRef.current) {
+              autoPrintRef.current = false;
+              setPrintRequested(true);
+              setDetailId((data as TransactionDoc).id);
+            }
+          },
+        },
+      );
     } else {
       create.mutate(payload);
     }
@@ -276,7 +287,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
                   <button onClick={() => setDetailId(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
                   {r.status === 'draft' && (
                     <>
-                      {canSubmit && (
+                      {canSubmitAction && (
                         <button onClick={() => submit.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-indigo-50 hover:text-indigo-700" title="Submit for approval"><Send className="h-4 w-4" /></button>
                       )}
                       {canPost && (
@@ -651,7 +662,7 @@ function DocumentDetailModal({
           {!!detail.note && <p className="mt-1 text-xs text-slate-500">Note: {detail.note}</p>}
           {detail.status === 'pending' && <p className="mt-1 text-xs font-medium text-amber-600">Awaiting approval</p>}
           {(detail.status === 'draft' || detail.status === 'cancelled') && !!detail.rejectReason && (
-            <p className="mt-1 rounded-lg border border-red-100 bg-red-50 px-2.5 py-1.5 text-xs text-red-600">Rejected reason: {detail.rejectReason}</p>
+            <p className="mt-1 rounded-lg border border-red-100 bg-red-50 px-2.5 py-1.5 text-xs text-red-600">Rejected reason: {String(detail.rejectReason)}</p>
           )}
 
           {activity && activity.items.length > 0 && (

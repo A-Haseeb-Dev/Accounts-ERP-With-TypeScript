@@ -138,8 +138,8 @@ export default function StockTransfersPage() {
   };
 
   const addLine = () => setLines((ls) => [...ls, { key: crypto.randomUUID?.() ?? String(Date.now()), quantity: 1 }]);
-  const update = (key: string, patch: Partial<TransferLine>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
-  const remove = (key: string) => setLines((ls) => ls.filter((l) => l.key !== key));
+  const updateLine = (key: string, patch: Partial<TransferLine>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  const removeLine = (key: string) => setLines((ls) => ls.filter((l) => l.key !== key));
 
   const detailLines = detail?.items ?? [];
 
@@ -273,17 +273,17 @@ export default function StockTransfersPage() {
                       <td className="px-3 py-1.5">
                         <Select value={l.itemId ?? ''} onChange={(e) => {
                           const opt = itemOptions.find((o) => o.value === e.target.value);
-                          update(l.key, { itemId: e.target.value, itemName: opt?.label });
+                          updateLine(l.key, { itemId: e.target.value, itemName: opt?.label });
                         }} className="min-w-[200px]">
                           <option value="">Select item…</option>
                           {itemOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </Select>
                       </td>
                       <td className="px-3 py-1.5">
-                        <Input type="number" min={1} value={String(l.quantity)} onChange={(e) => update(l.key, { quantity: Number(e.target.value) || 0 })} className="text-right" />
+                        <Input type="number" min={1} value={String(l.quantity)} onChange={(e) => updateLine(l.key, { quantity: Number(e.target.value) || 0 })} className="text-right" />
                       </td>
                       <td className="px-3 py-1.5 text-center">
-                        <button onClick={() => remove(l.key)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                        <button onClick={() => removeLine(l.key)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
                       </td>
                     </tr>
                   ))}

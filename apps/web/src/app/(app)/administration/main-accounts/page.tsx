@@ -16,7 +16,7 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge, Badge } from '@/components/ui/badge';
 import { dateTime, num } from '@/lib/utils';
-import { nextMainAccountCode } from '@/lib/accounts';
+import { nextMainAccountCode, typeForLetter } from '@/lib/accounts';
 import { useAuth } from '@/context/auth-context';
 import type { MainAccount, SubHead, Paginated } from '@/lib/types';
 
@@ -27,6 +27,8 @@ const ACCOUNT_TYPES = [
   { value: 'REVENUE', label: 'Revenue' },
   { value: 'EXPENSE', label: 'Expense' },
 ];
+
+const headTypeFor = (sh: SubHead): string => typeForLetter(String(sh.headAccount?.code ?? sh.code ?? 'A')[0]);
 
 export default function MainAccountsPage() {
   const qc = useQueryClient();
@@ -178,7 +180,7 @@ export default function MainAccountsPage() {
             </Field>
           </div>
           <Field label="Sub Head" required>
-            <Select value={form.subHeadId ?? ''} onChange={(e) => { set('subHeadId', e.target.value); const sh = subHeadData.find((s) => s.id === e.target.value); if (sh) set('accountType', sh.headAccount?.type ?? sh.accountType); }} disabled={subHeadsLoading} required>
+            <Select value={form.subHeadId ?? ''} onChange={(e) => { set('subHeadId', e.target.value); const sh = subHeadData.find((s) => s.id === e.target.value); if (sh) set('accountType', headTypeFor(sh)); }} disabled={subHeadsLoading} required>
               <option value="">Select sub head…</option>
               {subHeadOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
