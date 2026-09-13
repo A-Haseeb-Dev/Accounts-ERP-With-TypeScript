@@ -76,6 +76,20 @@ export class VouchersController {
     return this.service.post(id, actor?.id);
   }
 
+  @Post(':id/submit')
+  @Permissions('accounts.vouchers.submit')
+  @ApiOperation({ summary: 'Submit a draft voucher for approval' })
+  submit(@Param('id') id: string, @CurrentUser() actor: any) {
+    return this.service.submit(id, actor?.id);
+  }
+
+  @Post(':id/reject')
+  @Permissions('accounts.vouchers.reject')
+  @ApiOperation({ summary: 'Reject a submitted voucher back to draft' })
+  reject(@Param('id') id: string, @Body() dto: CancelVoucherDto, @CurrentUser() actor: any) {
+    return this.service.reject(id, dto.reason, actor?.id);
+  }
+
   @Patch(':id')
   @Permissions('accounts.vouchers.update')
   @ApiOperation({ summary: 'Update a draft voucher' })

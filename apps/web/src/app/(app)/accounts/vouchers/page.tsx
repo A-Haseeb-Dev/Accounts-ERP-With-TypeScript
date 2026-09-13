@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { CheckCircle2, Eye, Pencil, Plus, Search, Trash2, XCircle } from 'lucide-react';
+import { CheckCircle2, Eye, Pencil, Plus, Search, Send, ShieldCheck, ShieldX, Trash2, XCircle } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { createVoucher, updateVoucher, deleteVoucher } from '@/lib/accounts-api';
 import type { VoucherPayload } from '@/lib/accounts-api';
@@ -37,9 +37,11 @@ export default function VouchersPage() {
   const canUpdate = can('accounts.vouchers.update');
   const canDelete = can('accounts.vouchers.delete');
   const canPost = can('accounts.vouchers.post');
+  const canSubmit = can('accounts.vouchers.submit');
+  const canReject = can('accounts.vouchers.reject');
   const canCancel = can('accounts.vouchers.cancel');
   const { options: accountOptions } = useAccountingAccounts();
-  const { post, cancel } = useDocumentMutations('vouchers', 'vouchers', { noun: 'voucher' });
+  const { post, submit, reject, cancel } = useDocumentMutations('vouchers', 'vouchers', { noun: 'voucher' });
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -55,6 +57,8 @@ export default function VouchersPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Voucher | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [rejectTarget, setRejectTarget] = useState<Voucher | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Voucher | null>(null);
   const [deleteError, setDeleteError] = useState('');
@@ -212,6 +216,7 @@ export default function VouchersPage() {
           <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="w-40">
             <option value="">All status</option>
             <option value="draft">Draft</option>
+            <option value="pending">Pending approval</option>
             <option value="posted">Posted</option>
             <option value="cancelled">Cancelled</option>
           </Select>
@@ -233,6 +238,9 @@ export default function VouchersPage() {
                   <button onClick={() => setDetailId(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
                   {r.status === 'draft' && (
                     <>
+                      {canSubmit && (
+                        <button onClick={() => submit.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-indigo-50 hover:text-indigo-700" title="Submit for approval"><Send className="h-4 w-4" /></button>
+                      )}
                       {canUpdate && (
                         <button onClick={() => openEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="Edit"><Pencil className="h-4 w-4" /></button>
                       )}
@@ -241,6 +249,23 @@ export default function VouchersPage() {
                       )}
                       {canPost && (
                         <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
+                      )}
+                      {canCancel && (
+                        <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
+                      )}
+                    </>
+                  )}
+                  {r.status === 'pending' && (
+                    <>
+                      {canPost && (
+                        <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-teal-600 hover:bg-teal-50 hover:text-teal-700" title="Approve">
+                          <ShieldCheck className="h-4 w-4" />
+                        </button>
+                      )}
+                      {canReject && (
+                        <button onClick={() => { setRejectTarget(r); setRejectReason(''); }} className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 hover:text-red-600" title="Reject">
+                          <ShieldX className="h-4 w-4" />
+                        </button>
                       )}
                       {canCancel && (
                         <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
@@ -367,6 +392,23 @@ export default function VouchersPage() {
         <div className="mt-3">
           <Field label="Reason">
             <Textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Optional reason" />
+          </Field>
+        </div>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!rejectTarget}
+        danger
+        title="Reject voucher for approval"
+        message="The voucher returns to draft. The owner can edit and resubmit it."
+        confirmLabel="Reject"
+        loading={reject.isPending}
+        onCancel={() => setRejectTarget(null)}
+        onConfirm={() => rejectTarget?.id && reject.mutate({ id: rejectTarget.id, reason: rejectReason || 'Rejected' })}
+      >
+        <div className="mt-3">
+          <Field label="Reason" required>
+            <Textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Why is this being rejected?" required />
           </Field>
         </div>
       </ConfirmDialog>

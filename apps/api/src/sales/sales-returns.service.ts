@@ -189,6 +189,130 @@ export class SalesReturnsService {
     return result;
   }
 
+  async submit(id: string, actorId?: string) {
+    const sr = await this.prisma.salesReturn.findUnique({ where: { id } });
+    if (!sr) throw ApiException.notFound('Sales return');
+    if (sr.status === 'posted' || sr.status === 'cancelled') {
+      throw ApiException.invalidTransaction(`A ${sr.status} sales return cannot be submitted for approval`);
+    }
+    if (sr.status === 'pending') return sr;
+
+    return this.prisma.salesReturn.update({
+      where: { id },
+      data: { status: 'pending', submittedById: actorId ?? null, submittedAt: new Date() },
+    });
+  }
+
+  async reject(id: string, reason: string, actorId?: string) {
+    const sr = await this.prisma.salesReturn.findUnique({ where: { id } });
+    if (!sr) throw ApiException.notFound('Sales return');
+    if (sr.status !== 'pending') {
+      throw ApiException.invalidTransaction(
+        `Only pending sales returns can be rejected. "${sr.number}" is ${sr.status}.`,
+      );
+    }
+    const rejected = await this.prisma.salesReturn.update({
+      where: { id },
+      data: {
+        status: 'draft',
+        rejectedById: actorId ?? null,
+        rejectedAt: new Date(),
+        rejectReason: reason ?? 'Rejected',
+      },
+    });
+    this.audit.record({
+      userId: actorId,
+      action: 'REJECT',
+      module: 'SALES_RETURN',
+      entity: 'SalesReturn',
+      entityId: id,
+      message: `Sales return ${sr.number} rejected`,
+      metadata: { reason },
+    });
+    return rejected;
+  }
+
+  async update(id: string, dto: CreateSalesReturnDto, actorId?: string) {
+    const sr = await this.prisma.salesReturn.findUnique({ where: { id } });
+    if (!sr) throw ApiException.notFound('Sales return');
+    if (sr.status !== 'draft') {
+      throw ApiException.invalidTransaction(
+        `Only draft sales returns can be edited. "${sr.number}" is ${sr.status}.`,
+      );
+    }
+    await this.fiscal.assertOpen(dto.returnDate, 'Cannot update a sales return');
+    const customer = await this.prisma.customer.findUnique({ where: { id: dto.customerId } });
+    if (!customer) throw ApiException.notFound('Customer');
+    const location = await this.prisma.stockLocation.findUnique({ where: { id: dto.stockLocationId } });
+    if (!location) throw ApiException.notFound('Stock location');
+
+    const subtotal = round2(dto.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0));
+    const grandTotal = round2(subtotal);
+
+    const updated = await this.prisma.runInTransaction(async (tx) => {
+      await tx.salesReturnItem.deleteMany({ where: { salesReturnId: id } });
+      return tx.salesReturn.update({
+        where: { id },
+        data: {
+          returnDate: new Date(dto.returnDate),
+          reference: dto.reference ?? null,
+          note: dto.note ?? null,
+          saleId: dto.saleId ?? null,
+          customerId: dto.customerId,
+          stockLocationId: dto.stockLocationId,
+          subtotal,
+          discount: 0,
+          tax: 0,
+          grandTotal,
+          items: {
+            create: dto.items.map((item) => ({
+              itemId: item.itemId,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              discount: 0,
+              tax: 0,
+              lineTotal: round2(item.quantity * item.unitPrice),
+            })),
+          },
+        },
+        include: { items: true },
+      });
+    });
+    this.audit.record({
+      userId: actorId,
+      action: 'UPDATE',
+      module: 'SALES_RETURN',
+      entity: 'SalesReturn',
+      entityId: id,
+      message: `Sales return ${sr.number} updated`,
+    });
+    return updated;
+  }
+
+  async remove(id: string, actorId?: string) {
+    const sr = await this.prisma.salesReturn.findUnique({ where: { id } });
+    if (!sr) throw ApiException.notFound('Sales return');
+    if (sr.status !== 'draft') {
+      throw ApiException.invalidTransaction(
+        `Only draft sales returns can be deleted. "${sr.number}" is ${sr.status}.`,
+      );
+    }
+    await this.fiscal.assertOpen(sr.returnDate, 'Cannot delete a sales return');
+
+    await this.prisma.runInTransaction(async (tx) => {
+      await tx.salesReturn.delete({ where: { id } });
+    });
+    this.audit.record({
+      userId: actorId,
+      action: 'DELETE',
+      module: 'SALES_RETURN',
+      entity: 'SalesReturn',
+      entityId: id,
+      message: `Sales return ${sr.number} deleted`,
+    });
+    return { id, deleted: true };
+  }
+
   async cancel(id: string, reason: string, actorId?: string) {
     const sr = await this.prisma.salesReturn.findUnique({ where: { id } });
     if (!sr) throw ApiException.notFound('Sales return');

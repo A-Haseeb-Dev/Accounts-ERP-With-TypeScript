@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PurchasesService } from './purchases.service';
 import { PurchaseReturnsService } from './purchase-returns.service';
@@ -33,8 +33,20 @@ export class PurchasesController {
   @Get(':id') @Permissions('inventory.purchase.view') @ApiOperation({ summary: 'Get a purchase' })
   findOne(@Param('id') id: string) { return this.service.findOne(id); }
 
-  @Post(':id/post') @Permissions('inventory.purchase.post') @ApiOperation({ summary: 'Post a purchase (inventory + accounting)' })
+  @Post(':id/post') @Permissions('inventory.purchase.post') @ApiOperation({ summary: 'Post / approve a purchase (inventory + accounting)' })
   post(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.post(id, actor?.id); }
+
+  @Post(':id/submit') @Permissions('inventory.purchase.submit') @ApiOperation({ summary: 'Submit a draft purchase for approval' })
+  submit(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.submit(id, actor?.id); }
+
+  @Post(':id/reject') @Permissions('inventory.purchase.reject') @ApiOperation({ summary: 'Reject a submitted purchase back to draft' })
+  reject(@Param('id') id: string, @Body() body: { reason: string }, @CurrentUser() actor: any) { return this.service.reject(id, body.reason ?? 'Rejected', actor?.id); }
+
+  @Patch(':id') @Permissions('inventory.purchase.update') @ApiOperation({ summary: 'Update a draft purchase' })
+  update(@Param('id') id: string, @Body() dto: CreatePurchaseDto, @CurrentUser() actor: any) { return this.service.update(id, dto, actor?.id); }
+
+  @Delete(':id') @Permissions('inventory.purchase.delete') @ApiOperation({ summary: 'Delete a draft purchase' })
+  remove(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.remove(id, actor?.id); }
 
   @Delete(':id/cancel') @Permissions('inventory.purchase.cancel') @ApiOperation({ summary: 'Cancel a draft purchase' })
   cancel(@Param('id') id: string, @Body() body: { reason: string }, @CurrentUser() actor: any) { return this.service.cancel(id, body.reason ?? 'Cancelled', actor?.id); }
@@ -66,8 +78,20 @@ export class PurchaseReturnsController {
   @Get(':id') @Permissions('inventory.purchase-return.view') @ApiOperation({ summary: 'Get a purchase return' })
   findOne(@Param('id') id: string) { return this.service.findOne(id); }
 
-  @Post(':id/post') @Permissions('inventory.purchase-return.post') @ApiOperation({ summary: 'Post a purchase return (inventory + accounting)' })
+  @Post(':id/post') @Permissions('inventory.purchase-return.post') @ApiOperation({ summary: 'Post / approve a purchase return (inventory + accounting)' })
   post(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.post(id, actor?.id); }
+
+  @Post(':id/submit') @Permissions('inventory.purchase-return.submit') @ApiOperation({ summary: 'Submit a draft purchase return for approval' })
+  submit(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.submit(id, actor?.id); }
+
+  @Post(':id/reject') @Permissions('inventory.purchase-return.reject') @ApiOperation({ summary: 'Reject a submitted purchase return back to draft' })
+  reject(@Param('id') id: string, @Body() body: { reason: string }, @CurrentUser() actor: any) { return this.service.reject(id, body.reason ?? 'Rejected', actor?.id); }
+
+  @Patch(':id') @Permissions('inventory.purchase-return.update') @ApiOperation({ summary: 'Update a draft purchase return' })
+  update(@Param('id') id: string, @Body() dto: CreatePurchaseReturnDto, @CurrentUser() actor: any) { return this.service.update(id, dto, actor?.id); }
+
+  @Delete(':id') @Permissions('inventory.purchase-return.delete') @ApiOperation({ summary: 'Delete a draft purchase return' })
+  remove(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.remove(id, actor?.id); }
 
   @Delete(':id/cancel') @Permissions('inventory.purchase-return.cancel') @ApiOperation({ summary: 'Cancel a draft purchase return' })
   cancel(@Param('id') id: string, @Body() body: { reason: string }, @CurrentUser() actor: any) { return this.service.cancel(id, body.reason ?? 'Cancelled', actor?.id); }
@@ -98,8 +122,20 @@ export class StockTransfersController {
   @Get(':id') @Permissions('inventory.transfer.view') @ApiOperation({ summary: 'Get a stock transfer' })
   findOne(@Param('id') id: string) { return this.service.findOne(id); }
 
-  @Post(':id/post') @Permissions('inventory.transfer.post') @ApiOperation({ summary: 'Post a stock transfer' })
+  @Post(':id/post') @Permissions('inventory.transfer.post') @ApiOperation({ summary: 'Post / approve a stock transfer' })
   post(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.post(id, actor?.id); }
+
+  @Post(':id/submit') @Permissions('inventory.transfer.submit') @ApiOperation({ summary: 'Submit a draft transfer for approval' })
+  submit(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.submit(id, actor?.id); }
+
+  @Post(':id/reject') @Permissions('inventory.transfer.reject') @ApiOperation({ summary: 'Reject a submitted transfer back to draft' })
+  reject(@Param('id') id: string, @Body() body: { reason: string }, @CurrentUser() actor: any) { return this.service.reject(id, body.reason ?? 'Rejected', actor?.id); }
+
+  @Patch(':id') @Permissions('inventory.transfer.update') @ApiOperation({ summary: 'Update a draft transfer' })
+  update(@Param('id') id: string, @Body() dto: CreateStockTransferDto, @CurrentUser() actor: any) { return this.service.update(id, dto, actor?.id); }
+
+  @Delete(':id') @Permissions('inventory.transfer.delete') @ApiOperation({ summary: 'Delete a draft transfer' })
+  remove(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.remove(id, actor?.id); }
 
   @Delete(':id/cancel') @Permissions('inventory.transfer.cancel') @ApiOperation({ summary: 'Cancel a draft transfer' })
   cancel(@Param('id') id: string, @Body() body: { reason: string }, @CurrentUser() actor: any) { return this.service.cancel(id, body.reason ?? 'Cancelled', actor?.id); }

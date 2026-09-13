@@ -143,6 +143,114 @@ export class StockTransfersService {
     return result;
   }
 
+  async submit(id: string, actorId?: string) {
+    const transfer = await this.prisma.stockTransfer.findUnique({ where: { id } });
+    if (!transfer) throw ApiException.notFound('Stock transfer');
+    if (transfer.status === 'posted' || transfer.status === 'cancelled') {
+      throw ApiException.invalidTransaction(`A ${transfer.status} transfer cannot be submitted for approval`);
+    }
+    if (transfer.status === 'pending') return transfer;
+
+    return this.prisma.stockTransfer.update({
+      where: { id },
+      data: { status: 'pending', submittedById: actorId ?? null, submittedAt: new Date() },
+    });
+  }
+
+  async reject(id: string, reason: string, actorId?: string) {
+    const transfer = await this.prisma.stockTransfer.findUnique({ where: { id } });
+    if (!transfer) throw ApiException.notFound('Stock transfer');
+    if (transfer.status !== 'pending') {
+      throw ApiException.invalidTransaction(
+        `Only pending transfers can be rejected. "${transfer.number}" is ${transfer.status}.`,
+      );
+    }
+    const rejected = await this.prisma.stockTransfer.update({
+      where: { id },
+      data: {
+        status: 'draft',
+        rejectedById: actorId ?? null,
+        rejectedAt: new Date(),
+        rejectReason: reason ?? 'Rejected',
+      },
+    });
+    this.audit.record({
+      userId: actorId,
+      action: 'REJECT',
+      module: 'TRANSFER',
+      entity: 'StockTransfer',
+      entityId: id,
+      message: `Stock transfer ${transfer.number} rejected`,
+      metadata: { reason },
+    });
+    return rejected;
+  }
+
+  async update(id: string, dto: CreateStockTransferDto, actorId?: string) {
+    const transfer = await this.prisma.stockTransfer.findUnique({ where: { id } });
+    if (!transfer) throw ApiException.notFound('Stock transfer');
+    if (transfer.status !== 'draft') {
+      throw ApiException.invalidTransaction(
+        `Only draft transfers can be edited. "${transfer.number}" is ${transfer.status}.`,
+      );
+    }
+    await this.fiscal.assertOpen(dto.transferDate, 'Cannot update a stock transfer');
+    this.validateLocations(dto);
+
+    const updated = await this.prisma.runInTransaction(async (tx) => {
+      await tx.stockTransferItem.deleteMany({ where: { stockTransferId: id } });
+      return tx.stockTransfer.update({
+        where: { id },
+        data: {
+          transferDate: new Date(dto.transferDate),
+          fromLocationId: dto.fromLocationId,
+          toLocationId: dto.toLocationId,
+          note: dto.note ?? null,
+          items: {
+            create: dto.items.map((i) => ({
+              itemId: i.itemId,
+              quantity: i.quantity,
+            })),
+          },
+        },
+        include: { items: true },
+      });
+    });
+    this.audit.record({
+      userId: actorId,
+      action: 'UPDATE',
+      module: 'TRANSFER',
+      entity: 'StockTransfer',
+      entityId: id,
+      message: `Stock transfer ${transfer.number} updated`,
+    });
+    return updated;
+  }
+
+  async remove(id: string, actorId?: string) {
+    const transfer = await this.prisma.stockTransfer.findUnique({ where: { id } });
+    if (!transfer) throw ApiException.notFound('Stock transfer');
+    if (transfer.status !== 'draft') {
+      throw ApiException.invalidTransaction(
+        `Only draft transfers can be deleted. "${transfer.number}" is ${transfer.status}.`,
+      );
+    }
+    await this.fiscal.assertOpen(transfer.transferDate, 'Cannot delete a stock transfer');
+
+    await this.prisma.runInTransaction(async (tx) => {
+      await tx.stockTransfer.delete({ where: { id } });
+    });
+    this.audit.record({
+      userId: actorId,
+      action: 'DELETE',
+      module: 'TRANSFER',
+      entity: 'StockTransfer',
+      entityId: id,
+      message: `Stock transfer ${transfer.number} deleted`,
+    });
+    return { id, deleted: true };
+  }
+
   async cancel(id: string, reason: string, actorId?: string) {
     const transfer = await this.prisma.stockTransfer.findUnique({ where: { id } });
     if (!transfer) throw ApiException.notFound('Stock transfer');

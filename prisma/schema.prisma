@@ -45,6 +45,7 @@ model Organization {
   sales             Sale[]
   salesReturns      SalesReturn[]
   inventoryTransactions InventoryTransaction[]
+  paymentEntries  PaymentEntry[]
   auditLogs         AuditLog[]
   systemSettings    SystemSetting[]
   brandingSettings  BrandingSetting[]
@@ -208,6 +209,7 @@ model MainAccount {
   description    String?
   subHeadId      String?
   openingBalance Decimal      @default(0) @db.Decimal(18, 2)
+  openingBalanceType String    @default("DR") // DR | CR
   status         String       @default("active")
   organizationId String       @default("default-org")
   createdAt      DateTime     @default(now())
@@ -218,6 +220,7 @@ model MainAccount {
   voucherEntries VoucherEntry[]
   customers      Customer[]
   suppliers      Supplier[]
+  paymentEntries PaymentEntry[]
 
   @@unique([code, organizationId])
   @@index([organizationId])
@@ -399,11 +402,16 @@ model Voucher {
   voucherDate    DateTime @default(now())
   reference      String?
   description    String?
-  status         String   @default("draft") // draft | posted | cancelled
+  status         String   @default("draft") // draft | pending | posted | cancelled
   totalDebit     Decimal  @default(0) @db.Decimal(18, 2)
   totalCredit    Decimal  @default(0) @db.Decimal(18, 2)
   postedById     String?
   postedAt       DateTime?
+  submittedById  String?
+  submittedAt    DateTime?
+  rejectedById   String?
+  rejectedAt     DateTime?
+  rejectReason   String?
   cancelledAt    DateTime?
   cancelReason   String?
   cancelledBy    String?
@@ -453,9 +461,16 @@ model Purchase {
   discount        Decimal  @default(0) @db.Decimal(18, 2)
   tax             Decimal  @default(0) @db.Decimal(18, 2)
   grandTotal      Decimal  @default(0) @db.Decimal(18, 2)
-  status          String   @default("draft") // draft | posted | cancelled
+  payStatus       String   @default("unpaid") // paid | partial | unpaid
+  paidAmount      Decimal  @default(0) @db.Decimal(18, 2)
+  status          String   @default("draft") // draft | pending | posted | cancelled
   postedById      String?
   postedAt        DateTime?
+  submittedById   String?
+  submittedAt     DateTime?
+  rejectedById    String?
+  rejectedAt      DateTime?
+  rejectReason    String?
   cancelledAt     DateTime?
   cancelReason    String?
   createdById     String?
@@ -505,7 +520,12 @@ model PurchaseReturn {
   discount        Decimal  @default(0) @db.Decimal(18, 2)
   tax             Decimal  @default(0) @db.Decimal(18, 2)
   grandTotal      Decimal  @default(0) @db.Decimal(18, 2)
-  status          String   @default("draft") // draft | posted | cancelled
+  status          String   @default("draft") // draft | pending | posted | cancelled
+  submittedById   String?
+  submittedAt     DateTime?
+  rejectedById    String?
+  rejectedAt      DateTime?
+  rejectReason    String?
   createdById     String?
   organizationId  String   @default("default-org")
   createdAt       DateTime @default(now())
@@ -556,9 +576,14 @@ model Sale {
   grandTotal      Decimal   @default(0) @db.Decimal(18, 2)
   paymentStatus   String    @default("unpaid") // paid | partial | unpaid
   amountPaid      Decimal   @default(0) @db.Decimal(18, 2)
-  status          String    @default("draft") // draft | posted | cancelled
+  status          String    @default("draft") // draft | pending | posted | cancelled
   postedById      String?
   postedAt        DateTime?
+  submittedById   String?
+  submittedAt     DateTime?
+  rejectedById    String?
+  rejectedAt      DateTime?
+  rejectReason    String?
   cancelledAt     DateTime?
   cancelReason    String?
   createdById     String?
@@ -608,7 +633,12 @@ model SalesReturn {
   discount        Decimal  @default(0) @db.Decimal(18, 2)
   tax             Decimal  @default(0) @db.Decimal(18, 2)
   grandTotal      Decimal  @default(0) @db.Decimal(18, 2)
-  status          String   @default("draft") // draft | posted | cancelled
+  status          String   @default("draft") // draft | pending | posted | cancelled
+  submittedById   String?
+  submittedAt     DateTime?
+  rejectedById    String?
+  rejectedAt      DateTime?
+  rejectReason    String?
   createdById     String?
   organizationId  String   @default("default-org")
   createdAt       DateTime @default(now())
@@ -652,7 +682,12 @@ model StockTransfer {
   fromLocationId String
   toLocationId   String
   note           String?
-  status         String   @default("draft") // draft | posted | cancelled
+  status         String   @default("draft") // draft | pending | posted | cancelled
+  submittedById  String?
+  submittedAt    DateTime?
+  rejectedById   String?
+  rejectedAt     DateTime?
+  rejectReason   String?
   createdById    String?
   organizationId String   @default("default-org")
   createdAt      DateTime @default(now())
@@ -709,6 +744,65 @@ model InventoryTransaction {
   @@index([itemId, locationId, createdAt])
   @@index([transactionType])
   @@index([referenceType, referenceId])
+}
+
+// ============================================================
+// RECEIPTS & PAYMENTS
+// paymentType: RECEIPT | PAYMENT
+// method: CASH | CHEQUE | BANK
+// ============================================================
+
+model PaymentEntry {
+  id             String   @id @default(cuid())
+  number         String
+  paymentType    String   // RECEIPT | PAYMENT
+  partyType      String   // CUSTOMER | SUPPLIER
+  partyId        String
+  partyName      String?
+  mainAccountId  String   // cash / bank account receiving or disbursing
+  method         String   @default("CASH") // CASH | CHEQUE | BANK
+  chequeNumber   String?
+  amount         Decimal  @default(0) @db.Decimal(18, 2)
+  paymentDate    DateTime @default(now())
+  reference      String?
+  narration      String?
+  status         String   @default("pending") // pending | posted | cancelled
+  voucherId      String?
+  postedById     String?
+  postedAt       DateTime?
+  rejectedById   String?
+  rejectedAt     DateTime?
+  rejectReason   String?
+  cancelledById  String?
+  cancelledAt    DateTime?
+  cancelReason   String?
+  createdById    String?
+  organizationId String   @default("default-org")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization?   @relation(fields: [organizationId], references: [id])
+  mainAccount  MainAccount     @relation(fields: [mainAccountId], references: [id])
+  allocations  PaymentAllocation[]
+
+  @@unique([number, organizationId])
+  @@index([paymentType, paymentDate])
+  @@index([partyId])
+  @@index([status])
+  @@index([mainAccountId])
+}
+
+model PaymentAllocation {
+  id              String   @id @default(cuid())
+  paymentEntryId  String
+  documentType    String   // SALE | SALES_RETURN | PURCHASE | PURCHASE_RETURN
+  documentId      String
+  allocatedAmount Decimal  @default(0) @db.Decimal(18, 2)
+
+  paymentEntry PaymentEntry @relation(fields: [paymentEntryId], references: [id], onDelete: Cascade)
+
+  @@index([documentType, documentId])
+  @@index([paymentEntryId])
 }
 
 // ============================================================

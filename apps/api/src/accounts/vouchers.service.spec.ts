@@ -51,7 +51,7 @@ function buildService(overrides?: {
   };
   const audit = overrides?.audit ?? { record: vi.fn().mockResolvedValue(undefined) };
   const numbering = overrides?.numbering ?? { next: vi.fn().mockResolvedValue('JV-000001') };
-  const accounting = new AccountingService({} as never);
+  const accounting = new AccountingService({} as never, {} as never);
   const fiscal = overrides?.fiscal ?? { assertOpen: vi.fn().mockResolvedValue(undefined) };
   const svc = new VouchersService(prisma as never, audit as never, numbering as never, accounting as never, fiscal as never);
   return { svc, prisma, audit, numbering, accounting, fiscal };
@@ -100,7 +100,7 @@ describe('VouchersService.create', () => {
     };
     const audit = { record: vi.fn().mockResolvedValue(undefined) };
     const numbering = { next: vi.fn().mockResolvedValue('JV-000001') };
-    const accounting = new AccountingService({} as never);
+    const accounting = new AccountingService({} as never, {} as never);
     const fiscal = { assertOpen: vi.fn().mockResolvedValue(undefined) };
     const svc = new VouchersService(prisma as never, audit as never, numbering as never, accounting as never, fiscal as never);
 
@@ -131,7 +131,7 @@ describe('VouchersService.post', () => {
     const draft = { id: 'v1', number: 'JV-000001', voucherType: 'JOURNAL', status: 'draft' };
     const posted = { ...draft, status: 'posted' };
     const runTx = async (fn: (tx: unknown) => unknown) => {
-      const accounting = new AccountingService({} as never);
+      const accounting = new AccountingService({} as never, {} as never);
       const inside = {
         ...draft,
         entries: [

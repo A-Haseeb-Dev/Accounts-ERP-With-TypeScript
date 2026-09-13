@@ -200,6 +200,131 @@ export class PurchasesService {
     return result;
   }
 
+  async submit(id: string, actorId?: string) {
+    const purchase = await this.prisma.purchase.findUnique({ where: { id } });
+    if (!purchase) throw ApiException.notFound('Purchase');
+    if (purchase.status === 'posted' || purchase.status === 'cancelled') {
+      throw ApiException.invalidTransaction(`A ${purchase.status} purchase cannot be submitted for approval`);
+    }
+    if (purchase.status === 'pending') return purchase;
+
+    return this.prisma.purchase.update({
+      where: { id },
+      data: { status: 'pending', submittedById: actorId ?? null, submittedAt: new Date() },
+    });
+  }
+
+  async reject(id: string, reason: string, actorId?: string) {
+    const purchase = await this.prisma.purchase.findUnique({ where: { id } });
+    if (!purchase) throw ApiException.notFound('Purchase');
+    if (purchase.status !== 'pending') {
+      throw ApiException.invalidTransaction(
+        `Only pending purchases can be rejected. "${purchase.number}" is ${purchase.status}.`,
+      );
+    }
+    const rejected = await this.prisma.purchase.update({
+      where: { id },
+      data: {
+        status: 'draft',
+        rejectedById: actorId ?? null,
+        rejectedAt: new Date(),
+        rejectReason: reason ?? 'Rejected',
+      },
+    });
+    this.audit.record({
+      userId: actorId,
+      action: 'REJECT',
+      module: 'PURCHASE',
+      entity: 'Purchase',
+      entityId: id,
+      message: `Purchase ${purchase.number} rejected`,
+      metadata: { reason },
+    });
+    return rejected;
+  }
+
+  async update(id: string, dto: CreatePurchaseDto, actorId?: string) {
+    const purchase = await this.prisma.purchase.findUnique({ where: { id } });
+    if (!purchase) throw ApiException.notFound('Purchase');
+    if (purchase.status !== 'draft') {
+      throw ApiException.invalidTransaction(
+        `Only draft purchases can be edited. "${purchase.number}" is ${purchase.status}.`,
+      );
+    }
+    await this.fiscal.assertOpen(dto.purchaseDate, 'Cannot update a purchase');
+
+    const supplier = await this.prisma.supplier.findUnique({ where: { id: dto.supplierId } });
+    if (!supplier) throw ApiException.notFound('Supplier');
+    const location = await this.prisma.stockLocation.findUnique({ where: { id: dto.stockLocationId } });
+    if (!location) throw ApiException.notFound('Stock location');
+
+    const quantities = this.computeTotals(dto.items, dto.discount ?? 0, dto.tax ?? 0);
+
+    const updated = await this.prisma.runInTransaction(async (tx) => {
+      await tx.purchaseItem.deleteMany({ where: { purchaseId: id } });
+      return tx.purchase.update({
+        where: { id },
+        data: {
+          purchaseDate: new Date(dto.purchaseDate),
+          reference: dto.reference ?? null,
+          note: dto.note ?? null,
+          supplierId: dto.supplierId,
+          stockLocationId: dto.stockLocationId,
+          subtotal: quantities.subtotal,
+          discount: quantities.discount,
+          tax: quantities.tax,
+          grandTotal: quantities.grandTotal,
+          items: {
+            create: dto.items.map((item) => ({
+              itemId: item.itemId,
+              quantity: item.quantity,
+              unitCost: item.unitCost,
+              discount: item.discount ?? 0,
+              tax: item.tax ?? 0,
+              lineTotal: round2(
+                item.quantity * item.unitCost - (item.discount ?? 0) + (item.tax ?? 0),
+              ),
+            })),
+          },
+        },
+        include: { items: true, supplier: true, stockLocation: true },
+      });
+    });
+    this.audit.record({
+      userId: actorId,
+      action: 'UPDATE',
+      module: 'PURCHASE',
+      entity: 'Purchase',
+      entityId: id,
+      message: `Purchase ${purchase.number} updated`,
+    });
+    return updated;
+  }
+
+  async remove(id: string, actorId?: string) {
+    const purchase = await this.prisma.purchase.findUnique({ where: { id } });
+    if (!purchase) throw ApiException.notFound('Purchase');
+    if (purchase.status !== 'draft') {
+      throw ApiException.invalidTransaction(
+        `Only draft purchases can be deleted. "${purchase.number}" is ${purchase.status}.`,
+      );
+    }
+    await this.fiscal.assertOpen(purchase.purchaseDate, 'Cannot delete a purchase');
+
+    await this.prisma.runInTransaction(async (tx) => {
+      await tx.purchase.delete({ where: { id } });
+    });
+    this.audit.record({
+      userId: actorId,
+      action: 'DELETE',
+      module: 'PURCHASE',
+      entity: 'Purchase',
+      entityId: id,
+      message: `Purchase ${purchase.number} deleted`,
+    });
+    return { id, deleted: true };
+  }
+
   async cancel(id: string, reason: string, actorId?: string) {
     const purchase = await this.prisma.purchase.findUnique({ where: { id } });
     if (!purchase) throw ApiException.notFound('Purchase');

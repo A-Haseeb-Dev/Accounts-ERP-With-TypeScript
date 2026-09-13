@@ -112,14 +112,14 @@ export class CreateMainAccountDto {
   name: string;
 
   @IsString()
-  @IsOptional()
-  subHeadId?: string;
+  @IsNotEmpty({ message: 'Sub head is required' })
+  subHeadId: string;
 
   @IsEnum(['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'], {
     message: 'Account type must be ASSET, LIABILITY, EQUITY, REVENUE or EXPENSE',
   })
-  @IsNotEmpty({ message: 'Account type is required' })
-  accountType: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
+  @IsOptional()
+  accountType?: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
 
   @IsString()
   @IsOptional()
@@ -129,6 +129,10 @@ export class CreateMainAccountDto {
   @IsOptional()
   @IsNumber()
   openingBalance?: number;
+
+  @IsEnum(['DR', 'CR'], { message: 'Opening balance side must be DR or CR' })
+  @IsOptional()
+  openingBalanceType?: 'DR' | 'CR';
 
   @IsString()
   @IsOptional()
@@ -163,6 +167,10 @@ export class UpdateMainAccountDto {
   @IsOptional()
   @IsNumber()
   openingBalance?: number;
+
+  @IsEnum(['DR', 'CR'])
+  @IsOptional()
+  openingBalanceType?: 'DR' | 'CR';
 
   @IsString()
   @IsOptional()

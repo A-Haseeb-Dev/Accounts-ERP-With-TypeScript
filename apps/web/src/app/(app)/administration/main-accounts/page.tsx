@@ -177,20 +177,28 @@ export default function MainAccountsPage() {
               <Input value={form.name ?? ''} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Petty Cash" required />
             </Field>
           </div>
-          <Field label="Sub Head">
-            <Select value={form.subHeadId ?? ''} onChange={(e) => set('subHeadId', e.target.value)} disabled={subHeadsLoading}>
-              <option value="">—</option>
+          <Field label="Sub Head" required>
+            <Select value={form.subHeadId ?? ''} onChange={(e) => { set('subHeadId', e.target.value); const sh = subHeadData.find((s) => s.id === e.target.value); if (sh) set('accountType', sh.headAccount?.type ?? sh.accountType); }} disabled={subHeadsLoading} required>
+              <option value="">Select sub head…</option>
               {subHeadOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
           </Field>
-          <Field label="Account Type" required>
+          <Field label="Account Type" required hint="Auto-derived from the selected sub head's head account.">
             <Select value={form.accountType ?? 'ASSET'} onChange={(e) => set('accountType', e.target.value)}>
               {ACCOUNT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </Select>
           </Field>
-          <Field label="Opening Balance" hint="Used in trial balance as the starting balance.">
-            <Input type="number" step="0.01" value={form.openingBalance ?? 0} onChange={(e) => set('openingBalance', e.target.value === '' ? 0 : Number(e.target.value))} />
-          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Opening Balance" hint="Posted as an opening entry in the ledger.">
+              <Input type="number" step="0.01" value={form.openingBalance ?? 0} onChange={(e) => set('openingBalance', e.target.value === '' ? 0 : Number(e.target.value))} />
+            </Field>
+            <Field label="Opening Side">
+              <Select value={form.openingBalanceType ?? 'DR'} onChange={(e) => set('openingBalanceType', e.target.value)} disabled={!(form.openingBalance && Number(form.openingBalance) > 0)}>
+                <option value="DR">Debit (DR)</option>
+                <option value="CR">Credit (CR)</option>
+              </Select>
+            </Field>
+          </div>
           <Field label="Description">
             <Input value={form.description ?? ''} onChange={(e) => set('description', e.target.value)} />
           </Field>

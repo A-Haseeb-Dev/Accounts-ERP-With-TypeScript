@@ -3,8 +3,10 @@
 // ISO strings. Relations only appear when the API includes them (Prisma `include`).
 
 export type Status = 'active' | 'inactive' | 'suspended';
-export type DocStatus = 'draft' | 'posted' | 'cancelled';
+export type DocStatus = 'draft' | 'pending' | 'posted' | 'cancelled';
 export type PaymentStatus = 'paid' | 'partial' | 'unpaid';
+export type OpeningBalanceSide = 'DR' | 'CR';
+export type PaymentMethod = 'CASH' | 'CHEQUE' | 'BANK';
 
 export type ItemTypeName =
   | 'ASSET'
@@ -60,6 +62,7 @@ export interface MainAccount {
   description?: string;
   subHeadId?: string;
   openingBalance?: number;
+  openingBalanceType?: OpeningBalanceSide;
   status: AccountStatus;
   createdAt: string;
   updatedAt: string;
@@ -95,10 +98,54 @@ export interface Voucher {
   totalDebit: number;
   totalCredit: number;
   cancelReason?: string;
+  rejectReason?: string;
   createdAt: string;
   updatedAt: string;
   entries: VoucherEntry[];
   createdBy?: { id: string; fullName: string };
+}
+
+// ---------- Receipts & Payments ----------
+
+export interface PaymentAllocation {
+  id?: string;
+  paymentEntryId?: string;
+  documentType: 'SALE' | 'PURCHASE' | 'SALES_RETURN' | 'PURCHASE_RETURN';
+  documentId: string;
+  allocatedAmount: number;
+}
+
+export interface PaymentEntry {
+  id: string;
+  number: string;
+  paymentType: 'RECEIPT' | 'PAYMENT';
+  partyType: 'CUSTOMER' | 'SUPPLIER';
+  partyId: string;
+  partyName?: string;
+  mainAccountId: string;
+  method: PaymentMethod;
+  chequeNumber?: string;
+  amount: number;
+  paymentDate: string;
+  reference?: string;
+  narration?: string;
+  status: DocStatus;
+  voucherId?: string;
+  cancelReason?: string;
+  createdAt: string;
+  updatedAt: string;
+  mainAccount?: { id: string; code: string; name: string };
+  allocations: PaymentAllocation[];
+}
+
+export interface OpenInvoice {
+  documentType: 'SALE' | 'PURCHASE';
+  documentId: string;
+  number: string;
+  date: string;
+  total: number;
+  paid: number;
+  outstanding: number;
 }
 
 // ---------- Parties ----------
@@ -225,6 +272,8 @@ export interface Purchase {
   discount: number;
   tax: number;
   grandTotal: number;
+  payStatus?: PaymentStatus;
+  paidAmount?: number;
   status: DocStatus;
   postedAt?: string;
   createdAt: string;

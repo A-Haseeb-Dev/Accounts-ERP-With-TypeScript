@@ -4,6 +4,10 @@ import type {
   Voucher,
   VoucherType,
   VoucherStatus,
+  PaymentEntry,
+  PaymentAllocation,
+  OpenInvoice,
+  PaymentMethod,
 } from './types';
 
 export interface VoucherPayload {
@@ -22,3 +26,32 @@ export const updateVoucher = (id: string, payload: VoucherPayload) =>
 
 export const deleteVoucher = (id: string) =>
   apiFetch<{ success: boolean }>(`/vouchers/${id}`, { method: 'DELETE' });
+
+export interface PaymentPayload {
+  paymentType: 'RECEIPT' | 'PAYMENT';
+  partyType: 'CUSTOMER' | 'SUPPLIER';
+  partyId: string;
+  mainAccountId: string;
+  method: PaymentMethod;
+  chequeNumber?: string;
+  amount: number;
+  paymentDate?: string;
+  reference?: string;
+  narration?: string;
+  allocations?: { documentType: 'SALE' | 'PURCHASE'; documentId: string; allocatedAmount: number }[];
+}
+
+export const createPayment = (payload: PaymentPayload) =>
+  apiFetch<PaymentEntry>('/payments', { method: 'POST', body: JSON.stringify(payload) });
+
+export const postPayment = (id: string) =>
+  apiFetch<PaymentEntry>(`/payments/${id}/post`, { method: 'POST' });
+
+export const cancelPayment = (id: string, reason: string) =>
+  apiFetch<PaymentEntry>(`/payments/${id}/cancel`, { method: 'DELETE', body: JSON.stringify({ reason }) });
+
+export const fetchOpenInvoices = (partyType: 'CUSTOMER' | 'SUPPLIER', partyId: string) =>
+  apiFetch<OpenInvoice[]>(`/payments/open-invoices?partyType=${partyType}&partyId=${partyId}`);
+
+export const fetchNextPaymentNumber = (paymentType: 'RECEIPT' | 'PAYMENT') =>
+  apiFetch<{ number: string }>(`/payments/next-number?paymentType=${paymentType}`).then((r) => r.number);

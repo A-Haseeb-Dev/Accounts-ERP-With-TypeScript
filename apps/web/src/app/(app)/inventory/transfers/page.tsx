@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { CheckCircle2, Eye, Plus, Search, Trash2, XCircle } from 'lucide-react';
+import { CheckCircle2, Edit3, Eye, Plus, Search, Send, ShieldCheck, ShieldX, Trash2, XCircle } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { useFlatOptions, useItemOptions } from '@/hooks/use-options';
 import { useDocumentMutations } from '@/hooks/use-document-mutations';
@@ -30,10 +30,14 @@ export default function StockTransfersPage() {
   const { can } = useAuth();
   const canCreate = can('inventory.transfer.create');
   const canPost = can('inventory.transfer.post');
+  const canSubmit = can('inventory.transfer.submit');
+  const canReject = can('inventory.transfer.reject');
+  const canUpdate = can('inventory.transfer.update');
+  const canDelete = can('inventory.transfer.delete');
   const canCancel = can('inventory.transfer.cancel');
   const { options: locationOptions } = useFlatOptions('stock-locations');
   const { options: itemOptions } = useItemOptions();
-  const { post, cancel } = useDocumentMutations('stock-transfers', 'stock-transfers', { noun: 'transfer' });
+  const { post, submit, reject, cancel, remove } = useDocumentMutations('stock-transfers', 'stock-transfers', { noun: 'transfer' });
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -48,6 +52,10 @@ export default function StockTransfersPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<StockTransfer | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [rejectTarget, setRejectTarget] = useState<StockTransfer | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<StockTransfer | null>(null);
 
   const { data, isLoading } = useQuery<Paginated<StockTransfer>>({
     queryKey: ['stock-transfers', page, search, status],
@@ -65,6 +73,7 @@ export default function StockTransfersPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['stock-transfers'] });
       setModalOpen(false);
+      setEditingId(null);
       setLines([]);
       setNote('');
       setFromId('');
@@ -73,7 +82,22 @@ export default function StockTransfersPage() {
     onError: (e: Error) => setError(e.message),
   });
 
-  const submit = (e: React.FormEvent) => {
+  const update = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: unknown }) =>
+      apiFetch(`/stock-transfers/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['stock-transfers'] });
+      setModalOpen(false);
+      setEditingId(null);
+      setLines([]);
+      setNote('');
+      setFromId('');
+      setToId('');
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (!fromId || !toId || fromId === toId) {
@@ -84,13 +108,33 @@ export default function StockTransfersPage() {
       setError('Add at least one item line.');
       return;
     }
-    create.mutate({
+    const payload = {
       transferDate: date,
       fromLocationId: fromId,
       toLocationId: toId,
       note,
       items: lines.map((l) => ({ itemId: l.itemId, quantity: l.quantity })),
-    });
+    };
+    if (editingId) update.mutate({ id: editingId, payload });
+    else create.mutate(payload);
+  };
+
+  const startEdit = (r: StockTransfer) => {
+    setEditingId(r.id);
+    setDate(String(r.transferDate).slice(0, 10));
+    setFromId(r.fromLocationId);
+    setToId(r.toLocationId);
+    setNote(r.note ?? '');
+    setLines(
+      (r.items ?? []).map((it) => ({
+        key: `${it.id ?? it.itemId}-${Math.random().toString(36).slice(2, 7)}`,
+        itemId: it.itemId,
+        itemName: it.item?.name,
+        quantity: it.quantity,
+      })),
+    );
+    setError('');
+    setModalOpen(true);
   };
 
   const addLine = () => setLines((ls) => [...ls, { key: crypto.randomUUID?.() ?? String(Date.now()), quantity: 1 }]);
@@ -106,7 +150,7 @@ export default function StockTransfersPage() {
         description="Move quantities between your stock locations."
         actions={
           canCreate ? (
-            <Button onClick={() => { setDate(new Date().toISOString().slice(0, 10)); setLines([]); setError(''); setModalOpen(true); }}>
+            <Button onClick={() => { setEditingId(null); setDate(new Date().toISOString().slice(0, 10)); setLines([]); setError(''); setModalOpen(true); }}>
               <Plus className="h-4 w-4" /> New Transfer
             </Button>
           ) : null
@@ -122,6 +166,7 @@ export default function StockTransfersPage() {
           <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="w-40">
             <option value="">All status</option>
             <option value="draft">Draft</option>
+            <option value="pending">Pending approval</option>
             <option value="posted">Posted</option>
             <option value="cancelled">Cancelled</option>
           </Select>
@@ -143,8 +188,34 @@ export default function StockTransfersPage() {
                   <button onClick={() => setDetailId(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
                   {r.status === 'draft' && (
                     <>
+                      {canSubmit && (
+                        <button onClick={() => submit.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-indigo-50 hover:text-indigo-700" title="Submit for approval"><Send className="h-4 w-4" /></button>
+                      )}
                       {canPost && (
                         <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
+                      )}
+                      {canUpdate && (
+                        <button onClick={() => startEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-amber-50 hover:text-amber-700" title="Edit"><Edit3 className="h-4 w-4" /></button>
+                      )}
+                      {canDelete && (
+                        <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>
+                      )}
+                      {canCancel && (
+                        <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
+                      )}
+                    </>
+                  )}
+                  {r.status === 'pending' && (
+                    <>
+                      {canPost && (
+                        <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-teal-600 hover:bg-teal-50 hover:text-teal-700" title="Approve">
+                          <ShieldCheck className="h-4 w-4" />
+                        </button>
+                      )}
+                      {canReject && (
+                        <button onClick={() => { setRejectTarget(r); setRejectReason(''); }} className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 hover:text-red-600" title="Reject">
+                          <ShieldX className="h-4 w-4" />
+                        </button>
                       )}
                       {canCancel && (
                         <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
@@ -165,8 +236,8 @@ export default function StockTransfersPage() {
         />
       </Card>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New Stock Transfer" size="lg">
-        <form onSubmit={submit} className="space-y-4">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? 'Edit Stock Transfer' : 'New Stock Transfer'} size="lg">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Field label="Transfer Date" required>
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
@@ -230,7 +301,7 @@ export default function StockTransfersPage() {
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button type="submit" loading={create.isPending}>Create</Button>
+            <Button type="submit" loading={editingId ? update.isPending : create.isPending}>{editingId ? 'Save changes' : 'Create'}</Button>
           </div>
         </form>
       </Modal>
@@ -284,6 +355,34 @@ export default function StockTransfersPage() {
           </Field>
         </div>
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!rejectTarget}
+        danger
+        title="Reject transfer for approval"
+        message="The transfer returns to draft. The owner can edit and resubmit it."
+        confirmLabel="Reject"
+        loading={reject.isPending}
+        onCancel={() => setRejectTarget(null)}
+        onConfirm={() => rejectTarget?.id && reject.mutate({ id: rejectTarget.id, reason: rejectReason || 'Rejected' })}
+      >
+        <div className="mt-3">
+          <Field label="Reason" required>
+            <Textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Why is this being rejected?" required />
+          </Field>
+        </div>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        danger
+        title="Delete draft transfer"
+        message="This permanently removes the draft transfer and cannot be undone."
+        confirmLabel="Delete"
+        loading={remove.isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget?.id && remove.mutate(deleteTarget.id)}
+      />
     </div>
   );
 }

@@ -234,6 +234,149 @@ export class SalesService {
     return result;
   }
 
+  async submit(id: string, actorId?: string) {
+    const sale = await this.prisma.sale.findUnique({ where: { id } });
+    if (!sale) throw ApiException.notFound('Sales invoice');
+    if (sale.status === 'posted' || sale.status === 'cancelled') {
+      throw ApiException.invalidTransaction(
+        `A ${sale.status} invoice cannot be submitted for approval`,
+      );
+    }
+    if (sale.status === 'pending') return sale;
+
+    return this.prisma.sale.update({
+      where: { id },
+      data: { status: 'pending', submittedById: actorId ?? null, submittedAt: new Date() },
+    });
+  }
+
+  async reject(id: string, reason: string, actorId?: string) {
+    const sale = await this.prisma.sale.findUnique({ where: { id } });
+    if (!sale) throw ApiException.notFound('Sales invoice');
+    if (sale.status !== 'pending') {
+      throw ApiException.invalidTransaction(
+        `Only pending invoices can be rejected. "${sale.number}" is ${sale.status}.`,
+      );
+    }
+    if (sale.postedAt) {
+      throw ApiException.invalidTransaction('A posted invoice cannot be rejected');
+    }
+
+    const rejected = await this.prisma.sale.update({
+      where: { id },
+      data: {
+        status: 'draft',
+        rejectedById: actorId ?? null,
+        rejectedAt: new Date(),
+        rejectReason: reason ?? 'Rejected',
+      },
+    });
+    this.audit.record({
+      userId: actorId,
+      action: 'REJECT',
+      module: 'SALE',
+      entity: 'Sale',
+      entityId: id,
+      message: `Sales invoice ${sale.number} rejected`,
+      metadata: { reason },
+    });
+    return rejected;
+  }
+
+  async update(id: string, dto: CreateSaleDto, actorId?: string) {
+    const sale = await this.prisma.sale.findUnique({ where: { id } });
+    if (!sale) throw ApiException.notFound('Sales invoice');
+    if (sale.status !== 'draft') {
+      throw ApiException.invalidTransaction(
+        `Only draft invoices can be edited. "${sale.number}" is ${sale.status}.`,
+      );
+    }
+    await this.fiscal.assertOpen(dto.saleDate, 'Cannot update a sales invoice');
+
+    const customer = await this.prisma.customer.findUnique({ where: { id: dto.customerId } });
+    if (!customer) throw ApiException.notFound('Customer');
+    const location = await this.prisma.stockLocation.findUnique({ where: { id: dto.stockLocationId } });
+    if (!location) throw ApiException.notFound('Stock location');
+
+    const itemIds = dto.items.map((i) => i.itemId);
+    const items = await this.prisma.item.findMany({ where: { id: { in: itemIds } } });
+    if (items.length !== new Set(itemIds).size) {
+      throw ApiException.validation('One or more items were not found');
+    }
+
+    const totals = this.computeTotals(dto.items, dto.discount ?? 0, dto.tax ?? 0);
+    const amountPaid = Math.min(dto.amountPaid ?? 0, totals.grandTotal);
+    const paymentStatus =
+      amountPaid >= totals.grandTotal ? 'paid' : amountPaid > 0 ? 'partial' : 'unpaid';
+
+    const updated = await this.prisma.runInTransaction(async (tx) => {
+      await tx.saleItem.deleteMany({ where: { saleId: id } });
+      return tx.sale.update({
+        where: { id },
+        data: {
+          saleDate: new Date(dto.saleDate),
+          reference: dto.reference ?? null,
+          note: dto.note ?? null,
+          customerId: dto.customerId,
+          stockLocationId: dto.stockLocationId,
+          subtotal: totals.subtotal,
+          discount: totals.discount,
+          tax: totals.tax,
+          grandTotal: totals.grandTotal,
+          paymentStatus,
+          amountPaid,
+          items: {
+            create: dto.items.map((item) => ({
+              itemId: item.itemId,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              discount: item.discount ?? 0,
+              tax: item.tax ?? 0,
+              lineTotal: round2(
+                item.quantity * item.unitPrice - (item.discount ?? 0) + (item.tax ?? 0),
+              ),
+            })),
+          },
+        },
+        include: { items: true, customer: true, stockLocation: true },
+      });
+    });
+
+    this.audit.record({
+      userId: actorId,
+      action: 'UPDATE',
+      module: 'SALE',
+      entity: 'Sale',
+      entityId: id,
+      message: `Sales invoice ${sale.number} updated`,
+    });
+    return updated;
+  }
+
+  async remove(id: string, actorId?: string) {
+    const sale = await this.prisma.sale.findUnique({ where: { id } });
+    if (!sale) throw ApiException.notFound('Sales invoice');
+    if (sale.status !== 'draft') {
+      throw ApiException.invalidTransaction(
+        `Only draft invoices can be deleted. "${sale.number}" is ${sale.status}.`,
+      );
+    }
+    await this.fiscal.assertOpen(sale.saleDate, 'Cannot delete a sales invoice');
+
+    await this.prisma.runInTransaction(async (tx) => {
+      await tx.sale.delete({ where: { id } });
+    });
+    this.audit.record({
+      userId: actorId,
+      action: 'DELETE',
+      module: 'SALE',
+      entity: 'Sale',
+      entityId: id,
+      message: `Sales invoice ${sale.number} deleted`,
+    });
+    return { id, deleted: true };
+  }
+
   async cancel(id: string, reason: string, actorId?: string) {
     const sale = await this.prisma.sale.findUnique({ where: { id } });
     if (!sale) throw ApiException.notFound('Sales invoice');

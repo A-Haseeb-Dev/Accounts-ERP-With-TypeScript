@@ -5,9 +5,14 @@ function buildService(mainAccounts: unknown[], aggregates: Record<string, { _sum
   const prisma = {
     mainAccount: { findMany: vi.fn().mockResolvedValue(mainAccounts) },
     voucherEntry: {
-      aggregate: vi.fn(({ where }: { where: { mainAccountId: string; voucher?: unknown } }) =>
-        Promise.resolve(aggregates[where.mainAccountId] ?? { _sum: { debit: 0, credit: 0 } }),
-      ),
+      aggregate: vi.fn(({ where }: { where: { mainAccountId: string; voucher?: unknown } }) => {
+        const isOpening = (where.voucher as { reference?: { startsWith?: string } })?.reference?.startsWith === 'OB:';
+        return Promise.resolve(
+          isOpening
+            ? { _sum: { debit: 0, credit: 0 } }
+            : aggregates[where.mainAccountId] ?? { _sum: { debit: 0, credit: 0 } },
+        );
+      }),
     },
   };
   const svc = new AccountingReportsService(prisma as never);
@@ -98,8 +103,11 @@ describe('AccountingReportsService.trialBalance', () => {
     ];
     const { svc, prisma } = buildService(accounts, { cash: { _sum: { debit: 10, credit: 0 } } });
     await svc.trialBalance({ asOf: '2026-09-01' });
-    const aggCall = prisma.voucherEntry.aggregate.mock.calls[0][0];
-    expect(aggCall.where.voucher).toMatchObject({
+    const movementsCall = prisma.voucherEntry.aggregate.mock.calls.find(
+      (args: unknown[]) => (args[0] as { where: { voucher?: Record<string, unknown> } }).where.voucher?.NOT,
+    );
+    expect(movementsCall).toBeTruthy();
+    expect((movementsCall[0] as { where: { voucher?: Record<string, unknown> } }).where.voucher).toMatchObject({
       status: 'posted',
       voucherDate: { lte: new Date('2026-09-01') },
     });

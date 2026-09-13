@@ -46,7 +46,7 @@ describe('AccountingService.assertBalanced', () => {
   let svc: AccountingService;
 
   beforeEach(() => {
-    svc = new AccountingService({} as never);
+    svc = new AccountingService({} as never, {} as never);
   });
 
   it('rejects an empty entry list', () => {
@@ -97,7 +97,7 @@ describe('AccountingService.createVoucher', () => {
   let svc: AccountingService;
 
   beforeEach(() => {
-    svc = new AccountingService({} as never);
+    svc = new AccountingService({} as never, {} as never);
   });
 
   it('throws for an unbalanced draft', async () => {
@@ -156,7 +156,7 @@ describe('AccountingService.postVoucher', () => {
   let svc: AccountingService;
 
   beforeEach(() => {
-    svc = new AccountingService({} as never);
+    svc = new AccountingService({} as never, {} as never);
   });
 
   it('throws NOT_FOUND for a missing voucher', async () => {
@@ -209,7 +209,7 @@ describe('AccountingService.cancelVoucher', () => {
   let svc: AccountingService;
 
   beforeEach(() => {
-    svc = new AccountingService({} as never);
+    svc = new AccountingService({} as never, {} as never);
   });
 
   it('throws NOT_FOUND for a missing voucher', async () => {
@@ -248,24 +248,40 @@ describe('AccountingService.accountBalance', () => {
     const prisma = {
       mainAccount: { findUnique: vi.fn().mockResolvedValue({ id: 'cash', openingBalance: 1000 }) },
       voucherEntry: {
-        aggregate: vi.fn().mockResolvedValue({ _sum: { debit: 500, credit: 200 } }),
+        aggregate: vi
+          .fn()
+          .mockResolvedValueOnce({ _sum: { debit: 0, credit: 0 } })
+          .mockResolvedValue({ _sum: { debit: 500, credit: 200 } }),
       },
     };
-    const svc = new AccountingService(prisma as never);
+    const svc = new AccountingService(prisma as never, {} as never);
     const balance = await svc.accountBalance('cash');
     expect(balance).toBe(1300);
-    expect(prisma.voucherEntry.aggregate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { mainAccountId: 'cash', voucher: { status: 'posted' } },
-      }),
-    );
+    expect(prisma.voucherEntry.aggregate).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the posted opening-balance voucher when one exists', async () => {
+    const prisma = {
+      mainAccount: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'cash', openingBalance: 1000, openingBalanceType: 'CR' }),
+      },
+      voucherEntry: {
+        aggregate: vi
+          .fn()
+          .mockResolvedValueOnce({ _sum: { debit: 500, credit: 0 } })
+          .mockResolvedValue({ _sum: { debit: 0, credit: 200 } }),
+      },
+    };
+    const svc = new AccountingService(prisma as never, {} as never);
+    const balance = await svc.accountBalance('cash');
+    expect(balance).toBe(300);
   });
 
   it('throws NOT_FOUND when the account is missing', async () => {
     const prisma = {
       mainAccount: { findUnique: vi.fn().mockResolvedValue(null) },
     };
-    const svc = new AccountingService(prisma as never);
+    const svc = new AccountingService(prisma as never, {} as never);
     const err = await apiError(svc.accountBalance('ghost'));
     expect(err.status).toBe(404);
   });

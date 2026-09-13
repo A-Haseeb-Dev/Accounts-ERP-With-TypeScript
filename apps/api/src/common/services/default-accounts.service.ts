@@ -32,7 +32,7 @@ const MAIN_ACCOUNTS: { code: string; name: string; subHead: string; type: string
   { code: '01-04', name: 'Inventory', subHead: 'Current Assets', type: 'ASSET', settingKey: 'accounting.inventory_account' },
   { code: '02-01', name: 'Accounts Payable', subHead: 'Current Liabilities', type: 'LIABILITY', settingKey: 'accounting.payable_account' },
   { code: '02-02', name: 'Sales Tax Payable', subHead: 'Current Liabilities', type: 'LIABILITY', settingKey: 'accounting.tax_account' },
-  { code: '03-01', name: 'Opening Equity', subHead: 'Capital', type: 'EQUITY' },
+  { code: '03-01', name: 'Opening Equity', subHead: 'Capital', type: 'EQUITY', settingKey: 'accounting.opening_equity_account' },
   { code: '03-02', name: 'Owner Capital', subHead: 'Capital', type: 'EQUITY' },
   { code: '04-01', name: 'Sales Revenue', subHead: 'Direct Revenue', type: 'REVENUE', settingKey: 'accounting.revenue_account' },
   { code: '04-02', name: 'Sales Returns', subHead: 'Direct Revenue', type: 'REVENUE', settingKey: 'accounting.sales_return_account' },

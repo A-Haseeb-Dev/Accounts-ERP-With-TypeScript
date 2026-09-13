@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Eye, Plus, Printer, Search, XCircle } from 'lucide-react';
+import { CheckCircle2, Edit3, Eye, Plus, Printer, Search, Send, ShieldCheck, ShieldX, Trash2, XCircle } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { useItemOptions } from '@/hooks/use-options';
 import { ItemsEditor, type LineItem } from '@/components/tx/items-editor';
@@ -46,7 +46,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
 
   const qc = useQueryClient();
   const { options: itemOptions, data: itemData } = useItemOptions();
-  const { post, cancel } = useDocumentMutations(resource, resource, { noun: config.newLabel?.toLowerCase() ?? 'document' });
+  const { post, submit, reject, cancel, remove, update } = useDocumentMutations(resource, resource, { noun: config.newLabel?.toLowerCase() ?? 'document' });
 
   const docType =
     resource === 'purchases' ? 'purchase'
@@ -71,12 +71,17 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
     : 'sales.invoice';
   const canCreate = can(`${permBase}.create`);
   const canPost = can(`${permBase}.post`);
+  const canSubmit = can(`${permBase}.submit`);
+  const canReject = can(`${permBase}.reject`);
+  const canUpdate = can(`${permBase}.update`);
+  const canDelete = can(`${permBase}.delete`);
   const canCancel = can(`${permBase}.cancel`);
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [lines, setLines] = useState<LineItem[]>([]);
   const [error, setError] = useState('');
@@ -84,6 +89,9 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
   const [printRequested, setPrintRequested] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<TransactionDoc | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [rejectTarget, setRejectTarget] = useState<TransactionDoc | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<TransactionDoc | null>(null);
   const autoPrintRef = useRef(false);
 
   const { data, isLoading } = useQuery<Paginated<TransactionDoc>>({
@@ -110,6 +118,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
       qc.invalidateQueries({ queryKey: [resource] });
       qc.invalidateQueries({ queryKey: [resource, 'next-number'] });
       setModalOpen(false);
+      setEditId(null);
       setForm({});
       setLines([]);
       toast.success(`${config.newLabel ?? 'Document'} saved`);
@@ -125,7 +134,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
     },
   });
 
-  const submit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (lines.length === 0) {
@@ -139,7 +148,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
       discount: l.discount || 0,
       tax: l.tax || 0,
     }));
-    create.mutate({
+    const payload = {
       [dateField]: form[dateField],
       reference: form.reference,
       note: form.note,
@@ -149,12 +158,43 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
       tax: Number(form.tax ?? 0),
       ...(showAmountPaid ? { amountPaid: Number(form.amountPaid ?? 0) } : {}),
       items,
+    };
+    if (editId) {
+      update.mutate({ id: editId, payload });
+    } else {
+      create.mutate(payload);
+    }
+  };
+
+  const startEdit = (record: TransactionDoc) => {
+    const lineItems: LineItem[] = (record.items ?? []).map((it) => ({
+      key: `${it.id ?? it.itemId}-${Math.random().toString(36).slice(2, 7)}`,
+      itemId: it.itemId,
+      itemName: it.item?.name,
+      quantity: it.quantity,
+      price: priceKey === 'unitCost' ? it.unitCost ?? 0 : it.unitPrice ?? 0,
+      discount: it.discount ?? 0,
+      tax: it.tax ?? 0,
+    }));
+    setForm({
+      [dateField]: String(record[dateField] ?? new Date().toISOString().slice(0, 10)).slice(0, 10),
+      reference: record.reference ?? '',
+      note: record.note ?? '',
+      [partyField]: record[partyParam] ?? record.supplier?.id ?? record.customer?.id ?? '',
+      stockLocationId: record.stockLocationId ?? record.stockLocation?.id ?? '',
+      discount: record.discount ?? 0,
+      tax: record.tax ?? 0,
+      amountPaid: record.amountPaid ?? 0,
     });
+    setLines(lineItems);
+    setEditId(record.id);
+    setError('');
+    setModalOpen(true);
   };
 
   const submitAndPrint = (e: React.FormEvent) => {
     autoPrintRef.current = true;
-    submit(e);
+    handleSubmit(e);
   };
 
   const defaultPrice = (itemId: string): number | undefined => {
@@ -189,6 +229,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
           canCreate ? (
             <Button
               onClick={() => {
+                setEditId(null);
                 setForm({ [dateField]: new Date().toISOString().slice(0, 10), [partyField]: '', stockLocationId: '' });
                 setLines([]);
                 setError('');
@@ -210,6 +251,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
           <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="w-40">
             <option value="">All status</option>
             <option value="draft">Draft</option>
+            <option value="pending">Pending approval</option>
             <option value="posted">Posted</option>
             <option value="cancelled">Cancelled</option>
           </Select>
@@ -234,8 +276,34 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
                   <button onClick={() => setDetailId(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
                   {r.status === 'draft' && (
                     <>
+                      {canSubmit && (
+                        <button onClick={() => submit.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-indigo-50 hover:text-indigo-700" title="Submit for approval"><Send className="h-4 w-4" /></button>
+                      )}
                       {canPost && (
-                        <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
+                        <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post directly"><CheckCircle2 className="h-4 w-4" /></button>
+                      )}
+                      {canUpdate && (
+                        <button onClick={() => startEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-amber-50 hover:text-amber-700" title="Edit"><Edit3 className="h-4 w-4" /></button>
+                      )}
+                      {canDelete && (
+                        <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>
+                      )}
+                      {canCancel && (
+                        <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
+                      )}
+                    </>
+                  )}
+                  {r.status === 'pending' && (
+                    <>
+                      {canPost && (
+                        <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-teal-600 hover:bg-teal-50 hover:text-teal-700" title="Approve">
+                          <ShieldCheck className="h-4 w-4" />
+                        </button>
+                      )}
+                      {canReject && (
+                        <button onClick={() => { setRejectTarget(r); setRejectReason(''); }} className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 hover:text-red-600" title="Reject">
+                          <ShieldX className="h-4 w-4" />
+                        </button>
                       )}
                       {canCancel && (
                         <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
@@ -256,8 +324,8 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
         />
       </Card>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={`New ${title}`} size="xl">
-        <form onSubmit={submit} className="space-y-5">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={`${editId ? `Edit ${title.replace(/s$/, '')}` : `New ${title}`}`} size="xl">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
             <div className="min-w-0 space-y-5">
               <Section label={`${partyLabel === 'Supplier' ? 'Purchase' : 'Sales'} Details`}>
@@ -367,7 +435,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
                 <Printer className="h-4 w-4" /> Save & Print
               </Button>
             )}
-            <Button type="submit" disabled={!canSubmit} loading={create.isPending}>Create</Button>
+            <Button type="submit" disabled={!canSubmit} loading={create.isPending || update.isPending}>{editId ? 'Save changes' : 'Create'}</Button>
           </div>
         </form>
       </Modal>
@@ -404,6 +472,34 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
           </Field>
         </div>
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!rejectTarget}
+        danger
+        title="Reject for approval"
+        message="The document returns to draft. The owner can edit and resubmit it."
+        confirmLabel="Reject"
+        loading={reject.isPending}
+        onCancel={() => setRejectTarget(null)}
+        onConfirm={() => rejectTarget?.id && reject.mutate({ id: rejectTarget.id, reason: rejectReason || 'Rejected' })}
+      >
+        <div className="mt-3">
+          <Field label="Reason" required>
+            <Textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Why is this being rejected?" required />
+          </Field>
+        </div>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        danger
+        title="Delete draft"
+        message="This permanently removes the draft. Only unsent drafts can be deleted."
+        confirmLabel="Delete"
+        loading={remove.isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget?.id && remove.mutate(deleteTarget.id)}
+      />
     </div>
   );
 }
@@ -474,7 +570,7 @@ function DocumentDetailModal({
                 <Facts label="Date" value={new Date(String(detail[dateField])).toLocaleDateString('en-GB')} />
                 <Facts label={partyLabel} value={detail.supplier?.name ?? detail.customer?.name ?? '-'} />
                 <Facts label="Location" value={detail.stockLocation?.name ?? detail.location?.name ?? '-'} />
-                <Facts label="Status" value={detail.status} />
+                <Facts label="Status" value={detail.status.toUpperCase()} />
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {canPrint && (
@@ -553,6 +649,10 @@ function DocumentDetailModal({
 
           {!!detail.reference && <p className="mt-3 text-xs text-slate-500">Reference: {detail.reference}</p>}
           {!!detail.note && <p className="mt-1 text-xs text-slate-500">Note: {detail.note}</p>}
+          {detail.status === 'pending' && <p className="mt-1 text-xs font-medium text-amber-600">Awaiting approval</p>}
+          {(detail.status === 'draft' || detail.status === 'cancelled') && !!detail.rejectReason && (
+            <p className="mt-1 rounded-lg border border-red-100 bg-red-50 px-2.5 py-1.5 text-xs text-red-600">Rejected reason: {detail.rejectReason}</p>
+          )}
 
           {activity && activity.items.length > 0 && (
             <div className="mt-5">

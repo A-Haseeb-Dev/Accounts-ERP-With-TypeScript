@@ -6,6 +6,29 @@ import { ApiException } from '../common/exceptions/api.exception';
 export class AccountingReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Opening position of an account. Prefers the posted opening-balance voucher
+   * (reference `OB:<accountId>`) when one exists; falls back to the legacy
+   * `openingBalance` column, honouring the DR/CR side.
+   */
+  private async accountOpening(acc: {
+    id: string;
+    openingBalance?: number | unknown;
+    openingBalanceType?: string | null;
+  }): Promise<number> {
+    const ob = await this.prisma.voucherEntry.aggregate({
+      where: {
+        mainAccountId: acc.id,
+        voucher: { status: 'posted', reference: { startsWith: 'OB:' } },
+      },
+      _sum: { debit: true, credit: true },
+    });
+    const fromVoucher = round2(Number(ob._sum.debit ?? 0) - Number(ob._sum.credit ?? 0));
+    if (fromVoucher !== 0) return fromVoucher;
+    const legacy = Number(acc.openingBalance ?? 0);
+    return acc.openingBalanceType === 'CR' ? -legacy : legacy;
+  }
+
   /** General Ledger - account movements with running balance. */
   async generalLedger(query: { accountId: string; from?: string; to?: string; page?: number; pageSize?: number }) {
     const { accountId, from, to, page = 1, pageSize = 100 } = query;
@@ -15,7 +38,7 @@ export class AccountingReportsService {
     });
     if (!account) throw ApiException.notFound('Account');
 
-    const voucherWhere: any = { status: 'posted' };
+    const voucherWhere: any = { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } };
     if (from || to) {
       voucherWhere.voucherDate = {
         ...(from ? { gte: new Date(from) } : {}),
@@ -29,13 +52,17 @@ export class AccountingReportsService {
       orderBy: [{ voucher: { voucherDate: 'asc' } }, { id: 'asc' }],
     });
 
-    // Opening balance = account opening balance + all posted entries before 'from'.
-    let openingBalance = Number(account.openingBalance ?? 0);
+    // Opening balance = account opening + all posted entries before 'from'.
+    let openingBalance = await this.accountOpening(account);
     if (from) {
       const before = await this.prisma.voucherEntry.aggregate({
         where: {
           mainAccountId: accountId,
-          voucher: { status: 'posted', voucherDate: { lt: new Date(from) } },
+          voucher: {
+            status: 'posted',
+            voucherDate: { lt: new Date(from) },
+            NOT: { reference: { startsWith: 'OB:' } },
+          },
         },
         _sum: { debit: true, credit: true },
       });
@@ -129,15 +156,15 @@ export class AccountingReportsService {
     let totalCredit = 0;
 
     for (const acc of accounts) {
-      const voucherWhere: any = { status: 'posted' };
+      const voucherWhere: any = { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } };
       if (asOf) voucherWhere.voucherDate = { lte: new Date(asOf) };
       const agg = await this.prisma.voucherEntry.aggregate({
         where: { mainAccountId: acc.id, voucher: voucherWhere },
         _sum: { debit: true, credit: true },
       });
 
-      let balance = Number(acc.openingBalance ?? 0) + Number(agg._sum.debit ?? 0) - Number(agg._sum.credit ?? 0);
-      balance = round2(balance);
+      const opening = await this.accountOpening(acc);
+      let balance = round2(opening + Number(agg._sum.debit ?? 0) - Number(agg._sum.credit ?? 0));
 
       // Trial balance presentation: debit/credit split by current balance sign.
       let debit = 0;
@@ -186,13 +213,14 @@ export class AccountingReportsService {
     let totalDebit = 0;
     let totalCredit = 0;
     for (const acc of accounts) {
-      const voucherWhere: any = { status: 'posted' };
+      const voucherWhere: any = { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } };
       if (asOf) voucherWhere.voucherDate = { lte: new Date(asOf) };
       const agg = await this.prisma.voucherEntry.aggregate({
         where: { mainAccountId: acc.id, voucher: voucherWhere },
         _sum: { debit: true, credit: true },
       });
-      const balance = round2(Number(acc.openingBalance ?? 0) + Number(agg._sum.debit ?? 0) - Number(agg._sum.credit ?? 0));
+      const opening = await this.accountOpening(acc);
+      const balance = round2(opening + Number(agg._sum.debit ?? 0) - Number(agg._sum.credit ?? 0));
 
       let debit = 0;
       let credit = 0;
@@ -236,13 +264,14 @@ export class AccountingReportsService {
     let totalDebit = 0;
     let totalCredit = 0;
     for (const acc of accounts) {
-      const voucherWhere: any = { status: 'posted' };
+      const voucherWhere: any = { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } };
       if (asOf) voucherWhere.voucherDate = { lte: new Date(asOf) };
       const agg = await this.prisma.voucherEntry.aggregate({
         where: { mainAccountId: acc.id, voucher: voucherWhere },
         _sum: { debit: true, credit: true },
       });
-      const balance = round2(Number(acc.openingBalance ?? 0) + Number(agg._sum.debit ?? 0) - Number(agg._sum.credit ?? 0));
+      const opening = await this.accountOpening(acc);
+      const balance = round2(opening + Number(agg._sum.debit ?? 0) - Number(agg._sum.credit ?? 0));
       let debit = 0;
       let credit = 0;
       if (balance > 0) debit = balance;

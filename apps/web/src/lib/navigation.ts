@@ -81,6 +81,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Wallet,
     children: [
       { label: 'Vouchers', href: '/accounts/vouchers', icon: Receipt, permission: 'accounts.vouchers.view', feature: 'accounts' },
+      { label: 'Receipts & Payments', href: '/accounts/payments', icon: Wallet, permission: 'accounts.payments.view', feature: 'accounts' },
       { label: 'Cash Book', href: '/accounts/cash-book', icon: Wallet, permission: 'accounts.cashbook.view', feature: 'accounts' },
     ],
   },

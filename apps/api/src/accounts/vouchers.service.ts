@@ -98,6 +98,52 @@ export class VouchersService {
     return posted;
   }
 
+  async submit(id: string, actorId?: string) {
+    const voucher = await this.prisma.voucher.findUnique({ where: { id } });
+    if (!voucher) throw ApiException.notFound('Voucher');
+    if (voucher.status === 'posted' || voucher.status === 'cancelled') {
+      throw ApiException.invalidTransaction(
+        `A ${voucher.status} voucher cannot be submitted for approval`,
+      );
+    }
+    if (voucher.status === 'pending') return voucher;
+
+    return this.prisma.voucher.update({
+      where: { id },
+      data: { status: 'pending', submittedById: actorId ?? null, submittedAt: new Date() },
+    });
+  }
+
+  async reject(id: string, reason: string, actorId?: string) {
+    const voucher = await this.prisma.voucher.findUnique({ where: { id } });
+    if (!voucher) throw ApiException.notFound('Voucher');
+    if (voucher.status !== 'pending') {
+      throw ApiException.invalidTransaction(
+        `Only pending vouchers can be rejected. "${voucher.number}" is ${voucher.status}.`,
+      );
+    }
+
+    const rejected = await this.prisma.voucher.update({
+      where: { id },
+      data: {
+        status: 'draft',
+        rejectedById: actorId ?? null,
+        rejectedAt: new Date(),
+        rejectReason: reason ?? 'Rejected',
+      },
+    });
+    this.audit.record({
+      userId: actorId,
+      action: 'REJECT',
+      module: 'VOUCHER',
+      entity: 'Voucher',
+      entityId: id,
+      message: `${voucher.voucherType} voucher ${voucher.number} rejected`,
+      metadata: { reason },
+    });
+    return rejected;
+  }
+
   async cancel(id: string, reason: string, actorId?: string) {
     const voucher = await this.prisma.voucher.findUnique({ where: { id } });
     if (!voucher) throw ApiException.notFound('Voucher');
@@ -157,14 +203,39 @@ export class VouchersService {
 
   async cashBook(query: { page?: number; pageSize?: number; from?: string; to?: string; search?: string }) {
     const { page = 1, pageSize = 25, from, to, search } = query;
-    const cashAccountId = await this.prisma.systemSetting.findFirst({
+    const cashAccount = await this.prisma.systemSetting.findFirst({
       where: { key: 'accounting.cash_account' },
     });
 
+    const ob = cashAccount?.value
+      ? await this.prisma.voucherEntry.aggregate({
+          where: {
+            mainAccountId: cashAccount.value,
+            voucher: { status: 'posted', reference: { startsWith: 'OB:' } },
+          },
+          _sum: { debit: true, credit: true },
+        })
+      : null;
+    let openingFromPrevious = 0;
+    if (cashAccount?.value) {
+      const fromVoucher = Number(ob?._sum.debit ?? 0) - Number(ob?._sum.credit ?? 0);
+      if (fromVoucher !== 0) {
+        openingFromPrevious = fromVoucher;
+      } else {
+        const account = await this.prisma.mainAccount.findUnique({
+          where: { id: cashAccount.value },
+        });
+        openingFromPrevious =
+          account?.openingBalanceType === 'CR'
+            ? -Number(account?.openingBalance ?? 0)
+            : Number(account?.openingBalance ?? 0);
+      }
+    }
+
     const where: Record<string, unknown> = {
-      voucher: { status: 'posted' },
+      voucher: { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } },
     };
-    if (cashAccountId?.value) where.mainAccountId = cashAccountId.value;
+    if (cashAccount?.value) where.mainAccountId = cashAccount.value;
     if (search) {
       where.OR = [
         { voucher: { number: { contains: search, mode: 'insensitive' } } },
@@ -174,6 +245,7 @@ export class VouchersService {
     if (from || to) {
       where.voucher = {
         status: 'posted',
+        NOT: { reference: { startsWith: 'OB:' } },
         ...(from ? { voucherDate: { gte: new Date(from) } } : {}),
         ...(to ? { voucherDate: { lte: new Date(to) } } : {}),
       };
@@ -186,7 +258,6 @@ export class VouchersService {
     });
     const total = entries.length;
 
-    const openingFromPrevious = 0;
     let running = openingFromPrevious;
     const enriched = entries.map((e) => {
       running += Number(e.debit) - Number(e.credit);
