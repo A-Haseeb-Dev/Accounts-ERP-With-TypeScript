@@ -17,6 +17,34 @@ export class RefreshDto {
   refreshToken?: string;
 }
 
+export class TwoFactorSetupDto {
+  @IsString()
+  @IsNotEmpty({ message: 'Password is required to set up two-factor authentication' })
+  password: string;
+}
+
+export class TwoFactorEnableDto {
+  @IsString()
+  @IsNotEmpty({ message: 'Verification code is required' })
+  token: string;
+}
+
+export class TwoFactorDisableDto {
+  @IsString()
+  @IsNotEmpty({ message: 'Verification code is required' })
+  token: string;
+}
+
+export class TwoFactorVerifyDto {
+  @IsString()
+  @IsNotEmpty({ message: 'Pending token is missing' })
+  pendingToken: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Verification code is required' })
+  token: string;
+}
+
 export class RegisterUserDto {
   @IsString()
   @IsNotEmpty({ message: 'Full name is required' })

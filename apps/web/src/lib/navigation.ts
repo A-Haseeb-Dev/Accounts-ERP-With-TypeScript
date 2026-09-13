@@ -15,6 +15,7 @@ import {
   Boxes,
   Network,
   Printer,
+  ShieldCheck,
 } from 'lucide-react';
 import { isAllowed } from '@/lib/auth-types';
 
@@ -108,6 +109,7 @@ export const NAV_ITEMS: NavItem[] = [
       { label: 'Roles & Permissions', href: '/system/roles', icon: Settings, permission: 'roles.view' },
       { label: 'Audit Logs', href: '/system/audit-logs', icon: FileSpreadsheet, permission: 'system.audit.view', feature: 'audit' },
       { label: 'Settings', href: '/system/settings', icon: Settings, permission: 'system.settings.manage' },
+      { label: 'Security', href: '/system/security', icon: ShieldCheck, permission: 'system.settings.manage' },
       { label: 'Print Layout', href: '/system/print-layout', icon: Printer, permission: 'system.settings.manage' },
       { label: 'Branding', href: '/system/branding', icon: Building2, permission: 'system.branding.manage' },
       { label: 'Company Features', href: '/system/company-features', icon: Settings, permission: 'system.features.manage', developerOnly: true },

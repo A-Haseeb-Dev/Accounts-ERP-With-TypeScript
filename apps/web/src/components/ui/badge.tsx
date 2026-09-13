@@ -24,6 +24,7 @@ const statusTone: Record<string, Tone> = {
   active: 'green',
   inactive: 'red',
   draft: 'slate',
+  pending: 'amber',
   posted: 'teal',
   cancelled: 'red',
   APPROVED: 'green',

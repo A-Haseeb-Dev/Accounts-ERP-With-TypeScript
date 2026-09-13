@@ -8,7 +8,14 @@ vi.mock('argon2', () => ({
   hash: vi.fn(),
 }));
 
+vi.mock('qrcode', () => ({
+  toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,FAKE_QR'),
+}));
+
 import * as argon2 from 'argon2';
+import { createHash } from 'crypto';
+import { generate, generateSecret } from 'otplib';
+import type { TwoFactorEnableDto } from './dto/auth.dto';
 const argon2VerifyMock = argon2.verify as ReturnType<typeof vi.fn>;
 
 const mockUser = {
@@ -109,12 +116,13 @@ describe('AuthService.login', () => {
 
     const { svc, audit } = buildService();
     const result = await svc.login({ username: 'admin', password: 'correct' });
+    type AuthSession = { accessToken: string; refreshToken: string; user: Record<string, unknown> };
 
-    expect(result.accessToken).toBeDefined();
-    expect(result.refreshToken).toBeDefined();
-    expect(result.user.username).toBe('admin');
-    expect(result.user.roles).toEqual(['admin']);
-    expect(result.user.permissions).toEqual(['users.view', 'users.manage']);
+    expect((result as AuthSession).accessToken).toBeDefined();
+    expect((result as AuthSession).refreshToken).toBeDefined();
+    expect((result as AuthSession).user.username).toBe('admin');
+    expect((result as AuthSession).user.roles).toEqual(['admin']);
+    expect((result as AuthSession).user.permissions).toEqual(['users.view', 'users.manage']);
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'LOGIN', module: 'AUTH' }),
     );
@@ -184,7 +192,9 @@ describe('AuthService.login', () => {
       },
     };
     const { svc } = buildService({ prisma });
-    const result = await svc.login({ username: 'admin', password: 'correct' });
+    const result = (await svc.login({ username: 'admin', password: 'correct' })) as {
+      accessToken: string;
+    };
     expect(result.accessToken).toBeDefined();
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -242,6 +252,144 @@ describe('AuthService.refresh', () => {
     await svc.refresh('valid-token');
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ tokenVersion: 2 }) }),
+    );
+  });
+});
+
+describe('AuthService two-factor authentication', () => {
+  const twoFactorUser = {
+    ...mockUser,
+    twoFactorEnabled: true,
+    twoFactorSecret: generateSecret(),
+    twoFactorRecoveryCodes: null,
+  };
+
+  function build2FaService(overrides?: { prisma?: Record<string, unknown> }) {
+    return buildService({ prisma: overrides?.prisma });
+  }
+
+  it('login returns a pending challenge instead of tokens when 2FA is enabled', async () => {
+    argon2VerifyMock.mockResolvedValueOnce(true);
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue(twoFactorUser),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+    const { svc } = build2FaService({ prisma });
+    const result = await svc.login({ username: 'admin', password: 'pw' } as never, '1.2.3.4');
+    expect(result).toMatchObject({ twoFactorRequired: true, user: { id: 'u1', username: 'admin' } });
+    expect(result).not.toHaveProperty('accessToken');
+  });
+
+  it('verifyMfaChallenge completes login with a valid TOTP token', async () => {
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue(twoFactorUser),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+    const jwt = {
+      verifyAsync: vi.fn().mockResolvedValue({ id: 'u1', purpose: 'mfa' }),
+      sign: vi.fn().mockReturnValue('access-jwt'),
+    };
+    const { svc } = buildService({ prisma, jwt });
+    const code = await generate({ secret: twoFactorUser.twoFactorSecret });
+    const result = await svc.verifyMfaChallenge('pending', code, '1.2.3.4');
+    expect(result.accessToken).toBe('access-jwt');
+    expect(result.user).toMatchObject({ id: 'u1', username: 'admin' });
+  });
+
+  it('verifyMfaChallenge consumes a valid recovery code', async () => {
+    const secret = generateSecret();
+    const code = 'ABCD-1234-WXYZ-5678';
+    const hash = createHash('sha256').update(code).digest('hex');
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          ...mockUser,
+          twoFactorEnabled: true,
+          twoFactorSecret: secret,
+          twoFactorRecoveryCodes: [hash],
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+    const jwt = {
+      verifyAsync: vi.fn().mockResolvedValue({ id: 'u1', purpose: 'mfa' }),
+      sign: vi.fn().mockReturnValue('access-jwt'),
+    };
+    const { svc } = buildService({ prisma, jwt });
+    const result = await svc.verifyMfaChallenge('pending', code, '1.2.3.4');
+    expect(result.accessToken).toBe('access-jwt');
+    expect(prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ twoFactorRecoveryCodes: [] }) }),
+    );
+  });
+
+  it('verifyMfaChallenge rejects an invalid code', async () => {
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue(twoFactorUser),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+    const jwt = {
+      verifyAsync: vi.fn().mockResolvedValue({ id: 'u1', purpose: 'mfa' }),
+      sign: vi.fn().mockReturnValue('access-jwt'),
+    };
+    const { svc } = buildService({ prisma, jwt });
+    const err = await extractError(svc.verifyMfaChallenge('pending', '000000', '1.2.3.4'));
+    expect(err.status).toBe(401);
+  });
+
+  it('setupTwoFactor generates a secret and QR code after password verification', async () => {
+    argon2VerifyMock.mockResolvedValueOnce(true);
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ ...mockUser, twoFactorEnabled: false }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+    const { svc } = build2FaService({ prisma });
+    const result = await svc.setupTwoFactor('u1', 'correct-password');
+    expect(result.secret).toBeTruthy();
+    expect(result.qrDataUrl).toContain('data:image/png');
+    expect(result.otpauthUrl).toContain('otpauth://totp/');
+  });
+
+  it('enableTwoFactor returns recovery codes after a valid TOTP', async () => {
+    const secret = generateSecret();
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ ...mockUser, twoFactorEnabled: false, twoFactorSecret: secret }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+    const { svc } = build2FaService({ prisma });
+    const code = await generate({ secret });
+    const dto: TwoFactorEnableDto = { token: code };
+    const result = await svc.enableTwoFactor('u1', dto.token);
+    expect(result.recoveryCodes).toHaveLength(10);
+    expect(prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ twoFactorEnabled: true }) }),
+    );
+  });
+
+  it('disableTwoFactor clears the secret after a valid TOTP', async () => {
+    const secret = generateSecret();
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ ...mockUser, twoFactorEnabled: true, twoFactorSecret: secret }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+    const { svc } = build2FaService({ prisma });
+    await svc.disableTwoFactor('u1', await generate({ secret }));
+    expect(prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ twoFactorEnabled: false, twoFactorSecret: null }),
+      }),
     );
   });
 });

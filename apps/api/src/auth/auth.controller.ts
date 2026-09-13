@@ -3,7 +3,14 @@ import { Request, Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshDto } from './dto/auth.dto';
+import {
+  LoginDto,
+  RefreshDto,
+  TwoFactorDisableDto,
+  TwoFactorEnableDto,
+  TwoFactorSetupDto,
+  TwoFactorVerifyDto,
+} from './dto/auth.dto';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { ApiException } from '../common/exceptions/api.exception';
@@ -26,7 +33,40 @@ export class AuthController {
   ) {
     const ip = req.ip ?? undefined;
     const ua = req.get('user-agent');
-    const tokens = await this.authService.login(dto, ip, ua);
+    const result = await this.authService.login(dto, ip, ua);
+    if ('twoFactorRequired' in result) {
+      return {
+        twoFactorRequired: true,
+        pendingToken: result.pendingToken,
+        user: result.user,
+        message: 'Two-factor verification required',
+      };
+    }
+    this.authService.setAuthCookies(res, result);
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      user: result.user,
+      message: 'Login successful',
+    };
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 15 * 60_000 } })
+  @Post('two-factor/verify')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify the second factor to complete a 2FA login' })
+  async verifyTwoFactor(
+    @Body() dto: TwoFactorVerifyDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const tokens = await this.authService.verifyMfaChallenge(
+      dto.pendingToken,
+      dto.token,
+      req.ip,
+      req.get('user-agent'),
+    );
     this.authService.setAuthCookies(res, tokens);
     return {
       accessToken: tokens.accessToken,
@@ -34,6 +74,46 @@ export class AuthController {
       user: tokens.user,
       message: 'Login successful',
     };
+  }
+
+  @Post('two-factor/setup')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Start two-factor setup (returns TOTP secret + QR code)' })
+  async setupTwoFactor(
+    @Body() dto: TwoFactorSetupDto,
+    @CurrentUser() user: Record<string, unknown>,
+  ) {
+    return this.authService.setupTwoFactor(user.id as string, dto.password);
+  }
+
+  @Post('two-factor/enable')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Confirm setup with a TOTP code and enable 2FA' })
+  async enableTwoFactor(
+    @Body() dto: TwoFactorEnableDto,
+    @CurrentUser() user: Record<string, unknown>,
+  ) {
+    return this.authService.enableTwoFactor(user.id as string, dto.token);
+  }
+
+  @Post('two-factor/disable')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Disable two-factor authentication with a TOTP code' })
+  async disableTwoFactor(
+    @Body() dto: TwoFactorDisableDto,
+    @CurrentUser() user: Record<string, unknown>,
+  ) {
+    return this.authService.disableTwoFactor(user.id as string, dto.token);
+  }
+
+  @Get('two-factor/status')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get the current user two-factor status' })
+  twoFactorStatus(@CurrentUser() user: Record<string, unknown>) {
+    return this.authService.twoFactorStatus(user.id as string);
   }
 
   @Public()

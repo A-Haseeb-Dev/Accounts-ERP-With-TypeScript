@@ -11,12 +11,14 @@ import {
   type ReactNode,
 } from 'react';
 import { apiFetch, setTokens, clearTokens } from '@/lib/api';
+import { setPendingMfa, getPendingMfa, clearPendingMfa } from '@/lib/mfa';
 import type { SessionUser } from '@/lib/auth-types';
 
 interface AuthContextValue {
   user: SessionUser | null;
   loading: boolean;
   login: (username: string, password: string) => Promise<void>;
+  verifyMfa: (token: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   can: (permission: string) => boolean;
@@ -44,11 +46,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const login = useCallback(async (username: string, password: string) => {
-    const res = await apiFetch<{ accessToken: string; refreshToken: string; user: SessionUser }>('/auth/login', {
+    const res = await apiFetch<{
+      accessToken?: string;
+      refreshToken?: string;
+      user?: SessionUser;
+      twoFactorRequired?: boolean;
+      pendingToken?: string;
+    }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
       retryAuth: false,
     });
+    if (res.twoFactorRequired && res.pendingToken) {
+      setPendingMfa(res.pendingToken, username);
+      router.replace('/login/mfa');
+      return;
+    }
+    if (res.accessToken && res.refreshToken) {
+      setTokens(res.accessToken, res.refreshToken);
+    }
+    setUser(res.user ?? null);
+    router.replace('/');
+  }, [router]);
+
+  const verifyMfa = useCallback(async (token: string) => {
+    const pending = getPendingMfa();
+    if (!pending.token) {
+      throw new Error('Two-factor challenge expired. Please sign in again.');
+    }
+    const res = await apiFetch<{ accessToken: string; refreshToken: string; user: SessionUser }>(
+      '/auth/two-factor/verify',
+      { method: 'POST', body: JSON.stringify({ pendingToken: pending.token, token }), retryAuth: false },
+    );
+    clearPendingMfa();
     if (res.accessToken && res.refreshToken) {
       setTokens(res.accessToken, res.refreshToken);
     }
@@ -89,8 +119,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ user, loading, login, logout, refresh, can, changePassword }),
-    [user, loading, login, logout, refresh, can, changePassword],
+    () => ({ user, loading, login, verifyMfa, logout, refresh, can, changePassword }),
+    [user, loading, login, verifyMfa, logout, refresh, can, changePassword],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
