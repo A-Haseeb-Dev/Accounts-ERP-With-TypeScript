@@ -9,25 +9,28 @@ import { ConfigService } from '@nestjs/config';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter';
 import { ApiResponseInterceptor } from './common/interceptors/api-response.interceptor';
 
-async function bootstrap() {
+/**
+ * Builds and configures the Nest app (global prefix, security headers, CORS,
+ * validation, response envelope, Swagger). Shared by the long-running server
+ * (bootstrap below) and the Vercel serverless handler (src/server.ts).
+ */
+export async function createApp(): Promise<NestExpressApplication> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
-  const logger = new Logger('Bootstrap');
   const isProd = process.env.NODE_ENV === 'production';
 
   // Fail secure: in production, never run with obvious default JWT secrets.
   if (isProd) {
     const defaultSecrets = new Set(['has-erp-access-secret', 'has-erp-refresh-secret']);
-    let missing = false;
+    const errors: string[] = [];
     for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET']) {
       const value = config.get<string>(key);
       if (!value || defaultSecrets.has(value)) {
-        logger.error(`${key} must be set to a strong random value in production (JWT_ACCESS_SECRET and JWT_REFRESH_SECRET differ)`);
-        missing = true;
+        errors.push(`${key} must be set to a strong random value in production (JWT_ACCESS_SECRET and JWT_REFRESH_SECRET differ)`);
       }
     }
-    if (missing) {
-      process.exit(1);
+    if (errors.length) {
+      throw new Error(errors.join('; '));
     }
   }
 
@@ -111,6 +114,15 @@ async function bootstrap() {
     SwaggerModule.setup('api/docs', app, document);
   }
 
+  return app;
+}
+
+async function bootstrap() {
+  const app = await createApp();
+  const config = app.get(ConfigService);
+  const logger = new Logger('Bootstrap');
+  const isProd = process.env.NODE_ENV === 'production';
+
   const port = config.get<number>('API_PORT', 4000);
   await app.listen(port, config.get<string>('API_HOST', '0.0.0.0'));
   logger.log(`HAS ERP API running on http://localhost:${port}/api`);
@@ -119,4 +131,9 @@ async function bootstrap() {
   }
 }
 
-bootstrap();
+// In the Vercel serverless runtime (src/server.ts is the entry point there) the
+// app is booted lazily per request; only start the long-running listener when
+// running as a regular server.
+if (!process.env.VERCEL) {
+  bootstrap();
+}
