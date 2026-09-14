@@ -14,3 +14,4 @@ prisma/*.db
 *.tsbuildinfo
 /tmp
 .vercel
+.env*
