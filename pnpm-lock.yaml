@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@scure/base': 1.1.9
+
 importers:
 
   .:
@@ -1054,8 +1057,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@scure/base@2.4.0':
-    resolution: {integrity: sha512-thZ1TuJwFwBblOhgsjDKvvGirBxNp+wSvY/DR6tJBJOTDhdAAcHJ8Vbr2eFnqaxeca4+t0i9KBf+uHYGWwZORg==}
+  '@scure/base@1.1.9':
+    resolution: {integrity: sha512-8YKhl8GHiNI/pU2VMaofa2Tor7PJRAjwQLBBuilkJ9L5+13yVbC7JO/wS7piioAvPSwR3JKM1IJ/u4xQzbcXKg==}
 
   '@swc/helpers@0.5.15':
     resolution: {integrity: sha512-JQ5TuMi45Owi4/BIMAJBoSQoOJu12oOk/gADqlcUL9JEdHB8vyjUSsxqeNXnmXHjYKMi2WcYtezGEEhqUI/E2g==}
@@ -4370,7 +4373,7 @@ snapshots:
   '@otplib/plugin-base32-scure@13.5.0':
     dependencies:
       '@otplib/core': 13.5.0
-      '@scure/base': 2.4.0
+      '@scure/base': 1.1.9
 
   '@otplib/plugin-crypto-noble@13.5.0':
     dependencies:
@@ -4494,7 +4497,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.63.1':
     optional: true
 
-  '@scure/base@2.4.0': {}
+  '@scure/base@1.1.9': {}
 
   '@swc/helpers@0.5.15':
     dependencies:
