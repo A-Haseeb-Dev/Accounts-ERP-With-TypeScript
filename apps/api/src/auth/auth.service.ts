@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
 import * as argon2 from 'argon2';
-import { generateSecret, generateURI, verify as verifyOtp } from 'otplib';
+import { generateSecret, generateURI, verify as verifyOtp } from './totp.util';
 import { toDataURL as toQrDataURL } from 'qrcode';
 import { createHash, randomBytes } from 'crypto';
 import { Prisma } from '@prisma/client';

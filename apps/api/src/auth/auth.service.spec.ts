@@ -14,7 +14,7 @@ vi.mock('qrcode', () => ({
 
 import * as argon2 from 'argon2';
 import { createHash } from 'crypto';
-import { generate, generateSecret } from 'otplib';
+import { generate, generateSecret } from './totp.util';
 import type { TwoFactorEnableDto } from './dto/auth.dto';
 const argon2VerifyMock = argon2.verify as ReturnType<typeof vi.fn>;
 
