@@ -1,6 +1,5 @@
 {
   "version": 2,
   "installCommand": "pnpm install",
-  "buildCommand": "pnpm vercel-build",
-  "rewrites": [{ "source": "/api/:path*", "destination": "/index" }]
+  "buildCommand": "pnpm vercel-build"
 }

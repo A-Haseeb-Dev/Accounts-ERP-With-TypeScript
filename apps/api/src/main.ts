@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { IncomingMessage, ServerResponse } from 'http';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
@@ -131,9 +132,20 @@ async function bootstrap() {
   }
 }
 
-// In the Vercel serverless runtime (src/server.ts is the entry point there) the
-// app is booted lazily per request; only start the long-running listener when
-// running as a regular server.
+// In the Vercel serverless runtime this module is the detected Nest entry, so it
+// must default-export a (req, res) handler that lazily boots the app once. The
+// long-running server path (bootstrap below) only starts when not running under Vercel.
+let requestListener: ((req: IncomingMessage, res: ServerResponse) => void) | null = null;
+
+export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (!requestListener) {
+    const app = await createApp();
+    await app.init();
+    requestListener = app.getHttpAdapter().getInstance() as (req: IncomingMessage, res: ServerResponse) => void;
+  }
+  requestListener(req, res);
+}
+
 if (!process.env.VERCEL) {
   bootstrap();
 }
