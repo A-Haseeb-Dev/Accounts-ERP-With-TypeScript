@@ -350,12 +350,33 @@ describe('AuthService two-factor authentication', () => {
         findUnique: vi.fn().mockResolvedValue({ ...mockUser, twoFactorEnabled: false }),
         update: vi.fn().mockResolvedValue({}),
       },
+      systemSetting: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
     };
     const { svc } = build2FaService({ prisma });
     const result = await svc.setupTwoFactor('u1', 'correct-password');
     expect(result.secret).toBeTruthy();
     expect(result.qrDataUrl).toContain('data:image/png');
     expect(result.otpauthUrl).toContain('otpauth://totp/');
+    expect(result.issuer).toBe('HasERP');
+  });
+
+  it('setupTwoFactor uses the custom issuer from system settings when set', async () => {
+    argon2VerifyMock.mockResolvedValueOnce(true);
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ ...mockUser, twoFactorEnabled: false }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      systemSetting: {
+        findFirst: vi.fn().mockResolvedValue({ value: '  My Company Ltd  ' }),
+      },
+    };
+    const { svc } = build2FaService({ prisma });
+    const result = await svc.setupTwoFactor('u1', 'correct-password');
+    expect(result.issuer).toBe('My Company Ltd');
+    expect(result.otpauthUrl).toContain(encodeURIComponent('My Company Ltd'));
   });
 
   it('enableTwoFactor returns recovery codes after a valid TOTP', async () => {
@@ -390,6 +411,43 @@ describe('AuthService two-factor authentication', () => {
       expect.objectContaining({
         data: expect.objectContaining({ twoFactorEnabled: false, twoFactorSecret: null }),
       }),
+    );
+  });
+
+  it('twoFactorStatus reports how many recovery codes remain', async () => {
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          twoFactorEnabled: true,
+          twoFactorSecret: 'secret',
+          twoFactorRecoveryCodes: ['a', 'b'],
+        }),
+      },
+    };
+    const { svc } = build2FaService({ prisma });
+    const status = await svc.twoFactorStatus('u1');
+    expect(status).toEqual({ enabled: true, secretConfigured: true, recoveryCodesRemaining: 2 });
+  });
+
+  it('regenerateRecoveryCodes swaps in 10 fresh codes after a valid TOTP', async () => {
+    const secret = generateSecret();
+    const prisma = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          ...mockUser,
+          twoFactorEnabled: true,
+          twoFactorSecret: secret,
+          twoFactorRecoveryCodes: ['stale'],
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+    const { svc } = build2FaService({ prisma });
+    const result = await svc.regenerateRecoveryCodes('u1', await generate({ secret }));
+    expect(result.recoveryCodes).toHaveLength(10);
+    const hashes = result.recoveryCodes.map((c: string) => createHash('sha256').update(c).digest('hex'));
+    expect(prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ twoFactorRecoveryCodes: hashes }) }),
     );
   });
 });

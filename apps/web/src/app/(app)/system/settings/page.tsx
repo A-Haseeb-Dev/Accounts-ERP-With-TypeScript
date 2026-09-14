@@ -60,6 +60,7 @@ export default function SettingsPage() {
         'numbering.template': form['numbering.template'] || undefined,
         'numbering.padding': form['numbering.padding'] || undefined,
         'audit.retention_days': form['audit.retention_days'] || undefined,
+        'mfa.issuer': form.mfaIssuer || undefined,
       },
     });
   };
@@ -265,6 +266,20 @@ export default function SettingsPage() {
                   max={365}
                   value={String(form['audit.retention_days'] ?? merged['audit.retention_days'] ?? '90')}
                   onChange={(e) => set('audit.retention_days', e.target.value)}
+                />
+              </Field>
+            </div>
+
+            <div>
+              <p className="mb-3 text-sm font-semibold text-slate-700">Security</p>
+              <Field
+                label="MFA Issuer"
+                hint="Shown as the account provider in your authenticator app (e.g. Google Authenticator). Applies the next time 2FA is set up."
+              >
+                <Input
+                  value={String(form.mfaIssuer ?? merged['mfa.issuer'] ?? '')}
+                  onChange={(e) => set('mfaIssuer', e.target.value)}
+                  placeholder="HasERP"
                 />
               </Field>
             </div>

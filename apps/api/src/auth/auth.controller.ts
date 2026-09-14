@@ -109,6 +109,17 @@ export class AuthController {
     return this.authService.disableTwoFactor(user.id as string, dto.token);
   }
 
+  @Post('two-factor/regenerate-recovery-codes')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Generate a fresh set of recovery codes after a TOTP code' })
+  async regenerateRecoveryCodes(
+    @Body() dto: TwoFactorEnableDto,
+    @CurrentUser() user: Record<string, unknown>,
+  ) {
+    return this.authService.regenerateRecoveryCodes(user.id as string, dto.token);
+  }
+
   @Get('two-factor/status')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get the current user two-factor status' })

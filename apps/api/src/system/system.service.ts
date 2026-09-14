@@ -43,6 +43,7 @@ const SETTING_KEYS = [
   'print.showPageNumbers',
   'audit.retention_days',
   'fiscal.locked_until',
+  'mfa.issuer',
 ];
 
 // Feature switches are stored in system_settings too, so backups/restores pick
@@ -160,6 +161,7 @@ export class SystemService {
     if (dto.invoiceHeaderAlign !== undefined) map['print.invoiceHeaderAlign'] = dto.invoiceHeaderAlign;
     if (dto.showPageNumbers !== undefined) map['print.showPageNumbers'] = dto.showPageNumbers;
     if (dto.auditRetentionDays !== undefined) map['audit.retention_days'] = dto.auditRetentionDays;
+    if (dto.mfaIssuer !== undefined) map['mfa.issuer'] = dto.mfaIssuer;
     if (dto.values) {
       // The free-form values map is only ever written for whitelisted keys, so a
       // client cannot inject arbitrary rows into system_settings.

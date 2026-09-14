@@ -430,10 +430,12 @@ export class AuthService {
       data: { twoFactorSecret: secret, twoFactorEnabled: false, twoFactorRecoveryCodes: undefined },
     });
 
-    const otpauthUrl = generateURI({ issuer: 'HasERP', label: user.username, secret });
+    const issuerSetting = await this.prisma.systemSetting.findFirst({ where: { key: 'mfa.issuer' } });
+    const issuer = issuerSetting?.value?.trim() || 'HasERP';
+    const otpauthUrl = generateURI({ issuer, label: user.username, secret });
     const qrDataUrl = await toQrDataURL(otpauthUrl, { width: 220, margin: 1 });
 
-    return { secret, otpauthUrl, qrDataUrl, username: user.username };
+    return { secret, otpauthUrl, qrDataUrl, username: user.username, issuer };
   }
 
   /** Confirms setup with a TOTP code, enables 2FA and issues recovery codes. */
@@ -476,6 +478,43 @@ export class AuthService {
     return { recoveryCodes };
   }
 
+  /** Generates a fresh set of recovery codes after a valid TOTP code. */
+  async regenerateRecoveryCodes(userId: string, token: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw ApiException.notFound('User');
+    }
+    if (!user.twoFactorEnabled || !user.twoFactorSecret) {
+      throw ApiException.conflict('Two-factor authentication is not enabled');
+    }
+
+    if (
+      !/^\d{6}$/.test(token) ||
+      !(await verifyOtp({ token, secret: user.twoFactorSecret, epochTolerance: 30 }).catch(() => ({ valid: false }))).valid
+    ) {
+      throw ApiException.unauthorized('Invalid verification code');
+    }
+
+    const recoveryCodes = Array.from({ length: 10 }, () => this.newRecoveryCode());
+    const hashes = recoveryCodes.map((c) => this.hashRecoveryCode(c));
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { twoFactorRecoveryCodes: hashes },
+    });
+
+    this.audit.record({
+      userId: user.id,
+      action: 'TWO_FACTOR_RECOVERY_CODES_REGENERATED',
+      module: 'AUTH',
+      entity: 'User',
+      entityId: user.id,
+      message: `Recovery codes regenerated for ${user.username}`,
+    });
+
+    return { recoveryCodes };
+  }
+
   /** Disables 2FA after a valid TOTP code. */
   async disableTwoFactor(userId: string, token: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -513,12 +552,17 @@ export class AuthService {
   async twoFactorStatus(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { twoFactorEnabled: true, twoFactorSecret: true },
+      select: { twoFactorEnabled: true, twoFactorSecret: true, twoFactorRecoveryCodes: true },
     });
     if (!user) {
       throw ApiException.notFound('User');
     }
-    return { enabled: user.twoFactorEnabled, secretConfigured: !!user.twoFactorSecret };
+    const codes = user.twoFactorRecoveryCodes as string[] | null;
+    return {
+      enabled: user.twoFactorEnabled,
+      secretConfigured: !!user.twoFactorSecret,
+      recoveryCodesRemaining: Array.isArray(codes) ? codes.length : 0,
+    };
   }
 
   /** Consumes a recovery code if it matches; returns true when one was used. */

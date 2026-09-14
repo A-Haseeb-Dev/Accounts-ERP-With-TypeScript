@@ -11,8 +11,8 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/context/auth-context';
 import { ShieldCheck, ShieldOff, Download, CheckCircle2 } from 'lucide-react';
 
-type Status = { enabled: boolean; secretConfigured: boolean };
-type SetupResult = { secret: string; otpauthUrl: string; qrDataUrl: string; username: string };
+type Status = { enabled: boolean; secretConfigured: boolean; recoveryCodesRemaining: number };
+type SetupResult = { secret: string; otpauthUrl: string; qrDataUrl: string; username: string; issuer: string };
 type EnableResult = { recoveryCodes: string[] };
 
 export default function SecurityPage() {
@@ -34,6 +34,8 @@ export default function SecurityPage() {
   const [disableCode, setDisableCode] = useState('');
   const [disableOpen, setDisableOpen] = useState(false);
   const [pendingCode, setPendingCode] = useState(false);
+  const [regenerateOpen, setRegenerateOpen] = useState(false);
+  const [regenerateCode, setRegenerateCode] = useState('');
 
   const startSetup = useMutation({
     mutationFn: () => apiFetch<SetupResult>('/auth/two-factor/setup', {
@@ -79,6 +81,22 @@ export default function SecurityPage() {
     onError: (e: Error) => setError(e.message),
   });
 
+  const regenerate = useMutation({
+    mutationFn: () => apiFetch<EnableResult>('/auth/two-factor/regenerate-recovery-codes', {
+      method: 'POST',
+      body: JSON.stringify({ token: regenerateCode.trim() }),
+      retryAuth: false,
+    }),
+    onSuccess: (res) => {
+      setError('');
+      setRegenerateOpen(false);
+      setRegenerateCode('');
+      setRecoveryCodes(res.recoveryCodes);
+      qc.invalidateQueries({ queryKey: ['two-factor', 'status'] });
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
   const downloadCodes = () => {
     if (!recoveryCodes) return;
     const blob = new Blob([recoveryCodes.join('\n')], { type: 'text/plain' });
@@ -118,7 +136,44 @@ export default function SecurityPage() {
                 <Button variant="outline" onClick={() => setDisableOpen((v) => !v)}>
                   <ShieldOff className="h-4 w-4" /> Disable two-factor
                 </Button>
+                <Button variant="outline" onClick={() => setRegenerateOpen((v) => !v)}>
+                  Regenerate recovery codes
+                </Button>
               </div>
+
+              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="text-sm text-slate-600">
+                  Recovery codes remaining:{' '}
+                  <span className="font-semibold text-slate-800">{status.recoveryCodesRemaining} / 10</span>
+                </div>
+                {status.recoveryCodesRemaining <= 3 && (
+                  <span className="rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                    {status.recoveryCodesRemaining === 0
+                      ? 'Depleted — sign-in is only possible with your authenticator app'
+                      : 'Getting low — generate a fresh set'}
+                  </span>
+                )}
+              </div>
+
+              {regenerateOpen && (
+                <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm leading-relaxed text-slate-600">
+                    This makes all current recovery codes stop working immediately. Enter an authenticator code to
+                    confirm, then save the new ones.
+                  </p>
+                  <Field label="Authenticator code" hint="Enter a code from your authenticator app to confirm.">
+                    <Input value={regenerateCode} onChange={(e) => setRegenerateCode(e.target.value)} placeholder="000000" inputMode="numeric" maxLength={6} />
+                  </Field>
+                  <Button
+                    variant="danger"
+                    loading={regenerate.isPending}
+                    onClick={() => regenerate.mutate()}
+                    disabled={regenerateCode.trim().length !== 6}
+                  >
+                    Generate new codes
+                  </Button>
+                </div>
+              )}
 
               {disableOpen && (
                 <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
@@ -161,7 +216,7 @@ export default function SecurityPage() {
                       <p className="font-semibold">Scan this QR code with your authenticator app</p>
                       <p>In Google Authenticator, tap the + button and scan it. The app will start generating 6-digit codes.</p>
                       <p className="break-all font-mono text-xs text-teal-700">Manual entry: <span className="font-semibold">{setup.secret}</span></p>
-                      <p className="text-xs">Account: <span className="font-semibold">{setup.username} @ HasERP</span></p>
+                      <p className="text-xs">Account: <span className="font-semibold">{setup.username} @ {setup.issuer ?? 'HasERP'}</span></p>
                     </div>
                   </div>
 

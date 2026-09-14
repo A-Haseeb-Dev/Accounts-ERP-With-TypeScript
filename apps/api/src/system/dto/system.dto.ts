@@ -237,6 +237,10 @@ export class UpdateSettingsDto {
     message: 'Audit retention must be a number of days between 30 and 365',
   })
   auditRetentionDays?: string;
+
+  @IsString()
+  @IsOptional()
+  mfaIssuer?: string;
 }
 
 export class ImportSettingsDto {
