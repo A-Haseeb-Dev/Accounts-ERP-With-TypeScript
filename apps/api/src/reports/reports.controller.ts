@@ -173,7 +173,8 @@ export class ReportsController {
         data = await this.accounting.generalLedger({ accountId: accountId ?? '', from, to, page: 1, pageSize: 100000 });
         ws.columns = [
           { header: 'Date', key: 'date', width: 14 }, { header: 'Voucher', key: 'voucherNumber', width: 14 },
-          { header: 'Description', key: 'description', width: 40 }, { header: 'Debit', key: 'debit', width: 14 },
+          { header: 'Code', key: 'mainCode', width: 12 }, { header: 'Description', key: 'description', width: 40 },
+          { header: 'Debit', key: 'debit', width: 14 },
           { header: 'Credit', key: 'credit', width: 14 }, { header: 'Balance', key: 'balance', width: 14 },
         ];
         data.rows.forEach((r) => ws.addRow({ ...r, date: new Date(r.date).toLocaleDateString() }));
