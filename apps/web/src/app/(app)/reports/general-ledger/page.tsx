@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import { ReportActions } from '@/components/report-actions';
 import { ReportPrintHeader } from '@/components/report-print-header';
 import { ColumnPicker, useReportColumns, type ColumnDef } from '@/components/report-columns';
+import { Badge } from '@/components/ui/badge';
 import { QueryError } from '@/components/query-error';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { money } from '@/lib/utils';
@@ -23,6 +24,7 @@ const COLUMNS: ColumnDef[] = [
   { key: 'debit', header: 'Debit' },
   { key: 'credit', header: 'Credit' },
   { key: 'balance', header: 'Balance' },
+  { key: 'balanceType', header: 'Type' },
 ];
 
 export default function GeneralLedgerPage() {
@@ -33,7 +35,7 @@ export default function GeneralLedgerPage() {
   const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
 
-  const { data, isLoading, isError, refetch } = useQuery<{ rows: LedgerRow[]; total: number; openingBalance: number; closingBalance: number; account?: MainAccount }>({
+  const { data, isLoading, isError, refetch } = useQuery<{ rows: LedgerRow[]; total: number; openingBalance: number; openingBalanceType: string; closingBalance: number; closingBalanceType?: 'DR' | 'CR' | null; account?: MainAccount }>({
     queryKey: ['general-ledger', accountId, from, to, page],
     queryFn: () => apiFetch('/reports/general-ledger' + qs({ accountId, from: from || undefined, to: to || undefined, page, pageSize: 30 })),
     enabled: !!accountId,
@@ -88,8 +90,8 @@ export default function GeneralLedgerPage() {
               </span>
             </div>
             <div className="flex flex-wrap justify-between gap-2 border-b border-slate-100 px-4 py-2 text-sm">
-              <span className="text-slate-600">Opening balance: <span className="font-semibold text-slate-800">{money(data?.openingBalance ?? 0, 'PKR')}</span></span>
-              <span className="text-slate-600">Closing balance: <span className="font-semibold text-slate-800">{money(data?.closingBalance ?? 0, 'PKR')}</span></span>
+              <span className="text-slate-600">Opening balance: <span className="font-semibold text-slate-800">{money(Math.abs(data?.openingBalance ?? 0), 'PKR')} <Badge tone={data?.openingBalanceType === 'CR' ? 'amber' : 'teal'}>{data?.openingBalanceType ?? 'DR'}</Badge></span></span>
+              <span className="text-slate-600">Closing balance: <span className="font-semibold text-slate-800">{money(Math.abs(data?.closingBalance ?? 0), 'PKR')} {data?.closingBalanceType && <Badge tone={data.closingBalanceType === 'CR' ? 'amber' : 'teal'}>{data.closingBalanceType}</Badge>}</span></span>
             </div>
             {isLoading ? (
               <TableSkeleton rows={6} columns={COLUMNS.length} />
@@ -111,7 +113,8 @@ export default function GeneralLedgerPage() {
                     {cols.isVisible('description') && <td className="max-w-[300px] truncate px-4 py-2 text-slate-600">{r.description ?? ''}</td>}
                     {cols.isVisible('debit') && <td className="px-4 py-2 text-right tabular-nums text-teal-600">{r.debit ? money(r.debit, 'PKR') : ''}</td>}
                     {cols.isVisible('credit') && <td className="px-4 py-2 text-right tabular-nums text-red-600">{r.credit ? money(r.credit, 'PKR') : ''}</td>}
-                    {cols.isVisible('balance') && <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(r.balance, 'PKR')}</td>}
+                    {cols.isVisible('balance') && <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(Math.abs(r.balance), 'PKR')}</td>}
+                    {cols.isVisible('balanceType') && <td className="px-4 py-2 text-right"><Badge tone={r.balanceType === 'CR' ? 'amber' : 'teal'}>{r.balanceType ?? ''}</Badge></td>}
                   </tr>
                 ))}
                 {(!data || data.rows.length === 0) && !isLoading && (

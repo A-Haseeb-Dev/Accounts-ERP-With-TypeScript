@@ -213,6 +213,7 @@ model MainAccount {
   subHeadId      String?
   openingBalance Decimal      @default(0) @db.Decimal(18, 2)
   openingBalanceType String    @default("DR") // DR | CR
+  openingDate    DateTime?
   status         String       @default("active")
   organizationId String       @default("default-org")
   createdAt      DateTime     @default(now())

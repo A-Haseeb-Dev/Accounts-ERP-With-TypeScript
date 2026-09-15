@@ -134,7 +134,8 @@ export default function MainAccountsPage() {
             { key: 'name', header: 'Name', render: (r) => <span className="font-medium text-slate-800">{r.name}</span> },
             { key: 'accountType', header: 'Type', render: (r) => <Badge tone={typeTone(r.accountType ?? '')}>{r.accountType ?? ''}</Badge> },
             { key: 'subHead', header: 'Sub Head', render: (r) => <span className="text-slate-500">{r.subHead?.name ?? '-'}</span> },
-            { key: 'openingBalance', header: 'Opening', align: 'right', render: (r) => <span className="text-slate-600">{num(r.openingBalance ?? 0)}</span> },
+            { key: 'openingBalance', header: 'Opening', align: 'right', render: (r) => <span className="text-slate-600">{num(r.openingBalance ?? 0)} <span className="text-[10px] font-medium uppercase text-slate-400">{r.openingBalanceType ?? 'DR'}</span></span> },
+            { key: 'openingDate', header: 'Opening Date', render: (r) => <span className="text-slate-500">{r.openingDate ? new Date(r.openingDate).toLocaleDateString('en-GB') : '-'}</span> },
             { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'updatedAt', header: 'Updated', render: (r) => <span className="text-xs text-slate-400">{dateTime(r.updatedAt)}</span> },
             {
@@ -190,7 +191,7 @@ export default function MainAccountsPage() {
               {ACCOUNT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </Select>
           </Field>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <Field label="Opening Balance" hint="Posted as an opening entry in the ledger.">
               <Input type="number" step="0.01" value={form.openingBalance ?? 0} onChange={(e) => set('openingBalance', e.target.value === '' ? 0 : Number(e.target.value))} />
             </Field>
@@ -199,6 +200,9 @@ export default function MainAccountsPage() {
                 <option value="DR">Debit (DR)</option>
                 <option value="CR">Credit (CR)</option>
               </Select>
+            </Field>
+            <Field label="Opening Date">
+              <Input type="date" value={form.openingDate ? String(form.openingDate).slice(0, 10) : ''} onChange={(e) => set('openingDate', e.target.value)} />
             </Field>
           </div>
           <Field label="Description">

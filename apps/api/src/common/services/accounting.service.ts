@@ -216,11 +216,13 @@ export class AccountingService {
    * is removed; when the amount or side changes the old voucher is cancelled
    * (preserved for audit) and replaced.
    */
-  async syncOpeningVoucher(accountId: string, actorId?: string): Promise<void> {
+  async syncOpeningVoucher(accountId: string, actorId?: string, openingDate?: Date | string | null): Promise<void> {
     const account = await this.prisma.mainAccount.findUnique({
       where: { id: accountId },
     });
     if (!account) throw ApiException.notFound('Main account');
+
+    const openingDay = openingDate ? new Date(openingDate) : account.createdAt;
 
     await this.prisma.$transaction(async (tx) => {
       const existing = await tx.voucher.findFirst({
@@ -245,8 +247,13 @@ export class AccountingService {
         return;
       }
 
+      const dateChanged =
+        existing && openingDay
+          ? existing.voucherDate.toDateString() !== openingDay.toDateString()
+          : false;
       const unchanged =
         existing?.status === 'posted' &&
+        !dateChanged &&
         existing.entries.some(
           (e) =>
             e.mainAccountId === accountId &&
@@ -264,7 +271,7 @@ export class AccountingService {
         tx,
         {
           voucherType: 'JOURNAL',
-          voucherDate: account.createdAt,
+          voucherDate: openingDay,
           description: `Opening balance - ${account.name} (${account.code})`,
           reference: `OB:${accountId}`,
           entries: isDr

@@ -244,11 +244,19 @@ export class PurchasesService {
   }
 
   async update(id: string, dto: CreatePurchaseDto, actorId?: string) {
-    const purchase = await this.prisma.purchase.findUnique({ where: { id } });
+    const purchase = await this.prisma.purchase.findUnique({
+      where: { id },
+      include: { items: true },
+    });
     if (!purchase) throw ApiException.notFound('Purchase');
-    if (purchase.status !== 'draft') {
+    if (purchase.status === 'cancelled') {
       throw ApiException.invalidTransaction(
-        `Only draft purchases can be edited. "${purchase.number}" is ${purchase.status}.`,
+        `"${purchase.number}" is cancelled and cannot be edited.`,
+      );
+    }
+    if (purchase.status === 'pending') {
+      throw ApiException.invalidTransaction(
+        'A pending purchase must be rejected before it can be edited.',
       );
     }
     await this.fiscal.assertOpen(dto.purchaseDate, 'Cannot update a purchase');
@@ -259,12 +267,17 @@ export class PurchasesService {
     if (!location) throw ApiException.notFound('Stock location');
 
     const quantities = this.computeTotals(dto.items, dto.discount ?? 0, dto.tax ?? 0);
+    const wasPosted = purchase.status === 'posted';
 
     const updated = await this.prisma.runInTransaction(async (tx) => {
+      if (wasPosted) {
+        await this.reversePostedEffects(tx, purchase, actorId, 'edited');
+      }
       await tx.purchaseItem.deleteMany({ where: { purchaseId: id } });
       return tx.purchase.update({
         where: { id },
         data: {
+          ...(wasPosted ? { status: 'draft' } : {}),
           purchaseDate: new Date(dto.purchaseDate),
           reference: dto.reference ?? null,
           note: dto.note ?? null,
@@ -296,22 +309,32 @@ export class PurchasesService {
       module: 'PURCHASE',
       entity: 'Purchase',
       entityId: id,
-      message: `Purchase ${purchase.number} updated`,
+      message: `Purchase ${purchase.number} updated${wasPosted ? ' and re-posted' : ''}`,
     });
+    if (wasPosted) {
+      return this.post(id, actorId);
+    }
     return updated;
   }
 
   async remove(id: string, actorId?: string) {
-    const purchase = await this.prisma.purchase.findUnique({ where: { id } });
+    const purchase = await this.prisma.purchase.findUnique({
+      where: { id },
+      include: { items: true },
+    });
     if (!purchase) throw ApiException.notFound('Purchase');
-    if (purchase.status !== 'draft') {
+    if (purchase.status === 'cancelled') {
       throw ApiException.invalidTransaction(
-        `Only draft purchases can be deleted. "${purchase.number}" is ${purchase.status}.`,
+        `"${purchase.number}" is cancelled and cannot be deleted.`,
       );
     }
     await this.fiscal.assertOpen(purchase.purchaseDate, 'Cannot delete a purchase');
 
+    const wasPosted = purchase.status === 'posted';
     await this.prisma.runInTransaction(async (tx) => {
+      if (wasPosted) {
+        await this.reversePostedEffects(tx, purchase, actorId, 'deleted');
+      }
       await tx.purchase.delete({ where: { id } });
     });
     this.audit.record({
@@ -320,9 +343,37 @@ export class PurchasesService {
       module: 'PURCHASE',
       entity: 'Purchase',
       entityId: id,
-      message: `Purchase ${purchase.number} deleted`,
+      message: `Purchase ${purchase.number} deleted${wasPosted ? ' (accounting reversed)' : ''}`,
     });
     return { id, deleted: true };
+  }
+
+  /**
+   * Reverses the stock and accounting effects of a posted purchase so it can be
+   * edited or permanently removed. Stock is removed back through a compensating
+   * transaction and the linked vouchers are cancelled (preserved for audit).
+   */
+  private async reversePostedEffects(tx: any, purchase: any, actorId?: string, reason = 'adjusted') {
+    for (const line of purchase.items) {
+      await this.inventory.recordOut(
+        tx,
+        {
+          itemId: line.itemId,
+          locationId: purchase.stockLocationId,
+          quantity: Number(line.quantity),
+          transactionType: 'PURCHASE_ADJUST',
+          referenceType: 'Purchase',
+          referenceId: purchase.id,
+          unitCost: Number(line.unitCost),
+          createdById: actorId,
+        },
+        { allowNegative: true },
+      );
+    }
+    const vouchers = await tx.voucher.findMany({ where: { reference: purchase.number } });
+    for (const v of vouchers) {
+      await this.accounting.cancelVoucher(tx, v.id, `Purchase ${purchase.number} ${reason}`, actorId);
+    }
   }
 
   async cancel(id: string, reason: string, actorId?: string) {
