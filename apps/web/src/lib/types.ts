@@ -492,6 +492,8 @@ export interface LedgerRow {
   id?: string;
   date?: string;
   voucherNumber?: string;
+  mainCode?: string;
+  mainAccount?: string;
   description?: string;
   debit?: number;
   credit?: number;

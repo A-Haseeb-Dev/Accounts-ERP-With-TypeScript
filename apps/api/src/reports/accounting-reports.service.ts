@@ -73,8 +73,11 @@ export class AccountingReportsService {
     const rows = entries.map((e) => {
       running += Number(e.debit) - Number(e.credit);
       return {
+        id: e.id,
         date: e.voucher.voucherDate,
         voucherNumber: e.voucher.number,
+        mainCode: account.code,
+        mainAccount: account.name,
         voucherType: e.voucher.voucherType,
         description: e.voucher.description,
         debit: Number(e.debit),

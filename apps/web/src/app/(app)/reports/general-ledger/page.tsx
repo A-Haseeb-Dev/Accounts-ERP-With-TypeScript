@@ -18,6 +18,7 @@ import type { LedgerRow, MainAccount } from '@/lib/types';
 const COLUMNS: ColumnDef[] = [
   { key: 'date', header: 'Date' },
   { key: 'voucher', header: 'Voucher' },
+  { key: 'mainCode', header: 'Code' },
   { key: 'description', header: 'Description / Narration' },
   { key: 'debit', header: 'Debit' },
   { key: 'credit', header: 'Credit' },
@@ -106,6 +107,7 @@ export default function GeneralLedgerPage() {
                   <tr key={r.id ?? i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                     {cols.isVisible('date') && <td className="px-4 py-2 text-slate-600">{r.date ? new Date(r.date).toLocaleDateString('en-GB') : '—'}</td>}
                     {cols.isVisible('voucher') && <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.voucherNumber ?? ''}</td>}
+                    {cols.isVisible('mainCode') && <td className="px-4 py-2 font-mono text-slate-600">{r.mainCode ?? ''}</td>}
                     {cols.isVisible('description') && <td className="max-w-[300px] truncate px-4 py-2 text-slate-600">{r.description ?? ''}</td>}
                     {cols.isVisible('debit') && <td className="px-4 py-2 text-right tabular-nums text-teal-600">{r.debit ? money(r.debit, 'PKR') : ''}</td>}
                     {cols.isVisible('credit') && <td className="px-4 py-2 text-right tabular-nums text-red-600">{r.credit ? money(r.credit, 'PKR') : ''}</td>}
