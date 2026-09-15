@@ -284,11 +284,19 @@ export class SalesService {
   }
 
   async update(id: string, dto: CreateSaleDto, actorId?: string) {
-    const sale = await this.prisma.sale.findUnique({ where: { id } });
+    const sale = await this.prisma.sale.findUnique({
+      where: { id },
+      include: { items: true },
+    });
     if (!sale) throw ApiException.notFound('Sales invoice');
-    if (sale.status !== 'draft') {
+    if (sale.status === 'cancelled') {
       throw ApiException.invalidTransaction(
-        `Only draft invoices can be edited. "${sale.number}" is ${sale.status}.`,
+        `"${sale.number}" is cancelled and cannot be edited.`,
+      );
+    }
+    if (sale.status === 'pending') {
+      throw ApiException.invalidTransaction(
+        'A pending invoice must be rejected before it can be edited.',
       );
     }
     await this.fiscal.assertOpen(dto.saleDate, 'Cannot update a sales invoice');
@@ -309,11 +317,17 @@ export class SalesService {
     const paymentStatus =
       amountPaid >= totals.grandTotal ? 'paid' : amountPaid > 0 ? 'partial' : 'unpaid';
 
+    const wasPosted = sale.status === 'posted';
+
     const updated = await this.prisma.runInTransaction(async (tx) => {
+      if (wasPosted) {
+        await this.reversePostedEffects(tx, sale, actorId, 'edited');
+      }
       await tx.saleItem.deleteMany({ where: { saleId: id } });
       return tx.sale.update({
         where: { id },
         data: {
+          ...(wasPosted ? { status: 'draft' } : {}),
           saleDate: new Date(dto.saleDate),
           reference: dto.reference ?? null,
           note: dto.note ?? null,
@@ -348,22 +362,32 @@ export class SalesService {
       module: 'SALE',
       entity: 'Sale',
       entityId: id,
-      message: `Sales invoice ${sale.number} updated`,
+      message: `Sales invoice ${sale.number} updated${wasPosted ? ' and re-posted' : ''}`,
     });
+    if (wasPosted) {
+      return this.post(id, actorId);
+    }
     return updated;
   }
 
   async remove(id: string, actorId?: string) {
-    const sale = await this.prisma.sale.findUnique({ where: { id } });
+    const sale = await this.prisma.sale.findUnique({
+      where: { id },
+      include: { items: true },
+    });
     if (!sale) throw ApiException.notFound('Sales invoice');
-    if (sale.status !== 'draft') {
+    if (sale.status === 'cancelled') {
       throw ApiException.invalidTransaction(
-        `Only draft invoices can be deleted. "${sale.number}" is ${sale.status}.`,
+        `"${sale.number}" is cancelled and cannot be deleted.`,
       );
     }
     await this.fiscal.assertOpen(sale.saleDate, 'Cannot delete a sales invoice');
 
+    const wasPosted = sale.status === 'posted';
     await this.prisma.runInTransaction(async (tx) => {
+      if (wasPosted) {
+        await this.reversePostedEffects(tx, sale, actorId, 'deleted');
+      }
       await tx.sale.delete({ where: { id } });
     });
     this.audit.record({
@@ -372,9 +396,33 @@ export class SalesService {
       module: 'SALE',
       entity: 'Sale',
       entityId: id,
-      message: `Sales invoice ${sale.number} deleted`,
+      message: `Sales invoice ${sale.number} deleted${wasPosted ? ' (accounting reversed)' : ''}`,
     });
     return { id, deleted: true };
+  }
+
+  /**
+   * Reverses the stock and accounting effects of a posted invoice so it can be
+   * edited or permanently removed. Stock is put back through a compensating
+   * transaction and the linked vouchers are cancelled (preserved for audit).
+   */
+  private async reversePostedEffects(tx: any, sale: any, actorId?: string, reason = 'adjusted') {
+    for (const line of sale.items) {
+      await this.inventory.recordIn(tx, {
+        itemId: line.itemId,
+        locationId: sale.stockLocationId,
+        quantity: Number(line.quantity),
+        transactionType: 'SALE_ADJUST',
+        referenceType: 'Sale',
+        referenceId: sale.id,
+        unitCost: Number(line.unitPrice),
+        createdById: actorId,
+      });
+    }
+    const vouchers = await tx.voucher.findMany({ where: { reference: sale.number } });
+    for (const v of vouchers) {
+      await this.accounting.cancelVoucher(tx, v.id, `Sales invoice ${sale.number} ${reason}`, actorId);
+    }
   }
 
   async cancel(id: string, reason: string, actorId?: string) {

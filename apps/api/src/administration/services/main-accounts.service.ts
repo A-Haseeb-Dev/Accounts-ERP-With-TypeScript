@@ -36,13 +36,14 @@ export class MainAccountsService {
         description: dto.description ?? null,
         openingBalance: dto.openingBalance ?? 0,
         openingBalanceType: dto.openingBalanceType ?? 'DR',
+        openingDate: dto.openingDate ? new Date(dto.openingDate) : null,
         status: dto.status ?? 'active',
       },
       include: { subHead: { include: { headAccount: true } } },
     });
 
     if (Number(dto.openingBalance ?? 0) !== 0) {
-      await this.accounting.syncOpeningVoucher(item.id, actorId);
+      await this.accounting.syncOpeningVoucher(item.id, actorId, item.openingDate);
     }
 
     this.audit.record({
@@ -112,12 +113,18 @@ export class MainAccountsService {
     }
 
     const data: Record<string, unknown> = { ...dto };
+    if (dto.openingDate !== undefined) data.openingDate = dto.openingDate ? new Date(dto.openingDate) : null;
+
     const openingChanged = dto.openingBalance !== undefined
       ? Number(dto.openingBalance) !== Number(current.openingBalance)
       : false;
     const typeChanged =
       dto.openingBalanceType !== undefined &&
       dto.openingBalanceType !== current.openingBalanceType;
+    const dateChanged =
+      dto.openingDate !== undefined &&
+      (dto.openingDate ? new Date(dto.openingDate).toDateString() : null) !==
+        (current.openingDate ? new Date(current.openingDate).toDateString() : null);
 
     const item = await this.prisma.mainAccount.update({ where: { id }, data });
     this.audit.record({
@@ -126,8 +133,8 @@ export class MainAccountsService {
     });
 
     const balanceAfter = Number(item.openingBalance ?? 0);
-    if (openingChanged || typeChanged || balanceAfter !== 0) {
-      await this.accounting.syncOpeningVoucher(id, actorId);
+    if (openingChanged || typeChanged || dateChanged || balanceAfter !== 0) {
+      await this.accounting.syncOpeningVoucher(id, actorId, item.openingDate);
     }
 
     return item;

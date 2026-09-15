@@ -72,6 +72,7 @@ export class AccountingReportsService {
     let running = openingBalance;
     const rows = entries.map((e) => {
       running += Number(e.debit) - Number(e.credit);
+      const bal = round2(running);
       return {
         id: e.id,
         date: e.voucher.voucherDate,
@@ -82,17 +83,22 @@ export class AccountingReportsService {
         description: e.voucher.description,
         debit: Number(e.debit),
         credit: Number(e.credit),
-        balance: round2(running),
+        balance: bal,
+        balanceType: bal > 0 ? 'DR' : bal < 0 ? 'CR' : null,
       };
     });
 
     const total = rows.length;
     const paginated = rows.slice((page - 1) * pageSize, page * pageSize);
+    const openingValue = round2(openingBalance);
+    const closingValue = round2(running);
 
     return {
       account,
-      openingBalance: round2(openingBalance),
-      closingBalance: round2(running),
+      openingBalance: openingValue,
+      openingBalanceType: openingValue > 0 ? 'DR' : openingValue < 0 ? 'CR' : (account.openingBalanceType ?? 'DR'),
+      closingBalance: closingValue,
+      closingBalanceType: closingValue > 0 ? 'DR' : closingValue < 0 ? 'CR' : null,
       total,
       page,
       pageSize,

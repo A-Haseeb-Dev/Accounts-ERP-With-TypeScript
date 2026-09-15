@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, MaxLength, IsEnum, IsNumber } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, MaxLength, IsEnum, IsNumber, IsDateString } from 'class-validator';
 
 export type Status = 'active' | 'inactive';
 
@@ -134,6 +134,10 @@ export class CreateMainAccountDto {
   @IsOptional()
   openingBalanceType?: 'DR' | 'CR';
 
+  @IsDateString()
+  @IsOptional()
+  openingDate?: string;
+
   @IsString()
   @IsOptional()
   @MaxLength(20)
@@ -171,6 +175,10 @@ export class UpdateMainAccountDto {
   @IsEnum(['DR', 'CR'])
   @IsOptional()
   openingBalanceType?: 'DR' | 'CR';
+
+  @IsDateString()
+  @IsOptional()
+  openingDate?: string;
 
   @IsString()
   @IsOptional()

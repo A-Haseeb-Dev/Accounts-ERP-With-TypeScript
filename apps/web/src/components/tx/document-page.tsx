@@ -293,16 +293,16 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
                       {canPost && (
                         <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post directly"><CheckCircle2 className="h-4 w-4" /></button>
                       )}
-                      {canUpdate && (
-                        <button onClick={() => startEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-amber-50 hover:text-amber-700" title="Edit"><Edit3 className="h-4 w-4" /></button>
-                      )}
-                      {canDelete && (
-                        <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>
-                      )}
                       {canCancel && (
                         <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
                       )}
                     </>
+                  )}
+                  {canUpdate && (r.status === 'draft' || r.status === 'posted') && (
+                    <button onClick={() => startEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-amber-50 hover:text-amber-700" title={r.status === 'posted' ? 'Edit (reverses and re-posts)' : 'Edit'}><Edit3 className="h-4 w-4" /></button>
+                  )}
+                  {canDelete && (r.status === 'draft' || r.status === 'posted') && (
+                    <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title={r.status === 'posted' ? 'Delete (reverses accounting)' : 'Delete'}><Trash2 className="h-4 w-4" /></button>
                   )}
                   {r.status === 'pending' && (
                     <>
@@ -504,8 +504,10 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
       <ConfirmDialog
         open={!!deleteTarget}
         danger
-        title="Delete draft"
-        message="This permanently removes the draft. Only unsent drafts can be deleted."
+        title={deleteTarget?.status === 'posted' ? `Delete posted ${config.newLabel?.toLowerCase() ?? 'invoice'}` : 'Delete draft'}
+        message={deleteTarget?.status === 'posted'
+          ? `Deletes ${deleteTarget?.number ?? 'this invoice'} and reverses its stock and accounting entries. This cannot be undone.`
+          : 'This permanently removes the draft. Only unsent invoices can be deleted.'}
         confirmLabel="Delete"
         loading={remove.isPending}
         onCancel={() => setDeleteTarget(null)}

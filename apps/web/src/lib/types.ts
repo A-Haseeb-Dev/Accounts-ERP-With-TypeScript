@@ -63,6 +63,7 @@ export interface MainAccount {
   subHeadId?: string;
   openingBalance?: number;
   openingBalanceType?: OpeningBalanceSide;
+  openingDate?: string;
   status: AccountStatus;
   createdAt: string;
   updatedAt: string;
@@ -498,6 +499,7 @@ export interface LedgerRow {
   debit?: number;
   credit?: number;
   balance: number;
+  balanceType?: 'DR' | 'CR' | null;
 }
 
 export interface ProductLedgerRow {
