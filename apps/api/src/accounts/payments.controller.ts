@@ -29,12 +29,14 @@ export class PaymentsController {
     @Query('paymentType') paymentType?: string,
     @Query('partyType') partyType?: string,
     @Query('partyId') partyId?: string,
+    @Query('method') method?: string,
+    @Query('chequeStatus') chequeStatus?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
     return this.service.findAll({
       page: Number(page), pageSize: Number(pageSize), search, status,
-      paymentType, partyType, partyId, from, to,
+      paymentType, partyType, partyId, method, chequeStatus, from, to,
     });
   }
 
@@ -71,5 +73,19 @@ export class PaymentsController {
   @ApiOperation({ summary: 'Cancel a pending payment entry' })
   cancel(@Param('id') id: string, @Body() dto: CancelPaymentDto, @CurrentUser() actor: any) {
     return this.service.cancel(id, dto.reason, actor?.id);
+  }
+
+  @Post(':id/deposit')
+  @Permissions('accounts.payments.post')
+  @ApiOperation({ summary: 'Clear a cheque in hand into the bank account' })
+  deposit(@Param('id') id: string, @CurrentUser() actor: any) {
+    return this.service.deposit(id, actor?.id);
+  }
+
+  @Post(':id/bounce')
+  @Permissions('accounts.payments.post')
+  @ApiOperation({ summary: 'Mark a cheque as bounced and reverse to the party' })
+  bounce(@Param('id') id: string, @Body() dto: CancelPaymentDto, @CurrentUser() actor: any) {
+    return this.service.bounce(id, dto.reason, actor?.id);
   }
 }

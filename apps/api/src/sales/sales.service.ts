@@ -43,6 +43,7 @@ export class SalesService {
     const amountPaid = Math.min(dto.amountPaid ?? 0, totals.grandTotal);
     const paymentStatus =
       amountPaid >= totals.grandTotal ? 'paid' : amountPaid > 0 ? 'partial' : 'unpaid';
+    const dueDate = resolveDueDate(dto, customer);
 
     const number = await this.numbering.next('sale', 'SI');
 
@@ -51,6 +52,7 @@ export class SalesService {
         data: {
           number,
           saleDate: new Date(dto.saleDate),
+          dueDate,
           reference: dto.reference ?? null,
           note: dto.note ?? null,
           customerId: dto.customerId,
@@ -316,6 +318,7 @@ export class SalesService {
     const amountPaid = Math.min(dto.amountPaid ?? 0, totals.grandTotal);
     const paymentStatus =
       amountPaid >= totals.grandTotal ? 'paid' : amountPaid > 0 ? 'partial' : 'unpaid';
+    const dueDate = resolveDueDate(dto, customer);
 
     const wasPosted = sale.status === 'posted';
 
@@ -329,6 +332,7 @@ export class SalesService {
         data: {
           ...(wasPosted ? { status: 'draft' } : {}),
           saleDate: new Date(dto.saleDate),
+          dueDate,
           reference: dto.reference ?? null,
           note: dto.note ?? null,
           customerId: dto.customerId,
@@ -517,6 +521,17 @@ export class SalesService {
     const grandTotal = round2(subtotal - discount + tax);
     return { subtotal, discount, tax, grandTotal };
   }
+}
+
+function resolveDueDate(
+  dto: { saleDate: Date; dueDate?: string },
+  customer: { creditDays?: number | null },
+): Date {
+  if (dto.dueDate) return new Date(dto.dueDate);
+  const days = customer.creditDays ?? 30;
+  const due = new Date(dto.saleDate);
+  due.setDate(due.getDate() + days);
+  return due;
 }
 
 function round2(n: number): number {

@@ -41,6 +41,7 @@ export const NAV_ITEMS: NavItem[] = [
     children: [
       { label: 'Chart of Accounts', href: '/administration/chart-of-accounts', icon: Network, permission: 'administration.head-accounts.view', feature: 'accounts' },
       { label: 'Main Accounts', href: '/administration/main-accounts', icon: Landmark, permission: 'administration.main-accounts.view', feature: 'accounts' },
+      { label: 'Bank Accounts', href: '/administration/banks', icon: Landmark, permission: 'administration.main-accounts.view', feature: 'accounts' },
       { label: 'Item Types', href: '/administration/item-types', icon: Boxes, permission: 'administration.item-types.view', feature: 'inventory' },
       { label: 'Brands', href: '/administration/brands', icon: Building2, permission: 'administration.brands.view', feature: 'inventory' },
       { label: 'Items', href: '/administration/items', icon: Package, permission: 'administration.items.view', feature: 'inventory' },
@@ -83,6 +84,7 @@ export const NAV_ITEMS: NavItem[] = [
     children: [
       { label: 'Vouchers', href: '/accounts/vouchers', icon: Receipt, permission: 'accounts.vouchers.view', feature: 'accounts' },
       { label: 'Receipts & Payments', href: '/accounts/payments', icon: Wallet, permission: 'accounts.payments.view', feature: 'accounts' },
+      { label: 'Cheques Register', href: '/accounts/cheques', icon: Receipt, permission: 'accounts.payments.view', feature: 'accounts' },
       { label: 'Cash Book', href: '/accounts/cash-book', icon: Wallet, permission: 'accounts.cashbook.view', feature: 'accounts' },
     ],
   },

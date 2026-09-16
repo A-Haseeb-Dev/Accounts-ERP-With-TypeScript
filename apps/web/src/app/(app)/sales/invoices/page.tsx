@@ -21,6 +21,7 @@ export default function SalesInvoicesPage() {
         itemLineField: 'unitPrice',
         locationOptions,
         showAmountPaid: true,
+        showDueDate: true,
         newLabel: 'Sale',
       }}
     />

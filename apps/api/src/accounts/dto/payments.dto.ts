@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsDateString,
   IsEnum,
   IsNotEmpty,
   IsNumber,
@@ -48,6 +49,14 @@ export class CreatePaymentDto {
   @IsOptional()
   @MaxLength(50)
   chequeNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  bankAccountId?: string;
+
+  @IsOptional()
+  @IsDateString({}, { message: 'Invalid cheque date' })
+  chequeDate?: string;
 
   @IsNumber()
   @IsNotEmpty({ message: 'Amount is required' })

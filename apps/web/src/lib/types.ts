@@ -7,6 +7,7 @@ export type DocStatus = 'draft' | 'pending' | 'posted' | 'cancelled';
 export type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 export type OpeningBalanceSide = 'DR' | 'CR';
 export type PaymentMethod = 'CASH' | 'CHEQUE' | 'BANK';
+export type ChequeStatus = 'PENDING' | 'IN_HAND' | 'CLEARED' | 'DEPOSITED' | 'BOUNCED';
 
 export type ItemTypeName =
   | 'ASSET'
@@ -108,6 +109,18 @@ export interface Voucher {
 
 // ---------- Receipts & Payments ----------
 
+export interface BankAccount {
+  id: string;
+  name: string;
+  accountTitle?: string;
+  accountNumber?: string;
+  mainAccountId?: string;
+  status: AccountStatus;
+  createdAt: string;
+  updatedAt: string;
+  mainAccount?: { id: string; code: string; name: string };
+}
+
 export interface PaymentAllocation {
   id?: string;
   paymentEntryId?: string;
@@ -126,6 +139,15 @@ export interface PaymentEntry {
   mainAccountId: string;
   method: PaymentMethod;
   chequeNumber?: string;
+  bankAccountId?: string;
+  chequeDate?: string;
+  chequeStatus?: ChequeStatus | null;
+  depositFailed?: boolean;
+  bouncedAt?: string;
+  bouncedById?: string;
+  bounceReason?: string;
+  depositedAt?: string;
+  depositedById?: string;
   amount: number;
   paymentDate: string;
   reference?: string;
@@ -136,6 +158,7 @@ export interface PaymentEntry {
   createdAt: string;
   updatedAt: string;
   mainAccount?: { id: string; code: string; name: string };
+  bankAccount?: BankAccount;
   allocations: PaymentAllocation[];
 }
 
@@ -144,6 +167,7 @@ export interface OpenInvoice {
   documentId: string;
   number: string;
   date: string;
+  dueDate?: string;
   total: number;
   paid: number;
   outstanding: number;
@@ -171,6 +195,7 @@ export interface Customer {
   mainAccountId?: string;
   openingBalance: number;
   creditLimit: number;
+  creditDays: number;
   description?: string;
   status: AccountStatus;
   createdAt: string;
@@ -321,6 +346,7 @@ export interface Sale {
   id: string;
   number: string;
   saleDate: string;
+  dueDate?: string;
   reference?: string;
   note?: string;
   customerId: string;

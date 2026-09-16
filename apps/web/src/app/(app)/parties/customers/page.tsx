@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Eye, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Eye, MessageCircle, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { parseDeleteGuard } from '@/lib/delete-guard';
 import { useFlatOptions } from '@/hooks/use-options';
@@ -16,7 +16,7 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
-import { dateTime, money } from '@/lib/utils';
+import { buildWhatsAppUrl, dateOnly, dateTime, isDueSoon, isOverdue, money } from '@/lib/utils';
 import { useAuth } from '@/context/auth-context';
 import type { Customer, Paginated } from '@/lib/types';
 
@@ -134,6 +134,17 @@ export default function CustomersPage() {
               key: 'actions', header: 'Actions',
               render: (r) => (
                 <div className="flex items-center gap-1">
+                  {r.phone && (
+                    <a
+                      href={buildWhatsAppUrl(r.phone, `Assalam-o-Alaikum ${r.name},`) ?? '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-lg p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600"
+                      title="WhatsApp"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </a>
+                  )}
                   <button onClick={() => { setDetail(r); setDetailTab('ledger'); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
                   {canUpdate && (
                     <button onClick={() => { setEditing(r); setForm(r); setError(''); setModalOpen(true); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-teal-700"><Pencil className="h-4 w-4" /></button>
@@ -186,21 +197,24 @@ export default function CustomersPage() {
                 {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </Select>
             </Field>
-            <Field label="Credit Limit">
-              <Input type="number" step="0.01" value={form.creditLimit ?? ''} onChange={(e) => set('creditLimit', e.target.value === '' ? undefined : Number(e.target.value))} />
+            <Field label="Credit Days" hint="Invoice due date defaults to this after the sale date.">
+              <Input type="number" step="1" min={0} value={form.creditDays ?? ''} onChange={(e) => set('creditDays', e.target.value === '' ? undefined : Number(e.target.value))} />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-4">
+            <Field label="Credit Limit">
+              <Input type="number" step="0.01" value={form.creditLimit ?? ''} onChange={(e) => set('creditLimit', e.target.value === '' ? undefined : Number(e.target.value))} />
+            </Field>
             <Field label="Opening Balance">
               <Input type="number" step="0.01" value={form.openingBalance ?? 0} onChange={(e) => set('openingBalance', e.target.value === '' ? 0 : Number(e.target.value))} />
             </Field>
-            <Field label="Status">
-              <Select value={form.status ?? 'active'} onChange={(e) => set('status', e.target.value)}>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </Select>
-            </Field>
           </div>
+          <Field label="Status">
+            <Select value={form.status ?? 'active'} onChange={(e) => set('status', e.target.value)}>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </Select>
+          </Field>
 
           {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
 
@@ -256,11 +270,20 @@ function CustomerDetail({
     enabled: !!customerId,
   });
 
-  const { data: sales } = useQuery<{ items: { id: string; number: string; saleDate: string; grandTotal: number; status: string }[] }>({
+  const { data: sales } = useQuery<{ items: { id: string; number: string; saleDate: string; dueDate?: string; grandTotal: number; status: string; outstanding: number }[] }>({
     queryKey: ['customer-sales', customerId],
     queryFn: () => apiFetch(`/customers/${customerId}/sales${qs({ pageSize: 20 })}`),
     enabled: !!customerId,
   });
+
+  const dueBadge = (s: { dueDate?: string; outstanding: number }) => {
+    if (s.outstanding <= 0) return <span className="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">Paid</span>;
+    if (s.dueDate && isOverdue(s.dueDate)) return <span className="inline-flex rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">Overdue · {dateOnly(s.dueDate)}</span>;
+    if (s.dueDate && isDueSoon(s.dueDate)) return <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">Due soon · {dateOnly(s.dueDate)}</span>;
+    return <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{s.dueDate ? dateOnly(s.dueDate) : 'No due date'}</span>;
+  };
+
+  const whatsAppUrl = customer?.phone ? buildWhatsAppUrl(customer.phone, `Assalam-o-Alaikum ${customer.name},`) : null;
 
   return (
     <Modal open={!!customer} onClose={onClose} title={`Customer: ${customer?.name ?? ''}`} size="lg">
@@ -271,6 +294,12 @@ function CustomerDetail({
             <LabelValue label="Phone" value={customer.phone || '-'} />
             <LabelValue label="Town" value={customer.town?.name ?? '-'} />
             <LabelValue label="Credit Limit" value={money(customer.creditLimit, 'PKR')} />
+            <LabelValue label="Credit Days" value={`${customer.creditDays ?? 30} days`} />
+            {whatsAppUrl && (
+              <a href={whatsAppUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100">
+                <MessageCircle className="h-4 w-4" /> WhatsApp
+              </a>
+            )}
           </div>
 
           <div className="mb-4 flex gap-1 border-b border-slate-200">
@@ -323,7 +352,9 @@ function CustomerDetail({
                   <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                     <th className="px-3 py-2">Invoice</th>
                     <th className="px-3 py-2">Date</th>
+                    <th className="px-3 py-2">Due</th>
                     <th className="px-3 py-2 text-right">Total</th>
+                    <th className="px-3 py-2 text-right">Outstanding</th>
                     <th className="px-3 py-2">Status</th>
                   </tr>
                 </thead>
@@ -332,7 +363,9 @@ function CustomerDetail({
                     <tr key={s.id} className="border-b border-slate-100">
                       <td className="px-3 py-2 font-mono text-slate-700">{s.number}</td>
                       <td className="px-3 py-2 text-slate-600">{new Date(s.saleDate).toLocaleDateString('en-GB')}</td>
+                      <td className="px-3 py-2">{dueBadge(s)}</td>
                       <td className="px-3 py-2 text-right text-slate-700">{money(s.grandTotal)}</td>
+                      <td className="px-3 py-2 text-right font-medium text-slate-800">{money(s.outstanding)}</td>
                       <td className="px-3 py-2"><StatusBadge status={s.status} /></td>
                     </tr>
                   ))}

@@ -85,3 +85,52 @@ export const amountInWords = (value: unknown): string => {
   out += paise > 0 ? ' and ' + integerToWords(paise) + ' Paisa Only' : ' Only';
   return (negative ? 'Minus ' : '') + out;
 };
+
+export const normalizePhone = (value?: string | null): string => {
+  if (!value) return '';
+  const digits = value.replace(/[^\d]/g, '').replace(/^0+/, '');
+  if (!digits) return '';
+  if (digits.length >= 12 && digits.startsWith('92')) return digits;
+  if (digits.length === 10 || digits.startsWith('3')) {
+    return '92' + digits.replace(/^0+/, '');
+  }
+  if (digits.length > 10) return digits;
+  return '92' + digits;
+};
+
+export const buildWhatsAppUrl = (
+  phone?: string | null,
+  text?: string,
+): string | null => {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return null;
+  return `https://wa.me/${normalized}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
+};
+
+export const isOverdue = (dueDate?: string, ref = new Date()): boolean => {
+  if (!dueDate) return false;
+  const due = new Date(dueDate);
+  if (Number.isNaN(due.getTime())) return false;
+  const today = new Date(ref);
+  today.setHours(0, 0, 0, 0);
+  return due < today;
+};
+
+export const isDueSoon = (dueDate?: string, withinDays = 7, ref = new Date()): boolean => {
+  if (!dueDate) return false;
+  const due = new Date(dueDate);
+  if (Number.isNaN(due.getTime())) return false;
+  const today = new Date(ref);
+  today.setHours(0, 0, 0, 0);
+  const horizon = new Date(today);
+  horizon.setDate(horizon.getDate() + withinDays);
+  horizon.setHours(23, 59, 59, 999);
+  return !isOverdue(dueDate, ref) && due <= horizon;
+};
+
+export const dateOnly = (value?: string | Date | null): string => {
+  if (!value) return '-';
+  const d = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+};

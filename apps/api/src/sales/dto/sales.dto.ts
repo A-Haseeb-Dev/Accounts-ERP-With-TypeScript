@@ -39,6 +39,10 @@ export class CreateSaleDto {
   @IsDateString({}, { message: 'Invalid sale date' })
   saleDate: Date;
 
+  @IsOptional()
+  @IsDateString({}, { message: 'Invalid due date' })
+  dueDate?: string;
+
   @IsString()
   @IsOptional()
   @MaxLength(100)

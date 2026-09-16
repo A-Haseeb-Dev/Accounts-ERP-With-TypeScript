@@ -34,6 +34,8 @@ export interface PaymentPayload {
   mainAccountId: string;
   method: PaymentMethod;
   chequeNumber?: string;
+  bankAccountId?: string;
+  chequeDate?: string;
   amount: number;
   paymentDate?: string;
   reference?: string;
@@ -46,6 +48,12 @@ export const createPayment = (payload: PaymentPayload) =>
 
 export const postPayment = (id: string) =>
   apiFetch<PaymentEntry>(`/payments/${id}/post`, { method: 'POST' });
+
+export const depositCheque = (id: string) =>
+  apiFetch<PaymentEntry>(`/payments/${id}/deposit`, { method: 'POST' });
+
+export const bounceCheque = (id: string, reason: string) =>
+  apiFetch<PaymentEntry>(`/payments/${id}/bounce`, { method: 'POST', body: JSON.stringify({ reason }) });
 
 export const cancelPayment = (id: string, reason: string) =>
   apiFetch<PaymentEntry>(`/payments/${id}/cancel`, { method: 'DELETE', body: JSON.stringify({ reason }) });
