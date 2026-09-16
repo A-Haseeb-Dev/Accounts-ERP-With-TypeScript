@@ -46,6 +46,7 @@ model Organization {
   salesReturns      SalesReturn[]
   inventoryTransactions InventoryTransaction[]
   paymentEntries  PaymentEntry[]
+  bankAccounts    BankAccount[]
   auditLogs         AuditLog[]
   systemSettings    SystemSetting[]
   brandingSettings  BrandingSetting[]
@@ -225,6 +226,7 @@ model MainAccount {
   customers      Customer[]
   suppliers      Supplier[]
   paymentEntries PaymentEntry[]
+  bankAccounts   BankAccount[]
 
   @@unique([code, organizationId])
   @@index([organizationId])
@@ -354,6 +356,7 @@ model Customer {
   mainAccountId  String?
   openingBalance Decimal  @default(0) @db.Decimal(18, 2)
   creditLimit    Decimal  @default(0) @db.Decimal(18, 2)
+  creditDays     Int      @default(30)
   description    String?
   status         String   @default("active")
   organizationId String   @default("default-org")
@@ -570,6 +573,7 @@ model Sale {
   id              String    @id @default(cuid())
   number          String    @unique
   saleDate        DateTime  @default(now())
+  dueDate         DateTime?
   reference       String?
   note            String?
   customerId      String
@@ -766,6 +770,9 @@ model PaymentEntry {
   mainAccountId  String   // cash / bank account receiving or disbursing
   method         String   @default("CASH") // CASH | CHEQUE | BANK
   chequeNumber   String?
+  bankAccountId  String?
+  chequeDate     DateTime? // maturity / clearing date for post-dated cheques
+  chequeStatus   String?  // PENDING | IN_HAND | DEPOSITED | BOUNCED
   amount         Decimal  @default(0) @db.Decimal(18, 2)
   paymentDate    DateTime @default(now())
   reference      String?
@@ -774,6 +781,11 @@ model PaymentEntry {
   voucherId      String?
   postedById     String?
   postedAt       DateTime?
+  depositedById  String?
+  depositedAt    DateTime?
+  bouncedById    String?
+  bouncedAt      DateTime?
+  bounceReason   String?
   rejectedById   String?
   rejectedAt     DateTime?
   rejectReason   String?
@@ -787,6 +799,7 @@ model PaymentEntry {
 
   organization Organization?   @relation(fields: [organizationId], references: [id])
   mainAccount  MainAccount     @relation(fields: [mainAccountId], references: [id])
+  bankAccount  BankAccount?    @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
   allocations  PaymentAllocation[]
 
   @@unique([number, organizationId])
@@ -794,6 +807,26 @@ model PaymentEntry {
   @@index([partyId])
   @@index([status])
   @@index([mainAccountId])
+  @@index([bankAccountId])
+  @@index([chequeStatus])
+}
+
+model BankAccount {
+  id             String   @id @default(cuid())
+  name           String
+  accountTitle   String?
+  accountNumber  String?
+  mainAccountId  String?  // linked bank main account used when cheques clear
+  status         String   @default("active")
+  organizationId String   @default("default-org")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  mainAccount    MainAccount?  @relation(fields: [mainAccountId], references: [id], onDelete: SetNull)
+  paymentEntries PaymentEntry[]
+
+  @@unique([name, organizationId])
 }
 
 model PaymentAllocation {

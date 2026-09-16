@@ -40,6 +40,7 @@ export class CustomersService {
         mainAccountId: accountId ?? null,
         openingBalance: dto.openingBalance ?? 0,
         creditLimit: dto.creditLimit ?? 0,
+        creditDays: dto.creditDays ?? 30,
         description: dto.description ?? null,
         status: dto.status ?? 'active',
       },
@@ -135,12 +136,28 @@ export class CustomersService {
     const where = { customerId: id };
     const [items, total] = await Promise.all([
       this.prisma.sale.findMany({
-        where, include: { items: { include: { item: true } } }, orderBy: { saleDate: 'desc' },
-        skip: (page - 1) * pageSize, take: pageSize,
+        where,
+        include: {
+          items: { include: { item: true } },
+          salesReturns: { where: { status: 'posted' }, select: { grandTotal: true } },
+        },
+        orderBy: { saleDate: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
       }),
       this.prisma.sale.count({ where }),
     ]);
-    return { items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+    const enriched = items.map((s) => {
+      const returned = s.salesReturns.reduce((x, r) => x + Number(r.grandTotal), 0);
+      return {
+        ...s,
+        salesReturns: undefined,
+        outstanding: round2(
+          Math.max(0, Number(s.grandTotal) - Number(s.amountPaid) - returned),
+        ),
+      };
+    });
+    return { items: enriched, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
   }
 
   async findReturnsHistory(id: string, query: { page?: number; pageSize?: number }) {
@@ -231,4 +248,8 @@ export class CustomersService {
     });
     return { id, deleted: true };
   }
+}
+
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
 }

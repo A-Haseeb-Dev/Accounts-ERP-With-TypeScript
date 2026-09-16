@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Edit3, Eye, Plus, Printer, Search, Send, ShieldCheck, ShieldX, Trash2, XCircle } from 'lucide-react';
+import { CheckCircle2, Edit3, Eye, MessageCircle, Plus, Printer, Search, Send, ShieldCheck, ShieldX, Trash2, XCircle } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { useItemOptions } from '@/hooks/use-options';
 import { ItemsEditor, type LineItem } from '@/components/tx/items-editor';
@@ -15,7 +15,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
-import { dateTime, money } from '@/lib/utils';
+import { buildWhatsAppUrl, dateTime, isDueSoon, isOverdue, money } from '@/lib/utils';
 import { toast } from 'sonner';
 import { printElement } from '@/lib/report-export';
 import { useAuth } from '@/context/auth-context';
@@ -34,6 +34,7 @@ export interface DocumentConfig {
   priceKey: 'unitCost' | 'unitPrice';
   locationOptions: Option[];
   showAmountPaid?: boolean;
+  showDueDate?: boolean;
   itemLineField: string;
   newLabel?: string;
 }
@@ -41,7 +42,7 @@ export interface DocumentConfig {
 export function DocumentPage({ config }: { config: DocumentConfig }) {
   const {
     resource, title, description, dateField, partyLabel, partyParam,
-    partyOptions, priceKey, locationOptions, showAmountPaid,
+    partyOptions, priceKey, locationOptions, showAmountPaid, showDueDate,
   } = config;
 
   const qc = useQueryClient();
@@ -150,6 +151,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
     }));
     const payload = {
       [dateField]: form[dateField],
+      ...(showDueDate ? { dueDate: form.dueDate ? String(form.dueDate) : undefined } : {}),
       reference: form.reference,
       note: form.note,
       [partyParam]: form[partyParam],
@@ -189,6 +191,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
     }));
     setForm({
       [dateField]: String(record[dateField] ?? new Date().toISOString().slice(0, 10)).slice(0, 10),
+      ...(showDueDate ? { dueDate: record.dueDate ? String(record.dueDate).slice(0, 10) : '' } : {}),
       reference: record.reference ?? '',
       note: record.note ?? '',
       [partyField]: record[partyParam] ?? record.supplier?.id ?? record.customer?.id ?? '',
@@ -231,6 +234,16 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
   const partyField = partyParam;
   const canSubmit = lines.length > 0 && !!form[partyField] && !!form.stockLocationId;
 
+  const dueBadge = (r: TransactionDoc) => {
+    if (!showDueDate) return null;
+    const due = String(r.dueDate ?? '');
+    const paid = Number(r.amountPaid ?? 0);
+    if (paid >= Number(r.grandTotal)) return <span className="text-emerald-600">Paid</span>;
+    if (due && isOverdue(due)) return <span className="font-medium text-red-600">{new Date(due).toLocaleDateString('en-GB')}</span>;
+    if (due && isDueSoon(due)) return <span className="font-medium text-amber-600">{new Date(due).toLocaleDateString('en-GB')}</span>;
+    return due ? <span className="text-slate-600">{new Date(due).toLocaleDateString('en-GB')}</span> : <span className="text-slate-400">-</span>;
+  };
+
   return (
     <div>
       <PageHeader
@@ -241,7 +254,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
             <Button
               onClick={() => {
                 setEditId(null);
-                setForm({ [dateField]: new Date().toISOString().slice(0, 10), [partyField]: '', stockLocationId: '' });
+                setForm({ [dateField]: new Date().toISOString().slice(0, 10), [partyField]: '', stockLocationId: '', ...(showDueDate ? { dueDate: '' } : {}) });
                 setLines([]);
                 setError('');
                 setModalOpen(true);
@@ -278,6 +291,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
             } },
             { key: 'grandTotal', header: 'Total', align: 'right', render: (r) => <span className="font-medium text-slate-800">{money(r.grandTotal, 'PKR')}</span> },
             ...(showAmountPaid ? [{ key: 'amountPaid', header: 'Paid', align: 'right' as const, render: (r: TransactionDoc) => <span className="text-slate-500">{money(r.amountPaid ?? 0, 'PKR')}</span> }] : []),
+            ...(showDueDate ? [{ key: 'dueDate', header: 'Due', render: (r: TransactionDoc) => dueBadge(r) }] : []),
             { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'createdAt', header: 'Created', render: (r) => <span className="text-xs text-slate-400">{dateTime(r.createdAt)}</span> },
             {
@@ -340,10 +354,15 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
             <div className="min-w-0 space-y-5">
               <Section label={`${partyLabel === 'Supplier' ? 'Purchase' : 'Sales'} Details`}>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Field label={`${dateField === 'returnDate' ? 'Return' : title.replace(/s$/,'')} Date`} required>
                     <Input type="date" value={String(form[dateField] ?? '')} onChange={(e) => setForm((f) => ({ ...f, [dateField]: e.target.value }))} required />
                   </Field>
+                  {showDueDate && (
+                    <Field label="Due Date" hint="Leave blank to auto-set from the customer's credit days.">
+                      <Input type="date" value={String(form.dueDate ?? '')} onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))} />
+                    </Field>
+                  )}
                   <Field label={partyLabel === 'Supplier' ? 'Bill #' : 'Invoice #'}>
                     <Input value={nextNumber ?? ''} disabled className="font-mono" title="Auto-generated on save" />
                   </Field>
@@ -460,6 +479,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
         dateField={dateField}
         partyLabel={partyLabel}
         showAmountPaid={!!showAmountPaid}
+        showDueDate={!!showDueDate}
         docType={docType}
         canPrint={canPrint}
         printRequested={printRequested}
@@ -526,6 +546,7 @@ function DocumentDetailModal({
   dateField,
   partyLabel,
   showAmountPaid,
+  showDueDate,
   docType,
   canPrint,
   printRequested,
@@ -540,6 +561,7 @@ function DocumentDetailModal({
   dateField: string;
   partyLabel: string;
   showAmountPaid: boolean;
+  showDueDate: boolean;
   docType?: string;
   canPrint: boolean;
   printRequested?: boolean;
@@ -553,6 +575,15 @@ function DocumentDetailModal({
     queryFn: () => apiFetch('/system/audit-logs' + qs({ page: 1, pageSize: 10, entityId: detail?.id })),
     enabled: !!open && !!detail?.id,
   });
+  const party = detail?.supplier ?? detail?.customer ?? detail?.party ?? null;
+  const partyPhone = party?.phone ?? '';
+  const dueText = detail?.dueDate ? new Date(String(detail.dueDate)).toLocaleDateString('en-GB') : '';
+  const whatsAppUrl = showDueDate && canPrint && partyPhone
+    ? buildWhatsAppUrl(
+        partyPhone,
+        `Assalam-o-Alaikum ${party?.name ?? ''},\nYour ${partyLabel === 'Supplier' ? 'bill' : 'invoice'} ${detail?.number ?? ''} of ${money(detail?.grandTotal ?? 0, 'PKR')}${dueText ? ` is due on ${dueText}` : ''}.\nThank you!`,
+      )
+    : null;
   const printTitle = partyLabel === 'Supplier' ? 'Purchase Bill' : 'Sales Invoice';
   const isCancelled = detail?.status === 'cancelled';
 
@@ -581,11 +612,23 @@ function DocumentDetailModal({
             <div className="mb-4 flex items-center justify-between gap-3">
               <div className="grid flex-1 grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                 <Facts label="Date" value={new Date(String(detail[dateField])).toLocaleDateString('en-GB')} />
+                {showDueDate && <Facts label="Due date" value={dueText || '-'} />}
                 <Facts label={partyLabel} value={detail.supplier?.name ?? detail.customer?.name ?? '-'} />
                 <Facts label="Location" value={detail.stockLocation?.name ?? detail.location?.name ?? '-'} />
                 <Facts label="Status" value={detail.status.toUpperCase()} />
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {whatsAppUrl && (
+                  <a
+                    href={whatsAppUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100"
+                    title="Share on WhatsApp"
+                  >
+                    <MessageCircle className="h-4 w-4" /> WhatsApp
+                  </a>
+                )}
                 {canPrint && (
                   <Button variant="outline" size="md" onClick={() => setPreviewOpen(true)}>
                     <Eye className="h-4 w-4" /> Preview

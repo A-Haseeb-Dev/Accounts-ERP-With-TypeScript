@@ -48,6 +48,23 @@ export class PaymentsService {
         : await this.prisma.supplier.findUnique({ where: { id: dto.partyId } });
     if (!party) throw ApiException.notFound(dto.partyType === 'CUSTOMER' ? 'Customer' : 'Supplier');
 
+    const method = (dto.method ?? 'CASH').toUpperCase();
+    if (method === 'CHEQUE' && !dto.chequeNumber?.trim()) {
+      throw ApiException.validation('Cheque number is required for cheque payments');
+    }
+    let bankAccountId: string | undefined;
+    if (method === 'CHEQUE') {
+      if (!dto.bankAccountId) {
+        throw ApiException.validation('Select the bank account for the cheque');
+      }
+      const bank = await this.prisma.bankAccount.findUnique({
+        where: { id: dto.bankAccountId },
+      });
+      if (!bank) throw ApiException.notFound('Bank account');
+      bankAccountId = bank.id;
+    }
+    const chequeDate = dto.chequeDate ? new Date(dto.chequeDate) : null;
+
     const allocations = (dto.allocations ?? []).filter(
       (a) => Number(a.allocatedAmount ?? 0) > 0,
     );
@@ -119,8 +136,11 @@ export class PaymentsService {
           partyId: dto.partyId,
           partyName: party.name,
           mainAccountId: dto.mainAccountId,
-          method: (dto.method ?? 'CASH').toUpperCase(),
+          method,
           chequeNumber: dto.chequeNumber ?? null,
+          bankAccountId: bankAccountId ?? null,
+          chequeDate,
+          chequeStatus: method === 'CHEQUE' && chequeDate ? 'PENDING' : null,
           amount: usable,
           paymentDate: new Date(dto.paymentDate ?? new Date()),
           reference: dto.reference ?? null,
@@ -135,7 +155,7 @@ export class PaymentsService {
             })),
           },
         },
-        include: { allocations: true, mainAccount: true },
+        include: { allocations: true, mainAccount: true, bankAccount: true },
       });
 
       this.audit.record({
@@ -166,26 +186,35 @@ export class PaymentsService {
     }
     await this.fiscal.assertOpen(entry.paymentDate, 'Cannot post a payment entry');
 
-    const partyAccount =
-      entry.partyType === 'CUSTOMER'
-        ? (
-            await this.prisma.customer.findUnique({
-              where: { id: entry.partyId },
-              select: { mainAccountId: true },
-            })
-          )?.mainAccountId ??
-          (await this.defaultAccounts.resolveAccount('accounting.receivable_account', 'Accounts Receivable'))
-        : (
-            await this.prisma.supplier.findUnique({
-              where: { id: entry.partyId },
-              select: { mainAccountId: true },
-            })
-          )?.mainAccountId ??
-          (await this.defaultAccounts.resolveAccount('accounting.payable_account', 'Accounts Payable'));
+    const partyAccount = await this.resolvePartyAccount(entry);
 
     if (!partyAccount) {
       throw ApiException.invalidTransaction(
         'Party is not linked to an account and the control account is not configured',
+      );
+    }
+
+    // Post-dated cheques received stay in hand until they mature: book them
+    // against "Cheque in Hand" instead of the bank account.
+    const isPdc = entry.method === 'CHEQUE' && !!entry.chequeDate;
+    let postAccount: string;
+    if (isPdc) {
+      const chequeInHand = await this.defaultAccounts.resolveAccount(
+        'accounting.cheque_in_hand_account',
+        'Cheque in Hand',
+      );
+      if (!chequeInHand) {
+        throw ApiException.invalidTransaction(
+          'The "Cheque in Hand" account is not configured. Add it to the chart of accounts or set accounting.cheque_in_hand_account.',
+        );
+      }
+      postAccount = chequeInHand;
+    } else {
+      postAccount = entry.mainAccountId ?? '';
+    }
+    if (!postAccount) {
+      throw ApiException.invalidTransaction(
+        'Select the account for this payment entry (e.g. the bank or cash account).',
       );
     }
 
@@ -199,7 +228,7 @@ export class PaymentsService {
       const voucherEntries: VoucherEntryInput[] = isReceipt
         ? [
             {
-              mainAccountId: entry.mainAccountId,
+              mainAccountId: postAccount,
               debit: amount,
               narration: `${entry.partyName} - ${entry.number}`,
             },
@@ -216,7 +245,7 @@ export class PaymentsService {
               narration: `${entry.partyName} - ${entry.number}`,
             },
             {
-              mainAccountId: entry.mainAccountId,
+              mainAccountId: postAccount,
               credit: amount,
               narration: `${entry.partyName} - ${entry.number}`,
             },
@@ -270,6 +299,11 @@ export class PaymentsService {
           voucherId: voucher.id,
           postedById: actorId,
           postedAt: new Date(),
+          ...(isPdc
+            ? { mainAccountId: postAccount, chequeStatus: 'IN_HAND' }
+            : entry.method === 'CHEQUE'
+              ? { chequeStatus: 'CLEARED' }
+              : {}),
         },
         include: { allocations: true },
       });
@@ -284,6 +318,205 @@ export class PaymentsService {
       });
 
       return updated;
+    });
+    return result;
+  }
+
+  async deposit(id: string, actorId?: string) {
+    const entry = await this.prisma.paymentEntry.findUnique({ where: { id } });
+    if (!entry) throw ApiException.notFound('Payment entry');
+    if (entry.method !== 'CHEQUE') {
+      throw ApiException.invalidTransaction('Only cheque entries can be cleared');
+    }
+    if (entry.status !== 'posted') {
+      throw ApiException.invalidTransaction('Post the entry before clearing the cheque');
+    }
+    if (entry.chequeStatus === 'DEPOSITED') return entry;
+    if (entry.chequeStatus === 'BOUNCED') {
+      throw ApiException.invalidTransaction('A bounced cheque cannot be deposited');
+    }
+    if (!entry.bankAccountId) {
+      throw ApiException.invalidTransaction('Select the bank account for clearing');
+    }
+    const bank = await this.prisma.bankAccount.findUnique({
+      where: { id: entry.bankAccountId },
+      include: { mainAccount: true },
+    });
+    if (!bank?.mainAccountId) {
+      throw ApiException.invalidTransaction(
+        'The bank account is not linked to a GL account. Link it then clear the cheque.',
+      );
+    }
+    const bankMainAccountId = bank.mainAccountId;
+    await this.fiscal.assertOpen(entry.paymentDate, 'Cannot clear a cheque');
+
+    const chequeInHand = await this.defaultAccounts.resolveAccount(
+      'accounting.cheque_in_hand_account',
+      'Cheque in Hand',
+    );
+    if (!chequeInHand) {
+      throw ApiException.invalidTransaction(
+        'The "Cheque in Hand" account is not configured.',
+      );
+    }
+
+    const amount = Number(entry.amount);
+    const result = await this.prisma.runInTransaction(async (tx) => {
+      const voucher = await this.accounting.createVoucher(
+        tx,
+        {
+          voucherType: 'DEBIT' as any,
+          voucherDate: new Date(),
+          description: `Cheque cleared ${entry.number} - ${entry.partyName}`,
+          reference: entry.number,
+          entries: [
+            {
+              mainAccountId: bankMainAccountId,
+              debit: amount,
+              narration: `Bank ${bank.name} - ${entry.number}`,
+            },
+            {
+              mainAccountId: chequeInHand,
+              credit: amount,
+              narration: `Cheque cleared - ${entry.number}`,
+            },
+          ],
+          createdById: actorId,
+        },
+        await this.numbering.next('voucher_receipt', 'RV', tx),
+      );
+      await this.accounting.postVoucher(tx, voucher.id, actorId);
+
+      return tx.paymentEntry.update({
+        where: { id },
+        data: {
+          chequeStatus: 'DEPOSITED',
+          depositedById: actorId,
+          depositedAt: new Date(),
+        },
+        include: { allocations: true },
+      });
+    });
+
+    this.audit.record({
+      userId: actorId,
+      action: 'DEPOSIT',
+      module: 'PAYMENT',
+      entity: 'PaymentEntry',
+      entityId: id,
+      message: `Cheque ${entry.number} cleared into ${bank.name}`,
+    });
+    return result;
+  }
+
+  async bounce(id: string, reason: string, actorId?: string) {
+    const entry = await this.prisma.paymentEntry.findUnique({
+      where: { id },
+      include: { allocations: true },
+    });
+    if (!entry) throw ApiException.notFound('Payment entry');
+    if (entry.method !== 'CHEQUE') {
+      throw ApiException.invalidTransaction('Only cheque entries can be bounced');
+    }
+    if (entry.chequeStatus !== 'IN_HAND') {
+      throw ApiException.invalidTransaction(
+        'Only cheques currently in hand can be bounced',
+      );
+    }
+    await this.fiscal.assertOpen(entry.paymentDate, 'Cannot bounce a cheque');
+
+    const partyAccount = await this.resolvePartyAccount(entry);
+    if (!partyAccount) {
+      throw ApiException.invalidTransaction(
+        'Party is not linked to an account and the control account is not configured',
+      );
+    }
+    const chequeInHand = await this.defaultAccounts.resolveAccount(
+      'accounting.cheque_in_hand_account',
+      'Cheque in Hand',
+    );
+    if (!chequeInHand) {
+      throw ApiException.invalidTransaction(
+        'The "Cheque in Hand" account is not configured.',
+      );
+    }
+
+    const amount = Number(entry.amount);
+    const result = await this.prisma.runInTransaction(async (tx) => {
+      const voucher = await this.accounting.createVoucher(
+        tx,
+        {
+          voucherType: 'DEBIT' as any,
+          voucherDate: new Date(),
+          description: `Cheque bounced ${entry.number} - ${entry.partyName}`,
+          reference: entry.number,
+          entries: [
+            {
+              mainAccountId: partyAccount,
+              debit: amount,
+              narration: `Cheque bounced - ${entry.number}`,
+            },
+            {
+              mainAccountId: chequeInHand,
+              credit: amount,
+              narration: `Bounce ${entry.number} - ${entry.partyName}`,
+            },
+          ],
+          createdById: actorId,
+        },
+        await this.numbering.next('voucher_receipt', 'RV', tx),
+      );
+      await this.accounting.postVoucher(tx, voucher.id, actorId);
+
+      for (const a of entry.allocations) {
+        const amt = Number(a.allocatedAmount);
+        if (a.documentType === 'SALE') {
+          const sale = await tx.sale.findUnique({ where: { id: a.documentId } });
+          if (sale) {
+            const paid = round2(Math.max(0, Number(sale.amountPaid) - amt));
+            const paymentStatus =
+              paid >= Number(sale.grandTotal) ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+            await tx.sale.update({
+              where: { id: sale.id },
+              data: { amountPaid: paid, paymentStatus },
+            });
+          }
+        } else if (a.documentType === 'PURCHASE') {
+          const purchase = await tx.purchase.findUnique({ where: { id: a.documentId } });
+          if (purchase) {
+            const paid = round2(Math.max(0, Number(purchase.paidAmount) - amt));
+            const payStatus =
+              paid >= Number(purchase.grandTotal) ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+            await tx.purchase.update({
+              where: { id: purchase.id },
+              data: { paidAmount: paid, payStatus },
+            });
+          }
+        }
+      }
+
+      await tx.paymentAllocation.deleteMany({ where: { paymentEntryId: id } });
+
+      return tx.paymentEntry.update({
+        where: { id },
+        data: {
+          chequeStatus: 'BOUNCED',
+          bouncedById: actorId,
+          bouncedAt: new Date(),
+          bounceReason: reason ?? null,
+        },
+        include: { allocations: true },
+      });
+    });
+
+    this.audit.record({
+      userId: actorId,
+      action: 'BOUNCE',
+      module: 'PAYMENT',
+      entity: 'PaymentEntry',
+      entityId: id,
+      message: `Cheque ${entry.number} bounced - ${entry.partyName}`,
+      metadata: { reason },
     });
     return result;
   }
@@ -328,10 +561,12 @@ export class PaymentsService {
     paymentType?: string;
     partyType?: string;
     partyId?: string;
+    method?: string;
+    chequeStatus?: string;
     from?: string;
     to?: string;
   }) {
-    const { page = 1, pageSize = 25, search, status, paymentType, partyType, partyId, from, to } = query;
+    const { page = 1, pageSize = 25, search, status, paymentType, partyType, partyId, method, chequeStatus, from, to } = query;
     const where: Record<string, unknown> = {};
     if (search) {
       where.OR = [
@@ -344,6 +579,8 @@ export class PaymentsService {
     if (paymentType) where.paymentType = paymentType;
     if (partyType) where.partyType = partyType;
     if (partyId) where.partyId = partyId;
+    if (method) where.method = method;
+    if (chequeStatus) where.chequeStatus = chequeStatus;
     if (from || to) {
       where.paymentDate = {
         ...(from ? { gte: new Date(from) } : {}),
@@ -354,7 +591,7 @@ export class PaymentsService {
     const [items, total] = await Promise.all([
       this.prisma.paymentEntry.findMany({
         where,
-        include: { mainAccount: true, allocations: true },
+        include: { mainAccount: true, allocations: true, bankAccount: true },
         orderBy: { paymentDate: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -367,7 +604,7 @@ export class PaymentsService {
   async findOne(id: string) {
     const entry = await this.prisma.paymentEntry.findUnique({
       where: { id },
-      include: { mainAccount: true, allocations: true },
+      include: { mainAccount: true, allocations: true, bankAccount: true },
     });
     if (!entry) throw ApiException.notFound('Payment entry');
     return entry;
@@ -393,6 +630,7 @@ export class PaymentsService {
             documentId: s.id,
             number: s.number,
             date: s.saleDate,
+            dueDate: s.dueDate,
             customerName: null,
             total: Number(s.grandTotal),
             paid: Number(s.amountPaid),
@@ -427,6 +665,24 @@ export class PaymentsService {
         };
       })
       .filter((x) => x.outstanding > 0);
+  }
+
+  private async resolvePartyAccount(entry: { partyType: string; partyId: string }) {
+    return entry.partyType === 'CUSTOMER'
+      ? (
+          await this.prisma.customer.findUnique({
+            where: { id: entry.partyId },
+            select: { mainAccountId: true },
+          })
+        )?.mainAccountId ??
+          (await this.defaultAccounts.resolveAccount('accounting.receivable_account', 'Accounts Receivable'))
+      : (
+          await this.prisma.supplier.findUnique({
+            where: { id: entry.partyId },
+            select: { mainAccountId: true },
+          })
+        )?.mainAccountId ??
+          (await this.defaultAccounts.resolveAccount('accounting.payable_account', 'Accounts Payable'));
   }
 }
 

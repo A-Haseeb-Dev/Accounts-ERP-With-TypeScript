@@ -77,6 +77,10 @@ export class CreateCustomerDto {
   @IsNumber()
   creditLimit?: number;
 
+  @IsOptional()
+  @IsNumber()
+  creditDays?: number;
+
   @IsString()
   @IsOptional()
   @MaxLength(500)
@@ -123,6 +127,10 @@ export class UpdateCustomerDto {
   @IsOptional()
   @IsNumber()
   creditLimit?: number;
+
+  @IsOptional()
+  @IsNumber()
+  creditDays?: number;
 
   @IsString()
   @IsOptional()

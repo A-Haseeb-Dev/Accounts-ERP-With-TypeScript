@@ -12,6 +12,7 @@ export const FLAT_RESOURCES = [
   'head-accounts',
   'sub-heads',
   'main-accounts',
+  'banks',
   'item-types',
   'brands',
   'stock-locations',

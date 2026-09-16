@@ -2,9 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDownCircle, ArrowUpCircle, Eye, Plus, Search, ShieldCheck, ShieldX, XCircle } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, Eye, Landmark, Plus, RefreshCcw, Search, ShieldCheck, ShieldX, XCircle } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
-import { createPayment, postPayment, cancelPayment, fetchOpenInvoices, fetchNextPaymentNumber } from '@/lib/accounts-api';
+import { createPayment, postPayment, cancelPayment, depositCheque, bounceCheque, fetchOpenInvoices, fetchNextPaymentNumber } from '@/lib/accounts-api';
 import type { PaymentPayload } from '@/lib/accounts-api';
 import { useFlatOptions, useAccountingAccounts } from '@/hooks/use-options';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,7 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { dateTime, money } from '@/lib/utils';
+import { dateTime, dateOnly, isDueSoon, isOverdue, money } from '@/lib/utils';
 import { useAuth } from '@/context/auth-context';
 import type { Paginated, PaymentEntry, PaymentAllocation, OpenInvoice } from '@/lib/types';
 
@@ -38,6 +38,7 @@ export default function PaymentsPage() {
   const { options: accountOptions } = useAccountingAccounts();
   const { options: customerOptions } = useFlatOptions('customers');
   const { options: supplierOptions } = useFlatOptions('suppliers');
+  const { options: bankOptions, data: banks } = useFlatOptions('banks');
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -51,6 +52,8 @@ export default function PaymentsPage() {
   const [mainAccountId, setMainAccountId] = useState('');
   const [method, setMethod] = useState<'CASH' | 'CHEQUE' | 'BANK'>('CASH');
   const [chequeNumber, setChequeNumber] = useState('');
+  const [bankAccountId, setBankAccountId] = useState('');
+  const [chequeDate, setChequeDate] = useState('');
   const [amount, setAmount] = useState(0);
   const [payDate, setPayDate] = useState('');
   const [reference, setReference] = useState('');
@@ -116,6 +119,8 @@ export default function PaymentsPage() {
     setMainAccountId('');
     setMethod('CASH');
     setChequeNumber('');
+    setBankAccountId('');
+    setChequeDate('');
     setAmount(0);
     setPayDate(new Date().toISOString().slice(0, 10));
     setReference('');
@@ -158,6 +163,32 @@ export default function PaymentsPage() {
     onError: (e: Error) => toast.error(e.message || 'Could not cancel payment entry'),
   });
 
+  const deposit = useMutation({
+    mutationFn: (id: string) => depositCheque(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payments'] });
+      qc.invalidateQueries({ queryKey: ['cheques'] });
+      toast.success('Cheque cleared into bank');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Could not clear cheque'),
+  });
+
+  const bounceTarget = useState<PaymentEntry | null>(null);
+  const [bounceEntry, setBounceEntry] = bounceTarget;
+  const [bounceReason, setBounceReason] = useState('');
+
+  const bounce = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => bounceCheque(id, reason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payments'] });
+      qc.invalidateQueries({ queryKey: ['cheques'] });
+      setBounceEntry(null);
+      setBounceReason('');
+      toast.success('Cheque marked as bounced');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Could not mark cheque as bounced'),
+  });
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -174,6 +205,10 @@ export default function PaymentsPage() {
       setError('Enter the cheque number.');
       return;
     }
+    if (method === 'CHEQUE' && !bankAccountId) {
+      setError('Select the bank account for the cheque.');
+      return;
+    }
     if (allocatedTotal > amt) {
       setError(`Allocated amount (${money(allocatedTotal, 'PKR')}) exceeds the payment amount.`);
       return;
@@ -185,6 +220,8 @@ export default function PaymentsPage() {
       mainAccountId,
       method,
       chequeNumber: method === 'CHEQUE' ? chequeNumber.trim() : undefined,
+      bankAccountId: method === 'CHEQUE' ? bankAccountId : undefined,
+      chequeDate: method === 'CHEQUE' && chequeDate ? chequeDate : undefined,
       amount: amt,
       paymentDate: payDate,
       reference: reference || undefined,
@@ -228,6 +265,14 @@ export default function PaymentsPage() {
   };
 
   const partyOptions = partyType === 'CUSTOMER' ? customerOptions : supplierOptions;
+
+  const renderDueDate = (dueDate?: string, paid = false) => {
+    if (paid) return <span className="text-emerald-600">Cleared</span>;
+    if (!dueDate) return <span className="text-slate-400">-</span>;
+    if (isOverdue(dueDate)) return <span className="font-medium text-red-600">{dateOnly(dueDate)}</span>;
+    if (isDueSoon(dueDate)) return <span className="font-medium text-amber-600">{dateOnly(dueDate)}</span>;
+    return <span className="text-slate-600">{dateOnly(dueDate)}</span>;
+  };
 
   return (
     <div>
@@ -297,6 +342,16 @@ export default function PaymentsPage() {
                       )}
                     </>
                   )}
+                  {r.status === 'posted' && r.method === 'CHEQUE' && r.chequeStatus === 'IN_HAND' && canPost && (
+                    <>
+                      <button onClick={() => deposit.mutate(r.id)} className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 hover:text-blue-700" title="Clear cheque into bank">
+                        <Landmark className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => { setBounceEntry(r); setBounceReason(''); }} className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 hover:text-red-600" title="Mark as bounced">
+                        <RefreshCcw className="h-4 w-4" />
+                      </button>
+                    </>
+                  )}
                 </div>
               ),
             },
@@ -355,9 +410,20 @@ export default function PaymentsPage() {
               </Select>
             </Field>
             {method === 'CHEQUE' && (
-              <Field label="Cheque number" required>
-                <Input value={chequeNumber} onChange={(e) => setChequeNumber(e.target.value)} placeholder="e.g. 00421579" required />
-              </Field>
+              <>
+                <Field label="Cheque number" required>
+                  <Input value={chequeNumber} onChange={(e) => setChequeNumber(e.target.value)} placeholder="e.g. 00421579" required />
+                </Field>
+                <Field label="Bank account" required>
+                  <Select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)} required>
+                    <option value="">Select bank…</option>
+                    {bankOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Cheque date (post-dated?)">
+                  <Input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} />
+                </Field>
+              </>
             )}
             <Field label="Date" required>
               <Input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} required />
@@ -397,6 +463,7 @@ export default function PaymentsPage() {
                     <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                       <th className="w-10 px-3 py-2"></th>
                       <th className="px-3 py-2">Document</th>
+                      <th className="px-3 py-2">Due</th>
                       <th className="px-3 py-2 text-right">Total</th>
                       <th className="px-3 py-2 text-right">Paid</th>
                       <th className="px-3 py-2 text-right">Outstanding</th>
@@ -413,6 +480,7 @@ export default function PaymentsPage() {
                             <input type="checkbox" checked={checked} readOnly className="h-4 w-4 accent-teal-600" />
                           </td>
                           <td className="px-3 py-2 font-mono text-xs font-semibold text-slate-700">{inv.number}</td>
+                          <td className="px-3 py-2">{renderDueDate(inv.dueDate)}</td>
                           <td className="px-3 py-2 text-right text-slate-600">{money(inv.total, 'PKR')}</td>
                           <td className="px-3 py-2 text-right text-slate-500">{money(inv.paid, 'PKR')}</td>
                           <td className="px-3 py-2 text-right font-medium text-slate-800">{money(inv.outstanding, 'PKR')}</td>
@@ -469,6 +537,23 @@ export default function PaymentsPage() {
           </Field>
         </div>
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!bounceEntry}
+        danger
+        title="Mark cheque as bounced"
+        message={`This reverses the cheque (${bounceEntry?.number ?? ''}) back to ${bounceEntry?.partyName ?? 'the party'} and re-opens the allocated invoices.`}
+        confirmLabel="Mark bounced"
+        loading={bounce.isPending}
+        onCancel={() => setBounceEntry(null)}
+        onConfirm={() => bounceEntry?.id && bounce.mutate({ id: bounceEntry.id, reason: bounceReason || 'Bounced (insufficient funds)' })}
+      >
+        <div className="mt-3">
+          <Field label="Bounce reason" required>
+            <Textarea value={bounceReason} onChange={(e) => setBounceReason(e.target.value)} placeholder="e.g. insufficient funds" />
+          </Field>
+        </div>
+      </ConfirmDialog>
     </div>
   );
 }
@@ -497,6 +582,9 @@ function PaymentDetailModal({
             <KV label="Account" value={detail.mainAccount?.name ?? '-'} />
             <KV label="Method" value={detail.method + (detail.chequeNumber ? ` · ${detail.chequeNumber}` : '')} />
             <KV label="Status" value={detail.status.toUpperCase()} />
+            {detail.bankAccount && <KV label="Bank" value={`${detail.bankAccount.name}${detail.bankAccount.accountNumber ? ` · ${detail.bankAccount.accountNumber}` : ''}`} />}
+            {detail.chequeDate && <KV label="Cheque date" value={dateOnly(detail.chequeDate)} />}
+            {detail.chequeStatus && <KV label="Cheque status" value={detail.chequeStatus} />}
           </div>
 
           <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
@@ -529,6 +617,9 @@ function PaymentDetailModal({
           {!!detail.narration && <p className="mt-1 text-xs text-slate-500">Narration: {detail.narration}</p>}
           {detail.status === 'cancelled' && !!detail.cancelReason && (
             <p className="mt-1 rounded-lg border border-red-100 bg-red-50 px-2.5 py-1.5 text-xs text-red-600">Cancel reason: {detail.cancelReason}</p>
+          )}
+          {detail.chequeStatus === 'BOUNCED' && !!detail.bounceReason && (
+            <p className="mt-1 rounded-lg border border-red-100 bg-red-50 px-2.5 py-1.5 text-xs text-red-600">Bounce reason: {detail.bounceReason}</p>
           )}
         </div>
       )}
