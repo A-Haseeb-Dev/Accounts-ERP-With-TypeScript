@@ -27,13 +27,13 @@ export function Sidebar({
   onMobileToggle: (open: boolean) => void;
 }) {
   const { user, logout, can } = useAuth();
-  const { enabled } = useFeatureFlags();
+  const { disabled } = useFeatureFlags();
   const pathname = usePathname();
   const isDeveloper = user?.roles?.includes('Developer') ?? false;
 
   const items = filterNavigation(NAV_ITEMS, {
     permissions: user?.permissions ?? [],
-    enabledFeatures: enabled,
+    disabledFeatures: disabled,
     isDeveloper,
   });
   const topLevel = items.filter((i) => i.children);
@@ -81,7 +81,7 @@ export function Sidebar({
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
-          {can('dashboard.view') && (
+          {can('dashboard.view') && !disabled.has('dashboard.view') && (
             <NavItem
               href="/"
               active={pathname === '/'}

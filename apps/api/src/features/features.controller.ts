@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Patch } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FeaturesService } from './features.service';
-import { UpdateFeatureDto } from './dto/update-feature.dto';
+import { UpdateFeatureDto, UpdateFeaturesDto } from './dto/update-feature.dto';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ApiException } from '../common/exceptions/api.exception';
@@ -28,5 +28,15 @@ export class FeaturesController {
       throw ApiException.forbidden('Only the Developer role can change company features');
     }
     return this.features.setEnabled(dto.code, dto.enabled, actor?.id);
+  }
+
+  @Patch('bulk')
+  @Permissions('system.features.manage')
+  @ApiOperation({ summary: 'Enable/disable many company features (Developer role only)' })
+  async setFeatures(@Body() dto: UpdateFeaturesDto, @CurrentUser() actor: any) {
+    if (!actor?.roles?.includes('Developer')) {
+      throw ApiException.forbidden('Only the Developer role can change company features');
+    }
+    return this.features.setManyEnabled(dto.codes, dto.enabled, actor?.id);
   }
 }

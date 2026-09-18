@@ -1,157 +1,113 @@
+import { PERMISSION_CATALOG } from '../permissions/permission-catalog';
+
 export interface FeatureDef {
+  /** Feature code. Each feature maps to exactly one permission (same name). */
   code: string;
+  /** Human readable resource, e.g. "Main Accounts". */
+  resource: string;
+  /** Human readable action, e.g. "View". */
+  action: string;
+  /** Grouping used by the Company Features screen, e.g. "Chart of Accounts". */
+  group: string;
+  /** Combined label, e.g. "Main Accounts — View". */
   label: string;
   description: string;
   permissions: string[];
 }
 
-/**
- * Switchable company features. A feature controls a set of permissions: when a
- * feature is turned off, the guarded endpoints below it are denied for every
- * user except the Developer role. The developer toggles these switches to sell
- * the product with or without certain modules.
- *
- * Core abilities (dashboard, users, roles, settings, branding, print design)
- * are intentionally not switchable so a customer can always administer the ERP.
- */
-export const FEATURES: FeatureDef[] = [
-  {
-    code: 'sales',
-    label: 'Sales',
-    description: 'Sales invoices, sales returns and their printing.',
-    permissions: [
-      'sales.invoice.view',
-      'sales.invoice.create',
-      'sales.invoice.post',
-      'sales.invoice.cancel',
-      'sales.invoice.print',
-      'sales.return.view',
-      'sales.return.create',
-      'sales.return.post',
-      'sales.return.cancel',
-      'sales.return.print',
-    ],
-  },
-  {
-    code: 'purchases',
-    label: 'Purchases',
-    description: 'Purchase bills, purchase returns and their printing.',
-    permissions: [
-      'inventory.purchase.view',
-      'inventory.purchase.create',
-      'inventory.purchase.post',
-      'inventory.purchase.cancel',
-      'inventory.purchase.print',
-      'inventory.purchase-return.view',
-      'inventory.purchase-return.create',
-      'inventory.purchase-return.post',
-      'inventory.purchase-return.cancel',
-      'inventory.purchase-return.print',
-    ],
-  },
-  {
-    code: 'inventory',
-    label: 'Inventory & Items',
-    description: 'Items, item types, brands, stock locations and stock transfers.',
-    permissions: [
-      'administration.items.view',
-      'administration.items.create',
-      'administration.items.update',
-      'administration.items.delete',
-      'administration.items.stock',
-      'administration.item-types.view',
-      'administration.item-types.create',
-      'administration.item-types.update',
-      'administration.item-types.delete',
-      'administration.brands.view',
-      'administration.brands.create',
-      'administration.brands.update',
-      'administration.brands.delete',
-      'administration.stock-locations.view',
-      'administration.stock-locations.create',
-      'administration.stock-locations.update',
-      'administration.stock-locations.delete',
-      'inventory.transfer.view',
-      'inventory.transfer.create',
-      'inventory.transfer.post',
-      'inventory.transfer.cancel',
-      'inventory.transfer.print',
-    ],
-  },
-  {
-    code: 'parties',
-    label: 'Parties',
-    description: 'Customers, suppliers and towns.',
-    permissions: [
-      'administration.customers.view',
-      'administration.customers.create',
-      'administration.customers.update',
-      'administration.customers.delete',
-      'administration.suppliers.view',
-      'administration.suppliers.create',
-      'administration.suppliers.update',
-      'administration.suppliers.delete',
-      'administration.towns.view',
-      'administration.towns.create',
-      'administration.towns.update',
-      'administration.towns.delete',
-    ],
-  },
-  {
-    code: 'accounts',
-    label: 'Accounting',
-    description: 'Chart of accounts, main accounts, vouchers and the cash book.',
-    permissions: [
-      'administration.head-accounts.view',
-      'administration.head-accounts.create',
-      'administration.head-accounts.update',
-      'administration.head-accounts.delete',
-      'administration.sub-heads.view',
-      'administration.sub-heads.create',
-      'administration.sub-heads.update',
-      'administration.sub-heads.delete',
-      'administration.main-accounts.view',
-      'administration.main-accounts.create',
-      'administration.main-accounts.update',
-      'administration.main-accounts.delete',
-      'accounts.vouchers.view',
-      'accounts.vouchers.create',
-      'accounts.vouchers.update',
-      'accounts.vouchers.delete',
-      'accounts.vouchers.post',
-      'accounts.vouchers.cancel',
-      'accounts.cashbook.view',
-    ],
-  },
-  {
-    code: 'reports',
-    label: 'Reports',
-    description: 'Trial balance, general ledger, journal, stock and the sales/purchase books.',
-    permissions: [
-      'reports.accounting.view',
-      'reports.inventory.view',
-      'reports.sales.view',
-      'reports.purchase.view',
-      'reports.print',
-      'reports.export',
-    ],
-  },
-  {
-    code: 'audit',
-    label: 'Audit Logs',
-    description: 'Viewing and purging the audit trail.',
-    permissions: ['system.audit.view', 'system.audit.purge'],
-  },
+const GROUP_ORDER = [
+  'Dashboard',
+  'Chart of Accounts',
+  'Items & Stock',
+  'Parties',
+  'Sales',
+  'Inventory',
+  'Accounting',
+  'Reports',
+  'Users & Access',
+  'System',
 ];
 
-const PERMISSION_TO_FEATURE: Record<string, string> = {};
-for (const feature of FEATURES) {
-  for (const permission of feature.permissions) {
-    PERMISSION_TO_FEATURE[permission] = feature.code;
+function groupFor(name: string): string {
+  if (name.startsWith('dashboard')) return 'Dashboard';
+  if (
+    name.startsWith('administration.customers') ||
+    name.startsWith('administration.suppliers') ||
+    name.startsWith('administration.towns')
+  ) {
+    return 'Parties';
   }
+  if (
+    name.startsWith('administration.head-accounts') ||
+    name.startsWith('administration.sub-heads') ||
+    name.startsWith('administration.main-accounts')
+  ) {
+    return 'Chart of Accounts';
+  }
+  if (name.startsWith('administration.')) return 'Items & Stock';
+  if (name.startsWith('inventory.')) return 'Inventory';
+  if (name.startsWith('sales.')) return 'Sales';
+  if (name.startsWith('accounts.')) return 'Accounting';
+  if (name.startsWith('reports.')) return 'Reports';
+  if (
+    name.startsWith('users.') ||
+    name.startsWith('roles.') ||
+    name.startsWith('permissions.')
+  ) {
+    return 'Users & Access';
+  }
+  if (name.startsWith('system.')) return 'System';
+  return 'Other';
 }
+
+function titleCase(value: string): string {
+  return value.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function resourceFor(name: string): string {
+  const parts = name.split('.');
+  const resource = parts.length > 1 ? parts.slice(0, -1).join('.') : name;
+  const segs = resource.split('.');
+  const label = segs.length > 1 ? segs.slice(1).join(' ') : segs[0];
+  return titleCase(label);
+}
+
+/**
+ * Company features are derived from the permission catalog so that *every*
+ * action (view / create / update / delete / post / print ...) in the system can
+ * be switched on or off for a company. A feature code is identical to its
+ * permission name; turning a feature off blocks the guarded endpoints that
+ * require that permission for every user except the Developer role.
+ */
+export const FEATURES: FeatureDef[] = PERMISSION_CATALOG.map((permission) => {
+  const resource = resourceFor(permission.name);
+  const action = titleCase(permission.action);
+  const group = groupFor(permission.name);
+  return {
+    code: permission.name,
+    resource,
+    action,
+    group,
+    label: `${resource} — ${action}`,
+    description: permission.description ?? `${action} ${resource}`,
+    permissions: [permission.name],
+  };
+}).sort((a, b) => {
+  const ga = GROUP_ORDER.indexOf(a.group);
+  const gb = GROUP_ORDER.indexOf(b.group);
+  if (ga !== gb) return ga - gb;
+  if (a.resource !== b.resource) return a.resource.localeCompare(b.resource);
+  return a.action.localeCompare(b.action);
+});
+
+const FEATURE_CODES = new Set(FEATURES.map((f) => f.code));
 
 /** Returns the feature code that owns the given permission, if any. */
 export function featureForPermission(permission: string): string | undefined {
-  return PERMISSION_TO_FEATURE[permission];
+  return FEATURE_CODES.has(permission) ? permission : undefined;
+}
+
+/** Whether a code is a known feature. Unknown codes are treated as enabled. */
+export function isKnownFeature(code: string): boolean {
+  return FEATURE_CODES.has(code);
 }

@@ -24,9 +24,6 @@ export interface NavItem {
   href: string;
   icon: LucideIcon;
   permission?: string;
-  /** Feature code(s) that must all be enabled for this item to be visible. */
-  feature?: string;
-  features?: string[];
   /** Only shown to users holding the Developer role. */
   developerOnly?: boolean;
   children?: NavItem[];
@@ -39,13 +36,13 @@ export const NAV_ITEMS: NavItem[] = [
     href: '/administration',
     icon: Landmark,
     children: [
-      { label: 'Chart of Accounts', href: '/administration/chart-of-accounts', icon: Network, permission: 'administration.head-accounts.view', feature: 'accounts' },
-      { label: 'Main Accounts', href: '/administration/main-accounts', icon: Landmark, permission: 'administration.main-accounts.view', feature: 'accounts' },
-      { label: 'Bank Accounts', href: '/administration/banks', icon: Landmark, permission: 'administration.main-accounts.view', feature: 'accounts' },
-      { label: 'Item Types', href: '/administration/item-types', icon: Boxes, permission: 'administration.item-types.view', feature: 'inventory' },
-      { label: 'Brands', href: '/administration/brands', icon: Building2, permission: 'administration.brands.view', feature: 'inventory' },
-      { label: 'Items', href: '/administration/items', icon: Package, permission: 'administration.items.view', feature: 'inventory' },
-      { label: 'Stock Locations', href: '/administration/stock-locations', icon: Boxes, permission: 'administration.stock-locations.view', feature: 'inventory' },
+      { label: 'Chart of Accounts', href: '/administration/chart-of-accounts', icon: Network, permission: 'administration.head-accounts.view' },
+      { label: 'Main Accounts', href: '/administration/main-accounts', icon: Landmark, permission: 'administration.main-accounts.view' },
+      { label: 'Bank Accounts', href: '/administration/banks', icon: Landmark, permission: 'administration.main-accounts.view' },
+      { label: 'Item Types', href: '/administration/item-types', icon: Boxes, permission: 'administration.item-types.view' },
+      { label: 'Brands', href: '/administration/brands', icon: Building2, permission: 'administration.brands.view' },
+      { label: 'Items', href: '/administration/items', icon: Package, permission: 'administration.items.view' },
+      { label: 'Stock Locations', href: '/administration/stock-locations', icon: Boxes, permission: 'administration.stock-locations.view' },
     ],
   },
   {
@@ -53,9 +50,9 @@ export const NAV_ITEMS: NavItem[] = [
     href: '/parties',
     icon: Users,
     children: [
-      { label: 'Towns', href: '/parties/towns', icon: Building2, permission: 'administration.towns.view', feature: 'parties' },
-      { label: 'Customers', href: '/parties/customers', icon: Users, permission: 'administration.customers.view', feature: 'parties' },
-      { label: 'Suppliers', href: '/parties/suppliers', icon: Truck, permission: 'administration.suppliers.view', feature: 'parties' },
+      { label: 'Towns', href: '/parties/towns', icon: Building2, permission: 'administration.towns.view' },
+      { label: 'Customers', href: '/parties/customers', icon: Users, permission: 'administration.customers.view' },
+      { label: 'Suppliers', href: '/parties/suppliers', icon: Truck, permission: 'administration.suppliers.view' },
     ],
   },
   {
@@ -63,8 +60,8 @@ export const NAV_ITEMS: NavItem[] = [
     href: '/sales',
     icon: ShoppingCart,
     children: [
-      { label: 'Sales Invoices', href: '/sales/invoices', icon: ShoppingCart, permission: 'sales.invoice.view', feature: 'sales' },
-      { label: 'Sales Returns', href: '/sales/returns', icon: Receipt, permission: 'sales.return.view', feature: 'sales' },
+      { label: 'Sales Invoices', href: '/sales/invoices', icon: ShoppingCart, permission: 'sales.invoice.view' },
+      { label: 'Sales Returns', href: '/sales/returns', icon: Receipt, permission: 'sales.return.view' },
     ],
   },
   {
@@ -72,9 +69,9 @@ export const NAV_ITEMS: NavItem[] = [
     href: '/inventory',
     icon: Package,
     children: [
-      { label: 'Purchases', href: '/inventory/purchases', icon: Truck, permission: 'inventory.purchase.view', feature: 'purchases' },
-      { label: 'Purchase Returns', href: '/inventory/purchase-returns', icon: Receipt, permission: 'inventory.purchase-return.view', feature: 'purchases' },
-      { label: 'Stock Transfers', href: '/inventory/transfers', icon: Truck, permission: 'inventory.transfer.view', feature: 'inventory' },
+      { label: 'Purchases', href: '/inventory/purchases', icon: Truck, permission: 'inventory.purchase.view' },
+      { label: 'Purchase Returns', href: '/inventory/purchase-returns', icon: Receipt, permission: 'inventory.purchase-return.view' },
+      { label: 'Stock Transfers', href: '/inventory/transfers', icon: Truck, permission: 'inventory.transfer.view' },
     ],
   },
   {
@@ -82,10 +79,10 @@ export const NAV_ITEMS: NavItem[] = [
     href: '/accounts',
     icon: Wallet,
     children: [
-      { label: 'Vouchers', href: '/accounts/vouchers', icon: Receipt, permission: 'accounts.vouchers.view', feature: 'accounts' },
-      { label: 'Receipts & Payments', href: '/accounts/payments', icon: Wallet, permission: 'accounts.payments.view', feature: 'accounts' },
-      { label: 'Cheques Register', href: '/accounts/cheques', icon: Receipt, permission: 'accounts.payments.view', feature: 'accounts' },
-      { label: 'Cash Book', href: '/accounts/cash-book', icon: Wallet, permission: 'accounts.cashbook.view', feature: 'accounts' },
+      { label: 'Vouchers', href: '/accounts/vouchers', icon: Receipt, permission: 'accounts.vouchers.view' },
+      { label: 'Receipts & Payments', href: '/accounts/payments', icon: Wallet, permission: 'accounts.payments.view' },
+      { label: 'Cheques Register', href: '/accounts/cheques', icon: Receipt, permission: 'accounts.payments.view' },
+      { label: 'Cash Book', href: '/accounts/cash-book', icon: Wallet, permission: 'accounts.cashbook.view' },
     ],
   },
   {
@@ -93,13 +90,13 @@ export const NAV_ITEMS: NavItem[] = [
     href: '/reports',
     icon: FileSpreadsheet,
     children: [
-      { label: 'Trial Balance', href: '/reports/trial-balance', icon: BarChart3, permission: 'reports.accounting.view', features: ['reports', 'accounts'] },
-      { label: 'General Ledger', href: '/reports/general-ledger', icon: FileSpreadsheet, permission: 'reports.accounting.view', features: ['reports', 'accounts'] },
-      { label: 'General Journal', href: '/reports/general-journal', icon: FileSpreadsheet, permission: 'reports.accounting.view', features: ['reports', 'accounts'] },
-      { label: 'Stock Report', href: '/reports/stock', icon: Package, permission: 'reports.inventory.view', features: ['reports', 'inventory'] },
-      { label: 'Product Ledger', href: '/reports/product-ledger', icon: Package, permission: 'reports.inventory.view', features: ['reports', 'inventory'] },
-      { label: 'Sales Book', href: '/reports/sales-book', icon: ShoppingCart, permission: 'reports.sales.view', features: ['reports', 'sales'] },
-      { label: 'Purchase Book', href: '/reports/purchase-book', icon: Truck, permission: 'reports.purchase.view', features: ['reports', 'purchases'] },
+      { label: 'Trial Balance', href: '/reports/trial-balance', icon: BarChart3, permission: 'reports.accounting.view' },
+      { label: 'General Ledger', href: '/reports/general-ledger', icon: FileSpreadsheet, permission: 'reports.accounting.view' },
+      { label: 'General Journal', href: '/reports/general-journal', icon: FileSpreadsheet, permission: 'reports.accounting.view' },
+      { label: 'Stock Report', href: '/reports/stock', icon: Package, permission: 'reports.inventory.view' },
+      { label: 'Product Ledger', href: '/reports/product-ledger', icon: Package, permission: 'reports.inventory.view' },
+      { label: 'Sales Book', href: '/reports/sales-book', icon: ShoppingCart, permission: 'reports.sales.view' },
+      { label: 'Purchase Book', href: '/reports/purchase-book', icon: Truck, permission: 'reports.purchase.view' },
     ],
   },
   {
@@ -109,7 +106,7 @@ export const NAV_ITEMS: NavItem[] = [
     children: [
       { label: 'Users', href: '/system/users', icon: Users, permission: 'users.view' },
       { label: 'Roles & Permissions', href: '/system/roles', icon: Settings, permission: 'roles.view' },
-      { label: 'Audit Logs', href: '/system/audit-logs', icon: FileSpreadsheet, permission: 'system.audit.view', feature: 'audit' },
+      { label: 'Audit Logs', href: '/system/audit-logs', icon: FileSpreadsheet, permission: 'system.audit.view' },
       { label: 'Settings', href: '/system/settings', icon: Settings, permission: 'system.settings.manage' },
       { label: 'Security', href: '/system/security', icon: ShieldCheck, permission: 'system.settings.manage' },
       { label: 'Print Layout', href: '/system/print-layout', icon: Printer, permission: 'system.settings.manage' },
@@ -130,12 +127,13 @@ export const flattenNav = (items: NavItem[]): NavItem[] => {
 
 export interface NavContext {
   permissions: string[];
-  enabledFeatures: Set<string>;
+  /** Feature codes (== permission names) that the developer has switched off. */
+  disabledFeatures: Set<string>;
   isDeveloper: boolean;
 }
 
 /**
- * Filters the navigation tree by the user's permissions, the company's enabled
+ * Filters the navigation tree by the user's permissions, the company's disabled
  * features and a couple of role-specific items. The Developer role sees every
  * entry so it can always reach the feature switches and verify a configuration.
  */
@@ -145,12 +143,10 @@ export const filterNavigation = (items: NavItem[], ctx: NavContext): NavItem[] =
 
   return items
     .map((item) => {
-      if (item.developerOnly && !ctx.isDeveloper) return null;
+      if (item.developerOnly) return null;
 
-      const requiredFeatures = item.features ?? (item.feature ? [item.feature] : []);
-      if (requiredFeatures.length > 0 && !requiredFeatures.every((f) => ctx.enabledFeatures.has(f))) {
-        return null;
-      }
+      // A page whose view permission has been switched off is hidden.
+      if (item.permission && ctx.disabledFeatures.has(item.permission)) return null;
 
       if (item.children) {
         const kids = filterNavigation(item.children, ctx);

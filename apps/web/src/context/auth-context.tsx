@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import {
   createContext,
   useCallback,
@@ -109,13 +110,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.user ?? null);
   }, []);
 
+  const { data: featureFlags } = useQuery<{ code: string; enabled: boolean }[]>({
+    queryKey: ['features'],
+    queryFn: () => apiFetch('/system/features'),
+    enabled: !!user,
+    staleTime: 30_000,
+  });
+
+  const disabledFeatures = useMemo(
+    () => new Set((featureFlags ?? []).filter((f) => !f.enabled).map((f) => f.code)),
+    [featureFlags],
+  );
+
   const can = useCallback(
     (permission: string) => {
       if (!user) return false;
+      const isDeveloper = user.roles?.includes('Developer') ?? false;
+      // Switched-off features are hidden from everyone except the Developer role.
+      if (!isDeveloper && disabledFeatures.has(permission)) return false;
       if (user.permissions.includes('*')) return true;
       return user.permissions.includes(permission);
     },
-    [user],
+    [user, disabledFeatures],
   );
 
   const value = useMemo(
