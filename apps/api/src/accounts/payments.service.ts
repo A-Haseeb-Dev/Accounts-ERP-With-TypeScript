@@ -37,10 +37,12 @@ export class PaymentsService {
     const usable = Number(dto.amount ?? 0);
     if (usable <= 0) throw ApiException.validation('Amount must be greater than zero');
 
-    const account = await this.prisma.mainAccount.findUnique({
-      where: { id: dto.mainAccountId },
-    });
-    if (!account) throw ApiException.notFound('Main account');
+    if (dto.mainAccountId) {
+      const account = await this.prisma.mainAccount.findUnique({
+        where: { id: dto.mainAccountId },
+      });
+      if (!account) throw ApiException.notFound('Main account');
+    }
 
     const party =
       dto.partyType === 'CUSTOMER'
@@ -52,18 +54,39 @@ export class PaymentsService {
     if (method === 'CHEQUE' && !dto.chequeNumber?.trim()) {
       throw ApiException.validation('Cheque number is required for cheque payments');
     }
-    let bankAccountId: string | undefined;
-    if (method === 'CHEQUE') {
-      if (!dto.bankAccountId) {
-        throw ApiException.validation('Select the bank account for the cheque');
-      }
-      const bank = await this.prisma.bankAccount.findUnique({
-        where: { id: dto.bankAccountId },
-      });
-      if (!bank) throw ApiException.notFound('Bank account');
-      bankAccountId = bank.id;
-    }
     const chequeDate = dto.chequeDate ? new Date(dto.chequeDate) : null;
+    const paymentType = dto.paymentType.toUpperCase();
+    const isReceipt = paymentType === 'RECEIPT';
+    // Post-dated cheques received are booked to the issuing party's PDC
+    // account (under the PDCS sub-head): Dr PDC account / Cr party.
+    const isPdc = isReceipt && method === 'CHEQUE' && !!chequeDate;
+
+    const resolvedPdcAccount = isPdc ? await this.resolvePdcAccount(dto, party) : null;
+
+    let bankAccountId: string | null = null;
+    if (method === 'CHEQUE') {
+      if (isPdc) {
+        if (dto.bankAccountId) {
+          const bank = await this.prisma.bankAccount.findUnique({
+            where: { id: dto.bankAccountId },
+          });
+          if (!bank) throw ApiException.notFound('Bank account');
+          bankAccountId = bank.id;
+        }
+      } else {
+        if (!dto.bankAccountId) {
+          throw ApiException.validation('Select the bank account for the cheque');
+        }
+        const bank = await this.prisma.bankAccount.findUnique({
+          where: { id: dto.bankAccountId },
+        });
+        if (!bank) throw ApiException.notFound('Bank account');
+        bankAccountId = bank.id;
+      }
+    }
+    if (!isPdc && !dto.mainAccountId) {
+      throw ApiException.validation('Select the cash / bank account for this entry');
+    }
 
     const allocations = (dto.allocations ?? []).filter(
       (a) => Number(a.allocatedAmount ?? 0) > 0,
@@ -121,7 +144,6 @@ export class PaymentsService {
       }
     }
 
-    const paymentType = dto.paymentType.toUpperCase();
     const number = await this.numbering.next(
       paymentType === 'RECEIPT' ? 'payment_receipt' : 'payment_payment',
       DOC_PREFIXES[paymentType] ?? 'RN',
@@ -135,12 +157,13 @@ export class PaymentsService {
           partyType: dto.partyType,
           partyId: dto.partyId,
           partyName: party.name,
-          mainAccountId: dto.mainAccountId,
+          mainAccountId: isPdc ? (resolvedPdcAccount?.id ?? dto.mainAccountId ?? '') : (dto.mainAccountId ?? ''),
           method,
           chequeNumber: dto.chequeNumber ?? null,
-          bankAccountId: bankAccountId ?? null,
+          bankAccountId,
+          pdcAccountId: isPdc ? (resolvedPdcAccount?.id ?? null) : null,
           chequeDate,
-          chequeStatus: method === 'CHEQUE' && chequeDate ? 'PENDING' : null,
+          chequeStatus: isPdc ? 'PENDING' : null,
           amount: usable,
           paymentDate: new Date(dto.paymentDate ?? new Date()),
           reference: dto.reference ?? null,
@@ -194,11 +217,14 @@ export class PaymentsService {
       );
     }
 
-    // Post-dated cheques received stay in hand until they mature: book them
-    // against "Cheque in Hand" instead of the bank account.
-    const isPdc = entry.method === 'CHEQUE' && !!entry.chequeDate;
+    // Post-dated cheques received stay on the issuing party's PDC account
+    // until they mature: debit PDC account, credit party. Older entries fall
+    // back to the "Cheque in Hand" account configured in settings.
+    const isPdc = entry.method === 'CHEQUE' && !!entry.chequeDate && entry.paymentType === 'RECEIPT';
     let postAccount: string;
-    if (isPdc) {
+    if (isPdc && entry.pdcAccountId) {
+      postAccount = entry.pdcAccountId;
+    } else if (isPdc) {
       const chequeInHand = await this.defaultAccounts.resolveAccount(
         'accounting.cheque_in_hand_account',
         'Cheque in Hand',
@@ -350,11 +376,11 @@ export class PaymentsService {
     const bankMainAccountId = bank.mainAccountId;
     await this.fiscal.assertOpen(entry.paymentDate, 'Cannot clear a cheque');
 
-    const chequeInHand = await this.defaultAccounts.resolveAccount(
+    const pdcAccount = entry.pdcAccountId ?? (await this.defaultAccounts.resolveAccount(
       'accounting.cheque_in_hand_account',
       'Cheque in Hand',
-    );
-    if (!chequeInHand) {
+    ));
+    if (!pdcAccount) {
       throw ApiException.invalidTransaction(
         'The "Cheque in Hand" account is not configured.',
       );
@@ -376,7 +402,7 @@ export class PaymentsService {
               narration: `Bank ${bank.name} - ${entry.number}`,
             },
             {
-              mainAccountId: chequeInHand,
+              mainAccountId: pdcAccount,
               credit: amount,
               narration: `Cheque cleared - ${entry.number}`,
             },
@@ -431,11 +457,11 @@ export class PaymentsService {
         'Party is not linked to an account and the control account is not configured',
       );
     }
-    const chequeInHand = await this.defaultAccounts.resolveAccount(
+    const pdcAccount = entry.pdcAccountId ?? (await this.defaultAccounts.resolveAccount(
       'accounting.cheque_in_hand_account',
       'Cheque in Hand',
-    );
-    if (!chequeInHand) {
+    ));
+    if (!pdcAccount) {
       throw ApiException.invalidTransaction(
         'The "Cheque in Hand" account is not configured.',
       );
@@ -457,7 +483,7 @@ export class PaymentsService {
               narration: `Cheque bounced - ${entry.number}`,
             },
             {
-              mainAccountId: chequeInHand,
+              mainAccountId: pdcAccount,
               credit: amount,
               narration: `Bounce ${entry.number} - ${entry.partyName}`,
             },
@@ -517,6 +543,103 @@ export class PaymentsService {
       entityId: id,
       message: `Cheque ${entry.number} bounced - ${entry.partyName}`,
       metadata: { reason },
+    });
+    return result;
+  }
+
+  async endorse(
+    id: string,
+    dto: { partyType: 'CUSTOMER' | 'SUPPLIER'; partyId: string },
+    actorId?: string,
+  ) {
+    const entry = await this.prisma.paymentEntry.findUnique({
+      where: { id },
+      include: { allocations: true },
+    });
+    if (!entry) throw ApiException.notFound('Payment entry');
+    if (entry.method !== 'CHEQUE') {
+      throw ApiException.invalidTransaction('Only cheque entries can be endorsed');
+    }
+    if (entry.status !== 'posted') {
+      throw ApiException.invalidTransaction('Post the entry before endorsing the cheque');
+    }
+    if (entry.chequeStatus === 'ENDORSED') return entry;
+    if (entry.chequeStatus !== 'IN_HAND') {
+      throw ApiException.invalidTransaction(
+        'Only cheques currently in hand can be endorsed to another party',
+      );
+    }
+    await this.fiscal.assertOpen(entry.paymentDate, 'Cannot endorse a cheque');
+
+    const party =
+      dto.partyType === 'CUSTOMER'
+        ? await this.prisma.customer.findUnique({ where: { id: dto.partyId } })
+        : await this.prisma.supplier.findUnique({ where: { id: dto.partyId } });
+    if (!party) throw ApiException.notFound(dto.partyType === 'CUSTOMER' ? 'Customer' : 'Supplier');
+
+    const payeeAccount =
+      party.mainAccountId ??
+      (await this.defaultAccounts.resolveAccount(
+        dto.partyType === 'CUSTOMER' ? 'accounting.receivable_account' : 'accounting.payable_account',
+        dto.partyType === 'CUSTOMER' ? 'Accounts Receivable' : 'Accounts Payable',
+      ));
+    if (!payeeAccount) {
+      throw ApiException.invalidTransaction(
+        'The payee party is not linked to an account and the control account is not configured',
+      );
+    }
+    const pdcAccount = entry.pdcAccountId ?? (await this.defaultAccounts.resolveAccount(
+      'accounting.cheque_in_hand_account',
+      'Cheque in Hand',
+    ));
+    if (!pdcAccount) {
+      throw ApiException.invalidTransaction(
+        'The "Cheque in Hand" account is not configured.',
+      );
+    }
+
+    const amount = Number(entry.amount);
+    const result = await this.prisma.runInTransaction(async (tx) => {
+      const voucher = await this.accounting.createVoucher(
+        tx,
+        {
+          voucherType: 'CREDIT' as any,
+          voucherDate: new Date(),
+          description: `Cheque endorsed ${entry.number} - from ${entry.partyName} to ${party.name}`,
+          reference: entry.number,
+          entries: [
+            {
+              mainAccountId: payeeAccount,
+              debit: amount,
+              narration: `Cheque endorsed ${entry.number} - ${party.name}`,
+            },
+            {
+              mainAccountId: pdcAccount,
+              credit: amount,
+              narration: `Endorse ${entry.number} - ${entry.partyName}`,
+            },
+          ],
+          createdById: actorId,
+        },
+        await this.numbering.next('voucher_payment', 'PY', tx),
+      );
+      await this.accounting.postVoucher(tx, voucher.id, actorId);
+
+      return tx.paymentEntry.update({
+        where: { id },
+        data: { chequeStatus: 'ENDORSED' },
+        include: { allocations: true },
+      });
+    });
+
+    this.audit.record({
+      userId: actorId,
+      action: 'ENDORSE',
+      module: 'PAYMENT',
+      entity: 'PaymentEntry',
+      entityId: id,
+      message: `Cheque ${entry.number} endorsed to ${party.name}`,
+      metadata: { partyType: dto.partyType, partyId: dto.partyId },
     });
     return result;
   }
@@ -591,7 +714,7 @@ export class PaymentsService {
     const [items, total] = await Promise.all([
       this.prisma.paymentEntry.findMany({
         where,
-        include: { mainAccount: true, allocations: true, bankAccount: true },
+        include: { mainAccount: true, allocations: true, bankAccount: true, pdcAccount: true },
         orderBy: { paymentDate: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -604,7 +727,7 @@ export class PaymentsService {
   async findOne(id: string) {
     const entry = await this.prisma.paymentEntry.findUnique({
       where: { id },
-      include: { mainAccount: true, allocations: true, bankAccount: true },
+      include: { mainAccount: true, allocations: true, bankAccount: true, pdcAccount: true },
     });
     if (!entry) throw ApiException.notFound('Payment entry');
     return entry;
@@ -683,6 +806,58 @@ export class PaymentsService {
           })
         )?.mainAccountId ??
           (await this.defaultAccounts.resolveAccount('accounting.payable_account', 'Accounts Payable'));
+  }
+
+  /**
+   * Resolves the PDC account to debit when a post-dated cheque is received.
+   * Prefers the DTO selection, then the party's linked PDC account, and finally
+   * auto-creates a "PDC <party>" account under the PDCS sub-head and links it
+   * to the party so subsequent cheques from the same party reuse it.
+   */
+  private async resolvePdcAccount(dto: CreatePaymentDto, party: { name: string; pdcAccountId?: string | null }) {
+    if (dto.pdcAccountId) {
+      const existing = await this.prisma.mainAccount.findUnique({
+        where: { id: dto.pdcAccountId },
+      });
+      if (!existing || existing.status !== 'active') {
+        throw ApiException.validation('The selected PDC account is not valid');
+      }
+      return existing;
+    }
+    if (party.pdcAccountId) {
+      const existing = await this.prisma.mainAccount.findUnique({
+        where: { id: party.pdcAccountId },
+      });
+      if (existing && existing.status === 'active') return existing;
+    }
+
+    const subHead =
+      (await this.prisma.subHead.findFirst({ where: { name: 'PDCS' } })) ??
+      (await this.prisma.subHead.findFirst({ where: { name: 'Current Assets' } }));
+    const count = await this.prisma.mainAccount.count({
+      where: { code: { startsWith: 'PDC-' } },
+    });
+    const account = await this.prisma.mainAccount.create({
+      data: {
+        code: `PDC-${String(count + 1).padStart(3, '0')}`,
+        name: `PDC ${party.name}`,
+        accountType: 'ASSET',
+        subHeadId: subHead?.id ?? null,
+        status: 'active',
+      },
+    });
+    if (dto.partyType === 'CUSTOMER') {
+      await this.prisma.customer.update({
+        where: { id: dto.partyId },
+        data: { pdcAccountId: account.id },
+      });
+    } else {
+      await this.prisma.supplier.update({
+        where: { id: dto.partyId },
+        data: { pdcAccountId: account.id },
+      });
+    }
+    return account;
   }
 }
 

@@ -69,6 +69,10 @@ export class CreateCustomerDto {
   @IsOptional()
   mainAccountId?: string;
 
+  @IsString()
+  @IsOptional()
+  pdcAccountId?: string;
+
   @IsOptional()
   @IsNumber()
   openingBalance?: number;
@@ -120,6 +124,10 @@ export class UpdateCustomerDto {
   @IsOptional()
   mainAccountId?: string;
 
+  @IsString()
+  @IsOptional()
+  pdcAccountId?: string;
+
   @IsOptional()
   @IsNumber()
   openingBalance?: number;
@@ -170,6 +178,10 @@ export class CreateSupplierDto {
   @IsOptional()
   mainAccountId?: string;
 
+  @IsString()
+  @IsOptional()
+  pdcAccountId?: string;
+
   @IsOptional()
   @IsNumber()
   openingBalance?: number;
@@ -212,6 +224,10 @@ export class UpdateSupplierDto {
   @IsString()
   @IsOptional()
   mainAccountId?: string;
+
+  @IsString()
+  @IsOptional()
+  pdcAccountId?: string;
 
   @IsOptional()
   @IsNumber()

@@ -2,9 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Eye, Landmark, RefreshCcw, Search } from 'lucide-react';
+import { ArrowLeftRight, Eye, Landmark, RefreshCcw, Search } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
-import { depositCheque, bounceCheque } from '@/lib/accounts-api';
+import { depositCheque, bounceCheque, endorseCheque } from '@/lib/accounts-api';
 import { Button } from '@/components/ui/button';
 import { Input, Select, Field, Textarea } from '@/components/ui/field';
 import { DataTable } from '@/components/data-table';
@@ -16,6 +16,7 @@ import { StatusBadge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { dateTime, dateOnly, money } from '@/lib/utils';
 import { useAuth } from '@/context/auth-context';
+import { useFlatOptions } from '@/hooks/use-options';
 import type { Paginated, PaymentEntry } from '@/lib/types';
 
 const STATUS_OPTIONS = [
@@ -24,6 +25,7 @@ const STATUS_OPTIONS = [
   { value: 'IN_HAND', label: 'In hand' },
   { value: 'CLEARED', label: 'Cleared (immediate)' },
   { value: 'DEPOSITED', label: 'Deposited' },
+  { value: 'ENDORSED', label: 'Endorsed to party' },
   { value: 'BOUNCED', label: 'Bounced' },
 ];
 
@@ -32,6 +34,7 @@ const STATUS_BADGES: Record<string, { className: string; label: string }> = {
   IN_HAND: { className: 'bg-blue-50 text-blue-700', label: 'In hand' },
   CLEARED: { className: 'bg-emerald-50 text-emerald-700', label: 'Cleared' },
   DEPOSITED: { className: 'bg-teal-50 text-teal-700', label: 'Deposited' },
+  ENDORSED: { className: 'bg-violet-50 text-violet-700', label: 'Endorsed' },
   BOUNCED: { className: 'bg-red-50 text-red-700', label: 'Bounced' },
 };
 
@@ -46,6 +49,13 @@ export default function ChequesRegisterPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [bounceEntry, setBounceEntry] = useState<PaymentEntry | null>(null);
   const [bounceReason, setBounceReason] = useState('');
+
+  const [endorseEntry, setEndorseEntry] = useState<PaymentEntry | null>(null);
+  const [endorsePartyType, setEndorsePartyType] = useState<'CUSTOMER' | 'SUPPLIER'>('SUPPLIER');
+  const [endorsePartyId, setEndorsePartyId] = useState('');
+
+  const { options: customerOptions } = useFlatOptions('customers');
+  const { options: supplierOptions } = useFlatOptions('suppliers');
 
   const { data, isLoading } = useQuery<Paginated<PaymentEntry>>({
     queryKey: ['cheques', page, search, chequeStatus],
@@ -90,6 +100,27 @@ export default function ChequesRegisterPage() {
     onError: (e: Error) => toast.error(e.message || 'Could not mark cheque as bounced'),
   });
 
+  const endorse = useMutation({
+    mutationFn: ({ id, partyType, partyId }: { id: string; partyType: 'CUSTOMER' | 'SUPPLIER'; partyId: string }) =>
+      endorseCheque(id, partyType, partyId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cheques'] });
+      qc.invalidateQueries({ queryKey: ['payments'] });
+      setEndorseEntry(null);
+      setEndorsePartyId('');
+      toast.success('Cheque endorsed to party');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Could not endorse cheque'),
+  });
+
+  const isDueToday = (date?: string | null) => {
+    if (!date) return false;
+    const today = new Date().toISOString().slice(0, 10);
+    return new Date(date).toISOString().slice(0, 10) === today;
+  };
+
+  const endorsePartyOptions = endorsePartyType === 'CUSTOMER' ? customerOptions : supplierOptions;
+
   return (
     <div>
       <PageHeader
@@ -114,7 +145,15 @@ export default function ChequesRegisterPage() {
             { key: 'paymentDate', header: 'Date', render: (r) => <span className="text-slate-600">{new Date(r.paymentDate).toLocaleDateString('en-GB')}</span> },
             { key: 'party', header: 'Party', render: (r) => <span className="text-slate-700">{r.partyName ?? '-'}</span> },
             { key: 'chequeNumber', header: 'Cheque no.', render: (r) => <span className="font-mono text-slate-600">{r.chequeNumber ?? '-'}</span> },
-            { key: 'chequeDate', header: 'Cheque date', render: (r) => <span className="text-slate-600">{r.chequeDate ? dateOnly(r.chequeDate) : '-'}</span> },
+            { key: 'chequeDate', header: 'Cheque date', render: (r) => (
+              <span className="text-slate-600">
+                {r.chequeDate ? dateOnly(r.chequeDate) : '-'}
+                {r.chequeStatus === 'IN_HAND' && isDueToday(r.chequeDate) && (
+                  <span className="ml-1.5 inline-flex rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-red-700">due today</span>
+                )}
+              </span>
+            ) },
+            { key: 'pdcAccount', header: 'PDC account', render: (r) => <span className="text-slate-600">{r.pdcAccount?.name ?? '-'}</span> },
             { key: 'bankAccount', header: 'Bank', render: (r) => <span className="text-slate-600">{r.bankAccount?.name ?? '-'}</span> },
             { key: 'amount', header: 'Amount', align: 'right', render: (r) => <span className="font-medium text-slate-800">{money(r.amount, 'PKR')}</span> },
             {
@@ -134,6 +173,9 @@ export default function ChequesRegisterPage() {
                     <>
                       <button onClick={() => deposit.mutate(r.id)} className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 hover:text-blue-700" title="Clear cheque into bank">
                         <Landmark className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => { setEndorseEntry(r); setEndorsePartyType(r.paymentType === 'RECEIPT' ? 'SUPPLIER' : 'CUSTOMER'); setEndorsePartyId(''); }} className="rounded-lg p-1.5 text-violet-600 hover:bg-violet-50 hover:text-violet-700" title="Endorse cheque to party">
+                        <ArrowLeftRight className="h-4 w-4" />
                       </button>
                       <button onClick={() => { setBounceEntry(r); setBounceReason(''); }} className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 hover:text-red-600" title="Mark as bounced">
                         <RefreshCcw className="h-4 w-4" />
@@ -162,6 +204,7 @@ export default function ChequesRegisterPage() {
             <KV label="Cheque no." value={detail.chequeNumber ?? '-'} />
             <KV label="Cheque date" value={detail.chequeDate ? dateOnly(detail.chequeDate) : '-'} />
             <KV label="Bank" value={detail.bankAccount?.name ?? '-'} />
+            <KV label="PDC account" value={detail.pdcAccount?.name ?? '-'} />
             <KV label="State" value={detail.chequeStatus ?? '-'} />
             <KV label="Amount" value={money(detail.amount, 'PKR')} />
             <KV label="Entry status" value={detail.status} />
@@ -188,6 +231,31 @@ export default function ChequesRegisterPage() {
         <div className="mt-3">
           <Field label="Bounce reason" required>
             <Textarea value={bounceReason} onChange={(e) => setBounceReason(e.target.value)} placeholder="e.g. insufficient funds" />
+          </Field>
+        </div>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!endorseEntry}
+        title="Endorse cheque to another party"
+        message={`This pays the cheque (${endorseEntry?.number ?? ''} · ${endorseEntry?.amount ? money(endorseEntry.amount, 'PKR') : ''}) out of the PDC account — Dr party / Cr PDC account.`}
+        confirmLabel="Endorse cheque"
+        loading={endorse.isPending}
+        onCancel={() => { setEndorseEntry(null); setEndorsePartyId(''); }}
+        onConfirm={() => endorseEntry?.id && endorsePartyId && endorse.mutate({ id: endorseEntry.id, partyType: endorsePartyType, partyId: endorsePartyId })}
+      >
+        <div className="mt-3 grid grid-cols-1 gap-3">
+          <Field label="Endorse to" required>
+            <Select value={endorsePartyType} onChange={(e) => { setEndorsePartyType(e.target.value as 'CUSTOMER' | 'SUPPLIER'); setEndorsePartyId(''); }}>
+              <option value="SUPPLIER">Supplier (payable)</option>
+              <option value="CUSTOMER">Customer</option>
+            </Select>
+          </Field>
+          <Field label={endorsePartyType === 'CUSTOMER' ? 'Customer' : 'Supplier'} required>
+            <Select value={endorsePartyId} onChange={(e) => setEndorsePartyId(e.target.value)} required>
+              <option value="">Select {endorsePartyType === 'CUSTOMER' ? 'customer' : 'supplier'}…</option>
+              {endorsePartyOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </Select>
           </Field>
         </div>
       </ConfirmDialog>

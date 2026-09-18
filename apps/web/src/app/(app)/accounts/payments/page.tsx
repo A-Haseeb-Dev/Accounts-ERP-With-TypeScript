@@ -2,11 +2,11 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDownCircle, ArrowUpCircle, Eye, Landmark, Plus, RefreshCcw, Search, ShieldCheck, ShieldX, XCircle } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Eye, Landmark, Plus, RefreshCcw, Search, ShieldCheck, ShieldX, XCircle } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
-import { createPayment, postPayment, cancelPayment, depositCheque, bounceCheque, fetchOpenInvoices, fetchNextPaymentNumber } from '@/lib/accounts-api';
+import { createPayment, postPayment, cancelPayment, depositCheque, bounceCheque, endorseCheque, fetchOpenInvoices, fetchNextPaymentNumber } from '@/lib/accounts-api';
 import type { PaymentPayload } from '@/lib/accounts-api';
-import { useFlatOptions, useAccountingAccounts } from '@/hooks/use-options';
+import { useFlatOptions } from '@/hooks/use-options';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { DataTable } from '@/components/data-table';
@@ -29,13 +29,20 @@ interface AllocationLine {
   allocated: number;
 }
 
+interface FlatAccount {
+  id: string;
+  code: string | null;
+  name: string | null;
+  subHead?: { name: string } | null;
+}
+
 export default function PaymentsPage() {
   const qc = useQueryClient();
   const { can } = useAuth();
   const canCreate = can('accounts.payments.create');
   const canPost = can('accounts.payments.post');
   const canCancel = can('accounts.payments.cancel');
-  const { options: accountOptions } = useAccountingAccounts();
+  const { options: accountOptions, data: accountsData } = useFlatOptions<FlatAccount>('main-accounts');
   const { options: customerOptions } = useFlatOptions('customers');
   const { options: supplierOptions } = useFlatOptions('suppliers');
   const { options: bankOptions, data: banks } = useFlatOptions('banks');
@@ -53,6 +60,7 @@ export default function PaymentsPage() {
   const [method, setMethod] = useState<'CASH' | 'CHEQUE' | 'BANK'>('CASH');
   const [chequeNumber, setChequeNumber] = useState('');
   const [bankAccountId, setBankAccountId] = useState('');
+  const [pdcAccountId, setPdcAccountId] = useState('');
   const [chequeDate, setChequeDate] = useState('');
   const [amount, setAmount] = useState(0);
   const [payDate, setPayDate] = useState('');
@@ -120,6 +128,7 @@ export default function PaymentsPage() {
     setMethod('CASH');
     setChequeNumber('');
     setBankAccountId('');
+    setPdcAccountId('');
     setChequeDate('');
     setAmount(0);
     setPayDate(new Date().toISOString().slice(0, 10));
@@ -177,6 +186,23 @@ export default function PaymentsPage() {
   const [bounceEntry, setBounceEntry] = bounceTarget;
   const [bounceReason, setBounceReason] = useState('');
 
+  const [endorseEntry, setEndorseEntry] = useState<PaymentEntry | null>(null);
+  const [endorsePartyType, setEndorsePartyType] = useState<'CUSTOMER' | 'SUPPLIER'>('SUPPLIER');
+  const [endorsePartyId, setEndorsePartyId] = useState('');
+
+  const endorse = useMutation({
+    mutationFn: ({ id, partyType, partyId }: { id: string; partyType: 'CUSTOMER' | 'SUPPLIER'; partyId: string }) =>
+      endorseCheque(id, partyType, partyId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payments'] });
+      qc.invalidateQueries({ queryKey: ['cheques'] });
+      setEndorseEntry(null);
+      setEndorsePartyId('');
+      toast.success('Cheque endorsed to party');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Could not endorse cheque'),
+  });
+
   const bounce = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) => bounceCheque(id, reason),
     onSuccess: () => {
@@ -197,15 +223,20 @@ export default function PaymentsPage() {
       setError('Amount must be greater than zero.');
       return;
     }
-    if (!partyId || !mainAccountId) {
-      setError('Select the party and the cash / bank account.');
+    const pdcMode = type === 'RECEIPT' && method === 'CHEQUE' && !!chequeDate;
+    if (!partyId) {
+      setError('Select the party.');
+      return;
+    }
+    if (!pdcMode && !mainAccountId) {
+      setError('Select the cash / bank account.');
       return;
     }
     if (method === 'CHEQUE' && !chequeNumber.trim()) {
       setError('Enter the cheque number.');
       return;
     }
-    if (method === 'CHEQUE' && !bankAccountId) {
+    if (method === 'CHEQUE' && !pdcMode && !bankAccountId) {
       setError('Select the bank account for the cheque.');
       return;
     }
@@ -217,10 +248,11 @@ export default function PaymentsPage() {
       paymentType: type,
       partyType,
       partyId,
-      mainAccountId,
+      mainAccountId: pdcMode ? (pdcAccountId || undefined) : mainAccountId,
       method,
       chequeNumber: method === 'CHEQUE' ? chequeNumber.trim() : undefined,
-      bankAccountId: method === 'CHEQUE' ? bankAccountId : undefined,
+      bankAccountId: method === 'CHEQUE' ? (pdcMode ? (bankAccountId || undefined) : bankAccountId) : undefined,
+      pdcAccountId: method === 'CHEQUE' && pdcMode ? (pdcAccountId || undefined) : undefined,
       chequeDate: method === 'CHEQUE' && chequeDate ? chequeDate : undefined,
       amount: amt,
       paymentDate: payDate,
@@ -265,6 +297,12 @@ export default function PaymentsPage() {
   };
 
   const partyOptions = partyType === 'CUSTOMER' ? customerOptions : supplierOptions;
+
+  const pdcOptions = (accountsData ?? [])
+    .filter((a) => a.subHead?.name === 'PDCS')
+    .map((a) => ({ value: a.id, label: [a.code, a.name].filter(Boolean).join(' · ') }));
+  const pdcMode = type === 'RECEIPT' && method === 'CHEQUE' && !!chequeDate;
+  const endorsePartyOptions = endorsePartyType === 'CUSTOMER' ? customerOptions : supplierOptions;
 
   const renderDueDate = (dueDate?: string, paid = false) => {
     if (paid) return <span className="text-emerald-600">Cleared</span>;
@@ -347,6 +385,9 @@ export default function PaymentsPage() {
                       <button onClick={() => deposit.mutate(r.id)} className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 hover:text-blue-700" title="Clear cheque into bank">
                         <Landmark className="h-4 w-4" />
                       </button>
+                      <button onClick={() => { setEndorseEntry(r); setEndorsePartyType(r.paymentType === 'RECEIPT' ? 'SUPPLIER' : 'CUSTOMER'); setEndorsePartyId(''); }} className="rounded-lg p-1.5 text-violet-600 hover:bg-violet-50 hover:text-violet-700" title="Endorse cheque to party">
+                        <ArrowLeftRight className="h-4 w-4" />
+                      </button>
                       <button onClick={() => { setBounceEntry(r); setBounceReason(''); }} className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 hover:text-red-600" title="Mark as bounced">
                         <RefreshCcw className="h-4 w-4" />
                       </button>
@@ -396,12 +437,14 @@ export default function PaymentsPage() {
                 {partyOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </Select>
             </Field>
-            <Field label="Cash / Bank account" required>
-              <Select value={mainAccountId} onChange={(e) => setMainAccountId(e.target.value)} required>
-                <option value="">Select account…</option>
-                {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </Select>
-            </Field>
+            {!pdcMode && (
+              <Field label="Cash / Bank account" required>
+                <Select value={mainAccountId} onChange={(e) => setMainAccountId(e.target.value)} required>
+                  <option value="">Select account…</option>
+                  {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </Select>
+              </Field>
+            )}
             <Field label="Method" required>
               <Select value={method} onChange={(e) => setMethod(e.target.value as 'CASH' | 'CHEQUE' | 'BANK')}>
                 <option value="CASH">Cash</option>
@@ -414,16 +457,39 @@ export default function PaymentsPage() {
                 <Field label="Cheque number" required>
                   <Input value={chequeNumber} onChange={(e) => setChequeNumber(e.target.value)} placeholder="e.g. 00421579" required />
                 </Field>
-                <Field label="Bank account" required>
-                  <Select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)} required>
-                    <option value="">Select bank…</option>
-                    {bankOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </Select>
-                </Field>
                 <Field label="Cheque date (post-dated?)">
                   <Input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} />
                 </Field>
+                {pdcMode ? (
+                  <>
+                    <Field label="PDC account (receiving)">
+                      <Select value={pdcAccountId} onChange={(e) => setPdcAccountId(e.target.value)}>
+                        <option value="">Auto-create / use party’s PDC account…</option>
+                        {pdcOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="Bank account (for clearing later)">
+                      <Select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)}>
+                        <option value="">Optional…</option>
+                        {bankOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </Select>
+                    </Field>
+                  </>
+                ) : (
+                  <Field label="Bank account" required>
+                    <Select value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)} required>
+                      <option value="">Select bank…</option>
+                      {bankOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </Select>
+                  </Field>
+                )}
               </>
+            )}
+            {pdcMode && (
+              <p className="text-xs text-slate-400">
+                Post-dated cheque receipt is booked as <span className="font-medium">Dr PDC account / Cr party</span>.
+                A PDC MGC-type account (under the PDCS sub-head) is created per party on save.
+              </p>
             )}
             <Field label="Date" required>
               <Input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} required />
@@ -554,6 +620,31 @@ export default function PaymentsPage() {
           </Field>
         </div>
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!endorseEntry}
+        title="Endorse cheque to another party"
+        message={`This pays the cheque (${endorseEntry?.number ?? ''} · ${endorseEntry?.amount ? money(endorseEntry.amount, 'PKR') : ''}) out of the PDC account — Dr party / Cr PDC account.`}
+        confirmLabel="Endorse cheque"
+        loading={endorse.isPending}
+        onCancel={() => { setEndorseEntry(null); setEndorsePartyId(''); }}
+        onConfirm={() => endorseEntry?.id && endorsePartyId && endorse.mutate({ id: endorseEntry.id, partyType: endorsePartyType, partyId: endorsePartyId })}
+      >
+        <div className="mt-3 grid grid-cols-1 gap-3">
+          <Field label="Endorse to" required>
+            <Select value={endorsePartyType} onChange={(e) => { setEndorsePartyType(e.target.value as 'CUSTOMER' | 'SUPPLIER'); setEndorsePartyId(''); }}>
+              <option value="SUPPLIER">Supplier (payable)</option>
+              <option value="CUSTOMER">Customer</option>
+            </Select>
+          </Field>
+          <Field label={endorsePartyType === 'CUSTOMER' ? 'Customer' : 'Supplier'} required>
+            <Select value={endorsePartyId} onChange={(e) => setEndorsePartyId(e.target.value)} required>
+              <option value="">Select {endorsePartyType === 'CUSTOMER' ? 'customer' : 'supplier'}…</option>
+              {endorsePartyOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </Select>
+          </Field>
+        </div>
+      </ConfirmDialog>
     </div>
   );
 }
@@ -583,6 +674,7 @@ function PaymentDetailModal({
             <KV label="Method" value={detail.method + (detail.chequeNumber ? ` · ${detail.chequeNumber}` : '')} />
             <KV label="Status" value={detail.status.toUpperCase()} />
             {detail.bankAccount && <KV label="Bank" value={`${detail.bankAccount.name}${detail.bankAccount.accountNumber ? ` · ${detail.bankAccount.accountNumber}` : ''}`} />}
+            {detail.pdcAccount && <KV label="PDC account" value={detail.pdcAccount.name} />}
             {detail.chequeDate && <KV label="Cheque date" value={dateOnly(detail.chequeDate)} />}
             {detail.chequeStatus && <KV label="Cheque status" value={detail.chequeStatus} />}
           </div>

@@ -227,6 +227,9 @@ model MainAccount {
   suppliers      Supplier[]
   paymentEntries PaymentEntry[]
   bankAccounts   BankAccount[]
+  pdcCustomers   Customer[]      @relation("PartyPdcAccount")
+  pdcSuppliers   Supplier[]      @relation("PartyPdcAccount")
+  pdcPaymentEntries PaymentEntry[] @relation("PaymentPdcAccount")
 
   @@unique([code, organizationId])
   @@index([organizationId])
@@ -354,6 +357,7 @@ model Customer {
   address        String?
   townId         String?
   mainAccountId  String?
+  pdcAccountId   String?
   openingBalance Decimal  @default(0) @db.Decimal(18, 2)
   creditLimit    Decimal  @default(0) @db.Decimal(18, 2)
   creditDays     Int      @default(30)
@@ -366,6 +370,7 @@ model Customer {
   organization Organization? @relation(fields: [organizationId], references: [id])
   town         Town?         @relation(fields: [townId], references: [id], onDelete: SetNull)
   mainAccount  MainAccount?  @relation(fields: [mainAccountId], references: [id], onDelete: SetNull)
+  pdcAccount   MainAccount?  @relation("PartyPdcAccount", fields: [pdcAccountId], references: [id], onDelete: SetNull)
   sales        Sale[]
   salesReturns SalesReturn[]
 
@@ -381,6 +386,7 @@ model Supplier {
   address        String?
   townId         String?
   mainAccountId  String?
+  pdcAccountId   String?
   openingBalance Decimal  @default(0) @db.Decimal(18, 2)
   description    String?
   status         String   @default("active")
@@ -391,6 +397,7 @@ model Supplier {
   organization Organization? @relation(fields: [organizationId], references: [id])
   town         Town?         @relation(fields: [townId], references: [id], onDelete: SetNull)
   mainAccount  MainAccount?  @relation(fields: [mainAccountId], references: [id], onDelete: SetNull)
+  pdcAccount   MainAccount?  @relation("PartyPdcAccount", fields: [pdcAccountId], references: [id], onDelete: SetNull)
   purchases    Purchase[]
   purchaseReturns PurchaseReturn[]
 
@@ -771,8 +778,9 @@ model PaymentEntry {
   method         String   @default("CASH") // CASH | CHEQUE | BANK
   chequeNumber   String?
   bankAccountId  String?
+  pdcAccountId   String?
   chequeDate     DateTime? // maturity / clearing date for post-dated cheques
-  chequeStatus   String?  // PENDING | IN_HAND | DEPOSITED | BOUNCED
+  chequeStatus   String?  // PENDING | IN_HAND | DEPOSITED | BOUNCED | ENDORSED
   amount         Decimal  @default(0) @db.Decimal(18, 2)
   paymentDate    DateTime @default(now())
   reference      String?
@@ -800,6 +808,7 @@ model PaymentEntry {
   organization Organization?   @relation(fields: [organizationId], references: [id])
   mainAccount  MainAccount     @relation(fields: [mainAccountId], references: [id])
   bankAccount  BankAccount?    @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  pdcAccount   MainAccount?    @relation("PaymentPdcAccount", fields: [pdcAccountId], references: [id], onDelete: SetNull)
   allocations  PaymentAllocation[]
 
   @@unique([number, organizationId])
@@ -808,6 +817,7 @@ model PaymentEntry {
   @@index([status])
   @@index([mainAccountId])
   @@index([bankAccountId])
+  @@index([pdcAccountId])
   @@index([chequeStatus])
 }
 

@@ -31,10 +31,11 @@ export interface PaymentPayload {
   paymentType: 'RECEIPT' | 'PAYMENT';
   partyType: 'CUSTOMER' | 'SUPPLIER';
   partyId: string;
-  mainAccountId: string;
+  mainAccountId?: string;
   method: PaymentMethod;
   chequeNumber?: string;
   bankAccountId?: string;
+  pdcAccountId?: string;
   chequeDate?: string;
   amount: number;
   paymentDate?: string;
@@ -54,6 +55,9 @@ export const depositCheque = (id: string) =>
 
 export const bounceCheque = (id: string, reason: string) =>
   apiFetch<PaymentEntry>(`/payments/${id}/bounce`, { method: 'POST', body: JSON.stringify({ reason }) });
+
+export const endorseCheque = (id: string, partyType: 'CUSTOMER' | 'SUPPLIER', partyId: string) =>
+  apiFetch<PaymentEntry>(`/payments/${id}/endorse`, { method: 'POST', body: JSON.stringify({ partyType, partyId }) });
 
 export const cancelPayment = (id: string, reason: string) =>
   apiFetch<PaymentEntry>(`/payments/${id}/cancel`, { method: 'DELETE', body: JSON.stringify({ reason }) });

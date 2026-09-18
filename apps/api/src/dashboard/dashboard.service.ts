@@ -15,6 +15,8 @@ export class DashboardService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
     const plus7 = new Date(today);
     plus7.setDate(plus7.getDate() + 7);
     plus7.setHours(23, 59, 59, 999);
@@ -36,6 +38,7 @@ export class DashboardService {
       recentVouchers,
       chequesInHand,
       chequesMaturing,
+      chequesDueToday,
       bouncedCheques,
       overdueSales,
       returnsAgg,
@@ -114,6 +117,16 @@ export class DashboardService {
         _sum: { amount: true },
       }),
       this.prisma.paymentEntry.aggregate({
+        where: {
+          paymentType: 'RECEIPT',
+          status: 'posted',
+          chequeStatus: 'IN_HAND',
+          chequeDate: { gte: today, lt: tomorrow },
+        },
+        _count: true,
+        _sum: { amount: true },
+      }),
+      this.prisma.paymentEntry.aggregate({
         where: { paymentType: 'RECEIPT', status: 'posted', chequeStatus: 'BOUNCED' },
         _count: true,
         _sum: { amount: true },
@@ -187,6 +200,10 @@ export class DashboardService {
       chequesMaturingSoon: {
         count: chequesMaturing._count,
         amount: round2(Number(chequesMaturing._sum.amount ?? 0)),
+      },
+      chequesDueToday: {
+        count: chequesDueToday._count,
+        amount: round2(Number(chequesDueToday._sum.amount ?? 0)),
       },
       bouncedCheques: {
         count: bouncedCheques._count,

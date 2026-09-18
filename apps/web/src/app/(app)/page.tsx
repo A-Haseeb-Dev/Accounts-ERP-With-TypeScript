@@ -52,6 +52,7 @@ interface DashboardOverview {
   overdueInvoices: { count: number; amount: number };
   chequesInHand: { count: number; amount: number };
   chequesMaturingSoon: { count: number; amount: number };
+  chequesDueToday: { count: number; amount: number };
   bouncedCheques: { count: number; amount: number };
   lowStockCount: number;
   topCustomers: { id: string; name: string; total: number }[];
@@ -312,6 +313,14 @@ export default function DashboardPage() {
                 label={data.chequesInHand.count > 0 ? `Cheques in hand (${data.chequesInHand.count})` : 'No cheques in hand'}
                 value={data.chequesInHand.count > 0 ? money(data.chequesInHand.amount) : undefined}
               />
+              {data.chequesDueToday.count > 0 && (
+                <StatusRow
+                  icon={<RefreshCcw className="h-4 w-4" />}
+                  tone="danger"
+                  label={`${data.chequesDueToday.count} cheque(s) due today`}
+                  value={money(data.chequesDueToday.amount)}
+                />
+              )}
               {data.chequesMaturingSoon.count > 0 && (
                 <StatusRow
                   icon={<RefreshCcw className="h-4 w-4" />}

@@ -38,8 +38,8 @@ export class CreatePaymentDto {
   partyId: string;
 
   @IsString()
-  @IsNotEmpty({ message: 'Cash / bank account is required' })
-  mainAccountId: string;
+  @IsOptional()
+  mainAccountId?: string;
 
   @IsEnum(['CASH', 'CHEQUE', 'BANK'], { message: 'method must be CASH, CHEQUE or BANK' })
   @IsNotEmpty({ message: 'Payment method is required' })
@@ -53,6 +53,10 @@ export class CreatePaymentDto {
   @IsString()
   @IsOptional()
   bankAccountId?: string;
+
+  @IsString()
+  @IsOptional()
+  pdcAccountId?: string;
 
   @IsOptional()
   @IsDateString({}, { message: 'Invalid cheque date' })
@@ -87,4 +91,13 @@ export class CancelPaymentDto {
   @IsString()
   @IsNotEmpty({ message: 'Reason is required' })
   reason: string;
+}
+
+export class EndorseChequeDto {
+  @IsEnum(['CUSTOMER', 'SUPPLIER'], { message: 'partyType must be CUSTOMER or SUPPLIER' })
+  partyType: 'CUSTOMER' | 'SUPPLIER';
+
+  @IsString()
+  @IsNotEmpty({ message: 'Payee party is required' })
+  partyId: string;
 }
