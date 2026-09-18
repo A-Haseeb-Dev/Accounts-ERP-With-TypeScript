@@ -28,9 +28,18 @@ interface UserForm {
 
 export default function UsersPage() {
   const qc = useQueryClient();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const canManage = can('users.manage');
-  const { options: roleOptions } = useFlatOptions('roles');
+  const isDeveloper = user?.roles?.includes('Developer') ?? false;
+  const { options: allRoleOptions } = useFlatOptions('roles');
+  const roleOptions = isDeveloper
+    ? allRoleOptions
+    : allRoleOptions.filter((o) => o.label !== 'Developer');
+
+  const canActOn = (row: User) => {
+    const rowIsDeveloper = row.roles?.some((r) => r.role.name === 'Developer') ?? false;
+    return canManage && (isDeveloper || !rowIsDeveloper);
+  };
 
   const { data, isLoading } = useQuery<Paginated<User>>({
     queryKey: ['users'],
@@ -125,15 +134,26 @@ export default function UsersPage() {
                       {canManage && (
                         <button
                           onClick={() => toggleStatus.mutate({ id: r.id, status: r.status === 'active' ? 'inactive' : 'active' })}
-                          className={`rounded-lg p-1.5 hover:bg-slate-100 ${r.status === 'active' ? 'text-slate-500 hover:text-amber-600' : 'text-emerald-600 hover:bg-emerald-50'}`}
-                          title={r.status === 'active' ? 'Deactivate' : 'Activate'}
+                          disabled={!canActOn(r)}
+                          title={!canActOn(r) ? 'Only a Developer can manage a Developer account' : r.status === 'active' ? 'Deactivate' : 'Activate'}
+                          className={`rounded-lg p-1.5 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30 ${r.status === 'active' ? 'text-slate-500 hover:text-amber-600' : 'text-emerald-600 hover:bg-emerald-50'}`}
                         ><Power className="h-4 w-4" /></button>
                       )}
                       {canManage && (
-                        <button onClick={() => startEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Pencil className="h-4 w-4" /></button>
+                        <button
+                          onClick={() => startEdit(r)}
+                          disabled={!canActOn(r)}
+                          title={!canActOn(r) ? 'Only a Developer can manage a Developer account' : 'Edit'}
+                          className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-30"
+                        ><Pencil className="h-4 w-4" /></button>
                       )}
                       {canManage && (
-                        <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                        <button
+                          onClick={() => setDeleteTarget(r)}
+                          disabled={!canActOn(r)}
+                          title={!canActOn(r) ? 'Only a Developer can manage a Developer account' : 'Delete'}
+                          className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
+                        ><Trash2 className="h-4 w-4" /></button>
                       )}
                     </div>
                   </td>

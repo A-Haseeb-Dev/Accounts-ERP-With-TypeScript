@@ -42,6 +42,7 @@ type MockFn = ReturnType<typeof vi.fn>;
 interface MockUsersPrisma {
   user: { findUnique?: MockFn; findMany?: MockFn; count?: MockFn; create?: MockFn; update?: MockFn };
   userRole: { deleteMany?: MockFn; createMany?: MockFn };
+  role: { findMany?: MockFn };
 }
 
 function buildService(overrides?: { prisma?: Partial<MockUsersPrisma> }) {
@@ -56,6 +57,9 @@ function buildService(overrides?: { prisma?: Partial<MockUsersPrisma> }) {
     userRole: {
       deleteMany: vi.fn(),
       createMany: vi.fn(),
+    },
+    role: {
+      findMany: vi.fn().mockResolvedValue([]),
     },
     ...(overrides?.prisma ?? {}),
   } as MockUsersPrisma;
@@ -96,6 +100,81 @@ describe('UsersService.create', () => {
     expect(err.status).toBe(409);
     expect(err.code).toBe('DUPLICATE_CODE');
     expect(err.message).toMatch(/Username/);
+  });
+});
+
+describe('UsersService Developer boundary', () => {
+  beforeEach(() => {
+    argon2HashMock.mockReset();
+  });
+
+  it('blocks a non-developer from creating a user with the Developer role', async () => {
+    const { svc, prisma } = buildService();
+    (prisma.user.findUnique as MockFn).mockResolvedValue(null);
+    (prisma.role.findMany as MockFn).mockResolvedValue([{ name: 'Developer' }]);
+
+    const err = await extractError(
+      svc.create(
+        { fullName: 'X', username: 'x', password: 'secret1234', roleIds: ['dev-role'] },
+        'actor-1',
+        ['Super Admin'],
+      ),
+    );
+    expect(err.status).toBe(403);
+    expect(err.message).toMatch(/Developer role/);
+    expect(prisma.user.create).not.toHaveBeenCalled();
+  });
+
+  it('allows a developer to create a user with the Developer role', async () => {
+    argon2HashMock.mockResolvedValue('hashed');
+    const { svc, prisma } = buildService();
+    (prisma.user.findUnique as MockFn).mockResolvedValue(null);
+    (prisma.role.findMany as MockFn).mockResolvedValue([{ name: 'Developer' }]);
+
+    const result = await svc.create(
+      { fullName: 'X', username: 'x', password: 'secret1234', roleIds: ['dev-role'] },
+      'actor-1',
+      ['Developer'],
+    );
+    expect(result.username).toBe('testuser');
+    expect(prisma.user.create).toHaveBeenCalled();
+  });
+
+  it('blocks a non-developer from escalating an ordinary user via update', async () => {
+    const { svc, prisma } = buildService();
+    (prisma.user.findUnique as MockFn).mockResolvedValue({
+      ...mockCreatedUser,
+      roles: [{ role: { name: 'Super Admin' } }],
+    });
+    (prisma.role.findMany as MockFn).mockResolvedValue([{ name: 'Developer' }]);
+
+    const err = await extractError(
+      svc.update('u2', { roleIds: ['dev-role'] }, 'actor-1', ['Super Admin']),
+    );
+    expect(err.status).toBe(403);
+  });
+
+  it('blocks a non-developer from modifying a Developer account', async () => {
+    const { svc, prisma } = buildService();
+    (prisma.user.findUnique as MockFn).mockResolvedValue({
+      ...mockCreatedUser,
+      roles: [{ role: { name: 'Developer' } }],
+    });
+
+    const err = await extractError(svc.update('u3', { fullName: 'New' }, 'actor-1', ['Super Admin']));
+    expect(err.status).toBe(403);
+    expect(err.message).toMatch(/Developer account/);
+  });
+
+  it('blocks a non-developer from deleting a Developer account', async () => {
+    const { svc, prisma } = buildService();
+    (prisma.user.findUnique as MockFn).mockResolvedValue({
+      ...mockCreatedUser,
+      roles: [{ role: { name: 'Developer' } }],
+    });
+
+    const err = await extractError(svc.remove('u3', 'actor-1', ['Super Admin']));
+    expect(err.status).toBe(403);
   });
 });
 
