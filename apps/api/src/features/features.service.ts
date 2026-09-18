@@ -2,12 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ApiException } from '../common/exceptions/api.exception';
-import { FEATURES } from './feature-catalog';
+import { FEATURES, isKnownFeature } from './feature-catalog';
 
 export interface FeatureFlagState {
   code: string;
   label: string;
   description: string;
+  group: string;
+  resource: string;
+  action: string;
   enabled: boolean;
 }
 
@@ -31,13 +34,16 @@ export class FeaturesService {
       code: feature.code,
       label: feature.label,
       description: feature.description,
+      group: feature.group,
+      resource: feature.resource,
+      action: feature.action,
       enabled: (map.get(FEATURE_KEY(feature.code)) ?? 'on') !== 'off',
     }));
   }
 
   /** Whether a feature is enabled for this company. Disabled features are blocked in the permissions guard. */
   async isEnabled(code: string): Promise<boolean> {
-    if (!FEATURES.some((f) => f.code === code)) return true;
+    if (!isKnownFeature(code)) return true;
 
     const row = await this.prisma.systemSetting.findFirst({
       where: { key: FEATURE_KEY(code) },
@@ -69,6 +75,46 @@ export class FeaturesService {
       entity: 'SystemSetting',
       message: `Feature "${feature.label}" ${enabled ? 'enabled' : 'disabled'} for this company`,
       metadata: { [key]: { from, to } },
+    });
+
+    return this.getState();
+  }
+
+  /** Turns many features on/off in a single transaction (group / bulk switch). */
+  async setManyEnabled(
+    codes: string[],
+    enabled: boolean,
+    actorId?: string,
+  ): Promise<FeatureFlagState[]> {
+    const valid = Array.from(new Set(codes)).filter((code) =>
+      FEATURES.some((f) => f.code === code),
+    );
+    if (valid.length === 0) return this.getState();
+
+    const to = enabled ? 'on' : 'off';
+
+    await this.prisma.$transaction(
+      valid.map((code) =>
+        this.prisma.systemSetting.upsert({
+          where: { key_organizationId: { key: FEATURE_KEY(code), organizationId: 'default-org' } },
+          create: {
+            key: FEATURE_KEY(code),
+            value: to,
+            organizationId: 'default-org',
+            updatedById: actorId,
+          },
+          update: { value: to, updatedById: actorId },
+        }),
+      ),
+    );
+
+    this.audit.record({
+      userId: actorId,
+      action: 'UPDATE',
+      module: 'SYSTEM_SETTINGS',
+      entity: 'SystemSetting',
+      message: `${valid.length} feature(s) ${enabled ? 'enabled' : 'disabled'} for this company`,
+      metadata: { codes: valid, to },
     });
 
     return this.getState();

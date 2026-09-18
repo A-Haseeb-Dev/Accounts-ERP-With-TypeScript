@@ -7,13 +7,17 @@ export interface FeatureFlag {
   code: string;
   label: string;
   description: string;
+  group: string;
+  resource: string;
+  action: string;
   enabled: boolean;
 }
 
 /**
- * Company feature switches (see apps/api/src/features). Used to hide navigation
- * entries for features the developer has turned off for this company. The API
- * guard is the real enforcement; this only controls what is visible in the UI.
+ * Company feature switches (see apps/api/src/features). Every permission in the
+ * system is a feature, so the developer can turn any individual action on or off
+ * for a company. Used to hide navigation entries and disable UI for switched-off
+ * features. The API guard is the real enforcement; this only controls the UI.
  */
 export function useFeatureFlags() {
   const { data, isLoading } = useQuery<FeatureFlag[]>({
@@ -22,12 +26,16 @@ export function useFeatureFlags() {
     staleTime: 30_000,
   });
 
-  const enabled = new Set((data ?? []).filter((f) => f.enabled).map((f) => f.code));
+  const features = data ?? [];
+  const enabled = new Set(features.filter((f) => f.enabled).map((f) => f.code));
+  const disabled = new Set(features.filter((f) => !f.enabled).map((f) => f.code));
 
   return {
-    features: data ?? [],
+    features,
     isLoading,
     enabled,
+    disabled,
     isOn: (code: string) => enabled.has(code),
+    isOff: (code: string) => disabled.has(code),
   };
 }

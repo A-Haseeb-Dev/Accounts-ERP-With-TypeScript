@@ -18,14 +18,18 @@ function buildService(overrides: Record<string, unknown> = {}) {
 describe('FeaturesService.getState', () => {
   it('lists every catalog feature as enabled by default', async () => {
     const { svc, prisma } = buildService();
-    prisma.systemSetting.findMany.mockResolvedValue([{ key: 'features.sales', value: 'off' }]);
+    prisma.systemSetting.findMany.mockResolvedValue([
+      { key: 'features.sales.invoice.view', value: 'off' },
+    ]);
 
     const state = await svc.getState();
     expect(state.length).toBeGreaterThan(0);
-    const sales = state.find((f) => f.code === 'sales');
-    expect(sales?.enabled).toBe(false);
-    const accounts = state.find((f) => f.code === 'accounts');
-    expect(accounts?.enabled).toBe(true);
+    const salesInvoice = state.find((f) => f.code === 'sales.invoice.view');
+    expect(salesInvoice?.enabled).toBe(false);
+    expect(salesInvoice?.group).toBe('Sales');
+    expect(salesInvoice?.action).toBe('View');
+    const vouchers = state.find((f) => f.code === 'accounts.vouchers.view');
+    expect(vouchers?.enabled).toBe(true);
   });
 });
 
@@ -37,13 +41,16 @@ describe('FeaturesService.isEnabled', () => {
 
   it('defaults to enabled when no row exists', async () => {
     const { svc } = buildService();
-    await expect(svc.isEnabled('sales')).resolves.toBe(true);
+    await expect(svc.isEnabled('sales.invoice.view')).resolves.toBe(true);
   });
 
   it('respects an explicit off row', async () => {
     const { svc, prisma } = buildService();
-    prisma.systemSetting.findFirst.mockResolvedValue({ key: 'features.sales', value: 'off' });
-    await expect(svc.isEnabled('sales')).resolves.toBe(false);
+    prisma.systemSetting.findFirst.mockResolvedValue({
+      key: 'features.sales.invoice.view',
+      value: 'off',
+    });
+    await expect(svc.isEnabled('sales.invoice.view')).resolves.toBe(false);
   });
 });
 
@@ -57,19 +64,24 @@ describe('FeaturesService.setEnabled', () => {
 
   it('persists the switch and records an audit entry', async () => {
     const { svc, prisma, audit } = buildService();
-    await svc.setEnabled('sales', false, 'u1');
+    await svc.setEnabled('sales.invoice.view', false, 'u1');
 
     expect(prisma.systemSetting.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { key_organizationId: { key: 'features.sales', organizationId: 'default-org' } },
-        create: expect.objectContaining({ key: 'features.sales', value: 'off' }),
+        where: {
+          key_organizationId: {
+            key: 'features.sales.invoice.view',
+            organizationId: 'default-org',
+          },
+        },
+        create: expect.objectContaining({ key: 'features.sales.invoice.view', value: 'off' }),
       }),
     );
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'UPDATE',
         module: 'SYSTEM_SETTINGS',
-        message: 'Feature "Sales" disabled for this company',
+        message: 'Feature "Invoice — View" disabled for this company',
       }),
     );
   });
