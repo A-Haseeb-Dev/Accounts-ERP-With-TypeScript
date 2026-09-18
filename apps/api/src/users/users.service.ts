@@ -5,6 +5,8 @@ import { AuditService } from '../audit/audit.service';
 import { ApiException } from '../common/exceptions/api.exception';
 import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
 
+const DEVELOPER_ROLE = 'Developer';
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -12,11 +14,39 @@ export class UsersService {
     private readonly audit: AuditService,
   ) {}
 
-  async create(dto: CreateUserDto, actorId?: string) {
+  // The Developer role is a vendor-level privilege that bypasses all permission
+  // checks, so only an existing Developer may grant it or manage Developer
+  // accounts. Everyone else with `users.manage` can still create/edit/delete
+  // ordinary users.
+  private async assertDeveloperBoundary(opts: {
+    actorRoles: string[];
+    requestedRoleIds?: string[];
+    targetRoleNames?: string[];
+  }) {
+    if (opts.actorRoles.includes(DEVELOPER_ROLE)) return;
+
+    if (opts.targetRoleNames?.includes(DEVELOPER_ROLE)) {
+      throw ApiException.forbidden('Only a Developer can manage a Developer account');
+    }
+
+    if (opts.requestedRoleIds?.length) {
+      const roles = await this.prisma.role.findMany({
+        where: { id: { in: opts.requestedRoleIds } },
+        select: { name: true },
+      });
+      if (roles.some((r) => r.name === DEVELOPER_ROLE)) {
+        throw ApiException.forbidden('Only a Developer can assign the Developer role');
+      }
+    }
+  }
+
+  async create(dto: CreateUserDto, actorId?: string, actorRoles: string[] = []) {
     const existing = await this.prisma.user.findUnique({ where: { username: dto.username } });
     if (existing) {
       throw ApiException.duplicateCode('Username');
     }
+
+    await this.assertDeveloperBoundary({ actorRoles, requestedRoleIds: dto.roleIds });
 
     const passwordHash = await argon2.hash(dto.password);
 
@@ -99,9 +129,18 @@ export class UsersService {
     return this.sanitize(user);
   }
 
-  async update(id: string, dto: UpdateUserDto, actorId?: string) {
-    const existing = await this.prisma.user.findUnique({ where: { id } });
+  async update(id: string, dto: UpdateUserDto, actorId?: string, actorRoles: string[] = []) {
+    const existing = await this.prisma.user.findUnique({
+      where: { id },
+      include: { roles: { include: { role: true } } },
+    });
     if (!existing) throw ApiException.notFound('User');
+
+    await this.assertDeveloperBoundary({
+      actorRoles,
+      requestedRoleIds: dto.roleIds,
+      targetRoleNames: existing.roles?.map((r: any) => r.role.name),
+    });
 
     const data: Record<string, unknown> = {
       fullName: dto.fullName,
@@ -141,12 +180,20 @@ export class UsersService {
     return this.sanitize(user);
   }
 
-  async remove(id: string, actorId?: string) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+  async remove(id: string, actorId?: string, actorRoles: string[] = []) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: { roles: { include: { role: true } } },
+    });
     if (!user) throw ApiException.notFound('User');
     if (user.id === actorId) {
       throw ApiException.invalidTransaction('You cannot delete your own account');
     }
+
+    await this.assertDeveloperBoundary({
+      actorRoles,
+      targetRoleNames: user.roles?.map((r: any) => r.role.name),
+    });
 
     await this.prisma.user.delete({ where: { id } });
 

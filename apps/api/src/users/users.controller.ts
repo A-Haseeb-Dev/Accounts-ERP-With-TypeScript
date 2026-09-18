@@ -15,7 +15,7 @@ export class UsersController {
   @Permissions('users.manage')
   @ApiOperation({ summary: 'Create a user' })
   create(@Body() dto: CreateUserDto, @CurrentUser() actor: any) {
-    return this.usersService.create(dto, actor?.id);
+    return this.usersService.create(dto, actor?.id, actor?.roles ?? []);
   }
 
   @Get()
@@ -48,13 +48,13 @@ export class UsersController {
   @Permissions('users.manage')
   @ApiOperation({ summary: 'Update a user' })
   update(@Param('id') id: string, @Body() dto: UpdateUserDto, @CurrentUser() actor: any) {
-    return this.usersService.update(id, dto, actor?.id);
+    return this.usersService.update(id, dto, actor?.id, actor?.roles ?? []);
   }
 
   @Delete(':id')
   @Permissions('users.manage')
   @ApiOperation({ summary: 'Delete a user permanently' })
   remove(@Param('id') id: string, @CurrentUser() actor: any) {
-    return this.usersService.remove(id, actor?.id);
+    return this.usersService.remove(id, actor?.id, actor?.roles ?? []);
   }
 }
