@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
-import { CreatePaymentDto, CancelPaymentDto } from './dto/payments.dto';
+import { CreatePaymentDto, CancelPaymentDto, EndorseChequeDto } from './dto/payments.dto';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -87,5 +87,12 @@ export class PaymentsController {
   @ApiOperation({ summary: 'Mark a cheque as bounced and reverse to the party' })
   bounce(@Param('id') id: string, @Body() dto: CancelPaymentDto, @CurrentUser() actor: any) {
     return this.service.bounce(id, dto.reason, actor?.id);
+  }
+
+  @Post(':id/endorse')
+  @Permissions('accounts.payments.post')
+  @ApiOperation({ summary: 'Endorse a cheque in hand to another party (PDC payment voucher)' })
+  endorse(@Param('id') id: string, @Body() dto: EndorseChequeDto, @CurrentUser() actor: any) {
+    return this.service.endorse(id, dto, actor?.id);
   }
 }

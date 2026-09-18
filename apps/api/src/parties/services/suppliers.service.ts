@@ -28,6 +28,10 @@ export class SuppliersService {
       const town = await this.prisma.town.findUnique({ where: { id: dto.townId } });
       if (!town) throw ApiException.notFound('Town');
     }
+    if (dto.pdcAccountId) {
+      const pdc = await this.prisma.mainAccount.findUnique({ where: { id: dto.pdcAccountId } });
+      if (!pdc) throw ApiException.notFound('PDC account');
+    }
 
     const item = await this.prisma.supplier.create({
       data: {
@@ -37,11 +41,12 @@ export class SuppliersService {
         address: dto.address ?? null,
         townId: dto.townId ?? null,
         mainAccountId: dto.mainAccountId ?? null,
+        pdcAccountId: dto.pdcAccountId ?? null,
         openingBalance: dto.openingBalance ?? 0,
         description: dto.description ?? null,
         status: dto.status ?? 'active',
       },
-      include: { town: true, mainAccount: true },
+      include: { town: true, mainAccount: true, pdcAccount: true },
     });
 
     this.audit.record({
@@ -90,7 +95,7 @@ export class SuppliersService {
 
     const items = await this.prisma.supplier.findMany({
       where,
-      include: { town: true, mainAccount: true, _count: { select: { purchases: true } } },
+      include: { town: true, mainAccount: true, pdcAccount: true, _count: { select: { purchases: true } } },
       orderBy: { code: 'asc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -121,7 +126,7 @@ export class SuppliersService {
   async findOne(id: string) {
     const item = await this.prisma.supplier.findUnique({
       where: { id },
-      include: { town: true, mainAccount: true },
+      include: { town: true, mainAccount: true, pdcAccount: true },
     });
     if (!item) throw ApiException.notFound('Supplier');
     return { ...item, balance: await this.calculateBalance(item) };

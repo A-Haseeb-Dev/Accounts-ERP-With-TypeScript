@@ -12,6 +12,7 @@ const HEAD_ACCOUNTS = [
 const SUB_HEADS = [
   { code: '01', name: 'Current Assets', headCode: '01' },
   { code: '02', name: 'Fixed Assets', headCode: '01' },
+  { code: '03', name: 'PDCS', headCode: '01' },
   { code: '01', name: 'Current Liabilities', headCode: '02' },
   { code: '02', name: 'Long Term Liabilities', headCode: '02' },
   { code: '01', name: 'Capital', headCode: '03' },

@@ -7,7 +7,7 @@ export type DocStatus = 'draft' | 'pending' | 'posted' | 'cancelled';
 export type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 export type OpeningBalanceSide = 'DR' | 'CR';
 export type PaymentMethod = 'CASH' | 'CHEQUE' | 'BANK';
-export type ChequeStatus = 'PENDING' | 'IN_HAND' | 'CLEARED' | 'DEPOSITED' | 'BOUNCED';
+export type ChequeStatus = 'PENDING' | 'IN_HAND' | 'CLEARED' | 'DEPOSITED' | 'BOUNCED' | 'ENDORSED';
 
 export type ItemTypeName =
   | 'ASSET'
@@ -140,6 +140,7 @@ export interface PaymentEntry {
   method: PaymentMethod;
   chequeNumber?: string;
   bankAccountId?: string;
+  pdcAccountId?: string;
   chequeDate?: string;
   chequeStatus?: ChequeStatus | null;
   depositFailed?: boolean;
@@ -159,6 +160,7 @@ export interface PaymentEntry {
   updatedAt: string;
   mainAccount?: { id: string; code: string; name: string };
   bankAccount?: BankAccount;
+  pdcAccount?: { id: string; code: string; name: string };
   allocations: PaymentAllocation[];
 }
 
