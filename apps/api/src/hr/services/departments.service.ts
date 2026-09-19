@@ -69,7 +69,10 @@ export class DepartmentsService {
     }
     if (status) where.status = status;
 
-    const [items, total, disabledIds] = await Promise.all([
+    const disabledIds = await this.disabledDepartmentIds();
+    if (disabledIds.size) where.id = { notIn: Array.from(disabledIds) };
+
+    const [items, total] = await Promise.all([
       this.prisma.department.findMany({
         where,
         include: { _count: { select: { employees: true, designations: true } } },
@@ -78,11 +81,8 @@ export class DepartmentsService {
         take: pageSize,
       }),
       this.prisma.department.count({ where }),
-      this.disabledDepartmentIds(),
     ]);
-
-    const visible = disabledIds.size ? items.filter((d) => !disabledIds.has(d.id)) : items;
-    return { items: visible, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+    return { items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
   }
 
   async findAllFlat() {
