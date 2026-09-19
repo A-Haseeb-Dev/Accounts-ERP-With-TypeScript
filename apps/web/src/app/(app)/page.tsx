@@ -16,12 +16,19 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Banknote,
+  Boxes,
+  CalendarCheck2,
   ChevronRight,
+  FilePlus2,
   FileText,
   Landmark,
   Package,
   RefreshCcw,
   ShoppingCart,
+  TrendingDown,
+  TrendingUp,
+  Undo2,
+  UserPlus,
   Users,
   Wallet,
 } from 'lucide-react';
@@ -155,7 +162,125 @@ export default function DashboardPage() {
     },
   ];
 
-  const hasQuickActions = can('sales.invoice.create') || can('accounts.payments.create') || can('inventory.purchase.create');
+  const monthProfit = data.monthSales - data.monthPurchases;
+
+  const monthKpis = [
+    {
+      label: 'This Month Income',
+      value: money(data.monthSales),
+      sub: `${data.monthSales > 0 ? 'From posted sales' : 'No posted sales yet'}`,
+      icon: TrendingUp,
+      accent: 'text-emerald-700 bg-emerald-50',
+    },
+    {
+      label: 'This Month Expenses',
+      value: money(data.monthPurchases),
+      sub: `${data.monthPurchases > 0 ? 'From posted purchases' : 'No posted purchases yet'}`,
+      icon: TrendingDown,
+      accent: 'text-red-700 bg-red-50',
+    },
+    {
+      label: 'This Month Profit',
+      value: money(monthProfit),
+      sub: `${monthProfit >= 0 ? 'Income − expenses' : 'Expenses exceeded income'}`,
+      icon: Wallet,
+      accent: monthProfit >= 0 ? 'text-teal-700 bg-teal-50' : 'text-red-700 bg-red-50',
+    },
+    {
+      label: 'This Month Received',
+      value: money(data.monthReceipts),
+      sub: `Paid out ${money(data.monthPayments)}`,
+      icon: Banknote,
+      accent: 'text-blue-700 bg-blue-50',
+    },
+  ];
+
+  const quickActions = [
+    {
+      perm: 'sales.invoice.create',
+      href: '/sales/invoices',
+      label: 'New Sale',
+      icon: ShoppingCart,
+      tint: 'bg-emerald-50 text-emerald-700',
+    },
+    {
+      perm: 'inventory.purchase.create',
+      href: '/inventory/purchases',
+      label: 'New Purchase',
+      icon: Package,
+      tint: 'bg-slate-100 text-slate-700',
+    },
+    {
+      perm: 'accounts.payments.create',
+      href: '/accounts/payments',
+      label: 'Receipt / Payment',
+      icon: ArrowDownCircle,
+      tint: 'bg-amber-50 text-amber-700',
+    },
+    {
+      perm: 'accounts.vouchers.create',
+      href: '/accounts/vouchers',
+      label: 'New Voucher',
+      icon: FileText,
+      tint: 'bg-blue-50 text-blue-700',
+    },
+    {
+      perm: 'sales.return.create',
+      href: '/sales/returns',
+      label: 'Sales Return',
+      icon: Undo2,
+      tint: 'bg-rose-50 text-rose-700',
+    },
+    {
+      perm: 'inventory.purchase-return.create',
+      href: '/inventory/purchase-returns',
+      label: 'Purchase Return',
+      icon: Undo2,
+      tint: 'bg-orange-50 text-orange-700',
+    },
+    {
+      perm: 'administration.customers.create',
+      href: '/parties/customers',
+      label: 'Add Customer',
+      icon: UserPlus,
+      tint: 'bg-teal-50 text-teal-700',
+    },
+    {
+      perm: 'administration.suppliers.create',
+      href: '/parties/suppliers',
+      label: 'Add Supplier',
+      icon: UserPlus,
+      tint: 'bg-indigo-50 text-indigo-700',
+    },
+    {
+      perm: 'administration.items.create',
+      href: '/administration/items',
+      label: 'Add Product',
+      icon: Boxes,
+      tint: 'bg-violet-50 text-violet-700',
+    },
+    {
+      perm: 'hr.attendance.manage',
+      href: '/hr/attendance',
+      label: 'Mark Attendance',
+      icon: CalendarCheck2,
+      tint: 'bg-cyan-50 text-cyan-700',
+    },
+    {
+      perm: 'hr.leaves.create',
+      href: '/hr/leaves',
+      label: 'Leave Request',
+      icon: FilePlus2,
+      tint: 'bg-lime-50 text-lime-700',
+    },
+    {
+      perm: 'hr.payroll.create',
+      href: '/hr/payroll',
+      label: 'Run Payroll',
+      icon: Wallet,
+      tint: 'bg-fuchsia-50 text-fuchsia-700',
+    },
+  ].filter((a) => can(a.perm));
 
   return (
     <div>
@@ -195,32 +320,40 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {hasQuickActions && (
-        <div className="mt-6 flex flex-wrap items-center gap-3">
-          {can('sales.invoice.create') && (
-            <a
-              href="/sales/invoices"
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-            >
-              <ShoppingCart className="h-4 w-4" /> New Sale
-            </a>
-          )}
-          {can('accounts.payments.create') && (
-            <a
-              href="/accounts/payments"
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-            >
-              <ArrowDownCircle className="h-4 w-4" /> New Receipt / Payment
-            </a>
-          )}
-          {can('inventory.purchase.create') && (
-            <a
-              href="/inventory/purchases"
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-            >
-              <Package className="h-4 w-4" /> New Purchase
-            </a>
-          )}
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {monthKpis.map(({ label, value, sub, icon: Icon, accent }) => (
+          <Card key={label}>
+            <Card.Body className="flex items-center gap-4">
+              <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${accent}`}>
+                <Icon className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+                <p className="text-xl font-bold text-slate-900">{value}</p>
+                <p className="text-[11px] text-slate-400">{sub}</p>
+              </div>
+            </Card.Body>
+          </Card>
+        ))}
+      </div>
+
+      {quickActions.length > 0 && (
+        <div className="mt-6">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Quick Actions</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+            {quickActions.map(({ href, label, icon: Icon, tint }) => (
+              <a
+                key={href + label}
+                href={href}
+                className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:shadow"
+              >
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${tint}`}>
+                  <Icon className="h-4 w-4" />
+                </span>
+                <span className="truncate">{label}</span>
+              </a>
+            ))}
+          </div>
         </div>
       )}
 
