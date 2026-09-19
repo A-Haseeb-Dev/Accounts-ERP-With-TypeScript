@@ -29,8 +29,8 @@ export interface NavItem {
   href: string;
   icon: LucideIcon;
   permission?: string;
-  /** Only shown to users holding the Developer role. */
-  developerOnly?: boolean;
+  /** Only shown to users holding the Developer or Super Admin role. */
+  systemAdminOnly?: boolean;
   children?: NavItem[];
 }
 
@@ -122,14 +122,14 @@ export const NAV_ITEMS: NavItem[] = [
     href: '/system',
     icon: Settings,
     children: [
-      { label: 'Users', href: '/system/users', icon: Users, permission: 'users.view' },
-      { label: 'Roles & Permissions', href: '/system/roles', icon: Settings, permission: 'roles.view' },
-      { label: 'Audit Logs', href: '/system/audit-logs', icon: FileSpreadsheet, permission: 'system.audit.view' },
-      { label: 'Settings', href: '/system/settings', icon: Settings, permission: 'system.settings.manage' },
-      { label: 'Security', href: '/system/security', icon: ShieldCheck, permission: 'system.settings.manage' },
-      { label: 'Print Layout', href: '/system/print-layout', icon: Printer, permission: 'system.settings.manage' },
-      { label: 'Branding', href: '/system/branding', icon: Building2, permission: 'system.branding.manage' },
-      { label: 'Company Features', href: '/system/company-features', icon: Settings, permission: 'system.features.manage', developerOnly: true },
+      { label: 'Users', href: '/system/users', icon: Users, permission: 'users.view', systemAdminOnly: true },
+      { label: 'Roles & Permissions', href: '/system/roles', icon: Settings, permission: 'roles.view', systemAdminOnly: true },
+      { label: 'Audit Logs', href: '/system/audit-logs', icon: FileSpreadsheet, permission: 'system.audit.view', systemAdminOnly: true },
+      { label: 'Settings', href: '/system/settings', icon: Settings, permission: 'system.settings.manage', systemAdminOnly: true },
+      { label: 'Security', href: '/system/security', icon: ShieldCheck, permission: 'system.settings.manage', systemAdminOnly: true },
+      { label: 'Print Layout', href: '/system/print-layout', icon: Printer, permission: 'system.settings.manage', systemAdminOnly: true },
+      { label: 'Branding', href: '/system/branding', icon: Building2, permission: 'system.branding.manage', systemAdminOnly: true },
+      { label: 'Company Features', href: '/system/company-features', icon: Settings, permission: 'system.features.manage', systemAdminOnly: true },
     ],
   },
 ];
@@ -148,12 +148,15 @@ export interface NavContext {
   /** Feature codes (== permission names) that the developer has switched off. */
   disabledFeatures: Set<string>;
   isDeveloper: boolean;
+  /** Holds the Developer or Super Admin role. */
+  isSystemAdmin: boolean;
 }
 
 /**
  * Filters the navigation tree by the user's permissions, the company's disabled
  * features and a couple of role-specific items. The Developer role sees every
  * entry so it can always reach the feature switches and verify a configuration.
+ * System-management pages are only shown to Developer or Super Admin.
  */
 export const filterNavigation = (items: NavItem[], ctx: NavContext): NavItem[] => {
   // The developer manages features, so it always sees the full navigation.
@@ -161,7 +164,9 @@ export const filterNavigation = (items: NavItem[], ctx: NavContext): NavItem[] =
 
   return items
     .map((item) => {
-      if (item.developerOnly) return null;
+      // System-management pages (users, roles, audit, settings, branding,
+      // company features…) are only reachable by the Developer or Super Admin.
+      if (item.systemAdminOnly && !ctx.isSystemAdmin) return null;
 
       // A page whose view permission has been switched off is hidden.
       if (item.permission && ctx.disabledFeatures.has(item.permission)) return null;

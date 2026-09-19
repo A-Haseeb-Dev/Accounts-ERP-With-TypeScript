@@ -36,7 +36,9 @@ const ACTION_TONES: Record<string, Tone> = {
 export default function CompanyFeaturesPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const isDeveloper = user?.roles?.includes('Developer') ?? false;
+  const isSystemAdmin =
+    (user?.roles?.includes('Developer') ?? false) ||
+    (user?.roles?.includes('Super Admin') ?? false);
   const [search, setSearch] = useState('');
 
   const { data, isLoading, isError, refetch } = useQuery<FeatureFlag[]>({
@@ -84,13 +86,13 @@ export default function CompanyFeaturesPage() {
     return Array.from(map.entries());
   }, [data, search]);
 
-  if (!isDeveloper) {
+  if (!isSystemAdmin) {
     return (
       <div className="mx-auto max-w-lg rounded-lg border border-amber-200 bg-amber-50 p-6 text-center">
         <ShieldAlert className="mx-auto mb-3 h-8 w-8 text-amber-600" />
-        <h2 className="text-lg font-semibold text-slate-800">Developer only</h2>
+        <h2 className="text-lg font-semibold text-slate-800">Developer &amp; Super Admin only</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Company feature switches can only be changed by the Developer role.
+          Company feature switches can only be changed by the Developer or Super Admin role.
         </p>
       </div>
     );
