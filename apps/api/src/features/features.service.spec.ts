@@ -8,6 +8,10 @@ function buildService(overrides: Record<string, unknown> = {}) {
       findFirst: vi.fn().mockResolvedValue(null),
       upsert: vi.fn().mockImplementation(({ create }) => Promise.resolve({ ...create, id: 's1' })),
     },
+    department: {
+      findMany: vi.fn().mockResolvedValue([]),
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
     ...overrides,
   };
   const audit = { record: vi.fn() };
@@ -31,6 +35,25 @@ describe('FeaturesService.getState', () => {
     const vouchers = state.find((f) => f.code === 'accounts.vouchers.view');
     expect(vouchers?.enabled).toBe(true);
   });
+
+  it('appends each active department as a company feature under the Departments group', async () => {
+    const { svc, prisma } = buildService();
+    prisma.department.findMany.mockResolvedValue([
+      { id: 'dept-1', name: 'Warehouse', status: 'active' },
+    ]);
+    prisma.systemSetting.findMany.mockResolvedValue([
+      { key: 'features.hr.departments.dept-1', value: 'off' },
+    ]);
+
+    const state = await svc.getState();
+    const dept = state.find((f) => f.code === 'hr.departments.dept-1');
+    expect(dept).toMatchObject({
+      group: 'Departments',
+      resource: 'Warehouse',
+      action: 'Department',
+      enabled: false,
+    });
+  });
 });
 
 describe('FeaturesService.isEnabled', () => {
@@ -51,6 +74,17 @@ describe('FeaturesService.isEnabled', () => {
       value: 'off',
     });
     await expect(svc.isEnabled('sales.invoice.view')).resolves.toBe(false);
+  });
+
+  it('answers for department feature codes using their toggle', async () => {
+    const { svc, prisma } = buildService();
+    prisma.systemSetting.findFirst.mockResolvedValue({
+      key: 'features.hr.departments.dept-1',
+      value: 'off',
+    });
+    await expect(svc.isEnabled('hr.departments.dept-1')).resolves.toBe(false);
+    prisma.systemSetting.findFirst.mockResolvedValue(null);
+    await expect(svc.isEnabled('hr.departments.dept-2')).resolves.toBe(true);
   });
 });
 
@@ -82,6 +116,33 @@ describe('FeaturesService.setEnabled', () => {
         action: 'UPDATE',
         module: 'SYSTEM_SETTINGS',
         message: 'Feature "Invoice — View" disabled for this company',
+      }),
+    );
+  });
+
+  it('supports turning a department feature off', async () => {
+    const { svc, prisma, audit } = buildService();
+    prisma.department.findUnique.mockResolvedValue({ id: 'dept-1', name: 'Warehouse' });
+
+    await svc.setEnabled('hr.departments.dept-1', false, 'u1');
+
+    expect(prisma.systemSetting.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          key_organizationId: {
+            key: 'features.hr.departments.dept-1',
+            organizationId: 'default-org',
+          },
+        },
+        create: expect.objectContaining({
+          key: 'features.hr.departments.dept-1',
+          value: 'off',
+        }),
+      }),
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Feature "Warehouse — Department" disabled for this company',
       }),
     );
   });
