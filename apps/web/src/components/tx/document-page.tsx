@@ -289,7 +289,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
               const party = r.supplier ?? r.customer;
               return <span className="text-slate-700">{party?.name ?? '-'}</span>;
             } },
-...(showDueDate ? [{ key: 'whatsapp', header: 'WhatsApp', render: (r: TransactionDoc) => {
+...[{ key: 'whatsapp', header: 'WhatsApp', render: (r: TransactionDoc) => {
               const party = r.supplier ?? r.customer ?? r.party;
               const url = r.status === 'posted' && party?.phone
                 ? buildWhatsAppUrl(
@@ -310,7 +310,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
               ) : (
                 <span className="text-xs text-slate-300">—</span>
               );
-            } }] : []),
+            } }],
             ...(showAmountPaid ? [{ key: 'amountPaid', header: 'Paid', align: 'right' as const, render: (r: TransactionDoc) => <span className="text-slate-500">{money(r.amountPaid ?? 0, 'PKR')}</span> }] : []),
             ...(showDueDate ? [{ key: 'dueDate', header: 'Due', render: (r: TransactionDoc) => dueBadge(r) }] : []),
             { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
@@ -599,7 +599,7 @@ function DocumentDetailModal({
   const party = detail?.supplier ?? detail?.customer ?? detail?.party ?? null;
   const partyPhone = party?.phone ?? '';
   const dueText = detail?.dueDate ? new Date(String(detail.dueDate)).toLocaleDateString('en-GB') : '';
-  const whatsAppUrl = showDueDate && canPrint && partyPhone
+  const whatsAppUrl = canPrint && partyPhone
     ? buildWhatsAppUrl(
         partyPhone,
         `Assalam-o-Alaikum ${party?.name ?? ''},\nYour ${partyLabel === 'Supplier' ? 'bill' : 'invoice'} ${detail?.number ?? ''} of ${money(detail?.grandTotal ?? 0, 'PKR')}${dueText ? ` is due on ${dueText}` : ''}.\nThank you!`,
