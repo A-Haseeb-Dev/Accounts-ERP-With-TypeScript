@@ -145,8 +145,8 @@ export default function ItemsPage() {
           className="space-y-4"
         >
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Code" hint="Auto-generated. You can change it if needed.">
-              <Input value={form.code ?? (editing ? '' : (nextCode ?? ''))} onChange={(e) => set('code', e.target.value)} placeholder="Auto-generated" title="Auto-generated on save" />
+            <Field label="Code" hint="Auto-generated — it cannot be edited.">
+              <Input readOnly className="bg-slate-100 text-slate-500" value={form.code ?? (editing ? '' : (nextCode ?? ''))} onChange={(e) => set('code', e.target.value)} placeholder="Auto-generated" title="Auto-generated on save" />
             </Field>
             <Field label="Name" required>
               <Input value={form.name ?? ''} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Soft Drink 250ml" required />
