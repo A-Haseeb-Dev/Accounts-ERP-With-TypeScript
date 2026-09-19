@@ -173,7 +173,11 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
-    saveMutation.mutate(form);
+    const payload: Record<string, unknown> = { ...form };
+    if (autoField && !payload[autoField.name]) {
+      payload[autoField.name] = nextCode ?? '';
+    }
+    saveMutation.mutate(payload);
   };
 
   const columns = useMemo<Column<TRecord>[]>(() => {
@@ -318,11 +322,13 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
                 key={field.name}
                 label={field.label}
                 required={field.required && !field.auto}
-                hint={field.auto ? 'Auto-generated. You can change it if needed.' : undefined}
+                hint={field.auto ? 'Auto-generated — it cannot be edited.' : undefined}
               >
                 <Input
                   type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
                   step={field.type === 'number' ? '0.01' : undefined}
+                  readOnly={field.auto}
+                  className={field.auto ? 'bg-slate-100 text-slate-500' : undefined}
                   value={String(field.auto && !editing ? (form[field.name] ?? nextCode ?? '') : (form[field.name] ?? ''))}
                   placeholder={field.placeholder}
                   onChange={(e) =>
