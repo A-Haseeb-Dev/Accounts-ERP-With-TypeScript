@@ -94,7 +94,7 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-6 text-center text-xs text-slate-500">
-          © {new Date().getFullYear()} HAS ERP. All rights reserved.
+          Crafted by K&H TECH SOL
         </p>
       </div>
     </div>

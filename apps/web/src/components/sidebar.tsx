@@ -130,6 +130,9 @@ export function Sidebar({
               <LogOut className="h-4 w-4" />
             </button>
           </div>
+          <p className="mt-3 border-t border-slate-100 pt-2 text-center text-[10px] font-medium tracking-wide text-slate-400">
+            Crafted by K&H TECH SOL
+          </p>
         </div>
       </aside>
 
