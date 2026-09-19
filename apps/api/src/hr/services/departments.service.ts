@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { ApiException } from '../../common/exceptions/api.exception';
 import { NumberingService } from '../../common/services/numbering.service';
+import { FeaturesService } from '../../features/features.service';
 import { CreateDepartmentDto, UpdateDepartmentDto } from '../dto/hr.dto';
 
 @Injectable()
@@ -11,7 +12,14 @@ export class DepartmentsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly numbering: NumberingService,
+    private readonly features: FeaturesService,
   ) {}
+
+  /** Ensures a department's company-feature toggle is enabled before acting on it. */
+  private async assertFeatureEnabled(id: string) {
+    const enabled = await this.features.isEnabled(`hr.departments.${id}`);
+    if (!enabled) throw ApiException.forbidden('This department is disabled for your company');
+  }
 
   previewCode() {
     return this.numbering.preview('department', 'DEP', 3, { year: false });
@@ -61,7 +69,7 @@ export class DepartmentsService {
     }
     if (status) where.status = status;
 
-    const [items, total] = await Promise.all([
+    const [items, total, disabledIds] = await Promise.all([
       this.prisma.department.findMany({
         where,
         include: { _count: { select: { employees: true, designations: true } } },
@@ -70,18 +78,43 @@ export class DepartmentsService {
         take: pageSize,
       }),
       this.prisma.department.count({ where }),
+      this.disabledDepartmentIds(),
     ]);
-    return { items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+
+    const visible = disabledIds.size ? items.filter((d) => !disabledIds.has(d.id)) : items;
+    return { items: visible, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
   }
 
   async findAllFlat() {
-    return this.prisma.department.findMany({
-      where: { status: 'active' },
-      orderBy: { name: 'asc' },
-    });
+    const [all, disabledIds] = await Promise.all([
+      this.prisma.department.findMany({
+        where: { status: 'active' },
+        orderBy: { name: 'asc' },
+      }),
+      this.disabledDepartmentIds(),
+    ]);
+    return disabledIds.size ? all.filter((d) => !disabledIds.has(d.id)) : all;
+  }
+
+  /** Cached set of department ids whose company-feature toggle (`hr.departments.<id>`) is off. */
+  private disabledDepartmentIdsCache?: Promise<Set<string>>;
+  private disabledDepartmentIds(): Promise<Set<string>> {
+    if (!this.disabledDepartmentIdsCache) {
+      this.disabledDepartmentIdsCache = this.prisma.systemSetting
+        .findMany({ where: { key: { startsWith: 'features.hr.departments.' } } })
+        .then((rows) =>
+          new Set(
+            rows
+              .filter((r) => r.value === 'off')
+              .map((r) => r.key.slice('features.hr.departments.'.length)),
+          ),
+        );
+    }
+    return this.disabledDepartmentIdsCache;
   }
 
   async findOne(id: string) {
+    await this.assertFeatureEnabled(id);
     const item = await this.prisma.department.findUnique({
       where: { id },
       include: { _count: { select: { employees: true, designations: true } } },

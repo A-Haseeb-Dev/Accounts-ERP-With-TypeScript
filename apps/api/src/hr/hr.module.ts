@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { FeaturesModule } from '../features/features.module';
 import {
   AttendanceController,
   DepartmentsController,
@@ -16,6 +17,7 @@ import { LeavesService } from './services/leaves.service';
 import { PayrollService } from './services/payroll.service';
 
 @Module({
+  imports: [FeaturesModule],
   controllers: [
     DepartmentsController,
     DesignationsController,
