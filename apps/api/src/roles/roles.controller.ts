@@ -15,7 +15,7 @@ export class RolesController {
   @Permissions('roles.manage')
   @ApiOperation({ summary: 'Create a role' })
   create(@Body() dto: CreateRoleDto, @CurrentUser() actor: any) {
-    return this.rolesService.create(dto, actor?.id);
+    return this.rolesService.create(dto, actor?.id, actor?.roles ?? []);
   }
 
   @Get()
@@ -43,14 +43,14 @@ export class RolesController {
   @Permissions('roles.manage')
   @ApiOperation({ summary: 'Update a role' })
   update(@Param('id') id: string, @Body() dto: UpdateRoleDto, @CurrentUser() actor: any) {
-    return this.rolesService.update(id, dto, actor?.id);
+    return this.rolesService.update(id, dto, actor?.id, actor?.roles ?? []);
   }
 
   @Delete(':id')
   @Permissions('roles.manage')
   @ApiOperation({ summary: 'Delete a role' })
   remove(@Param('id') id: string, @CurrentUser() actor: any) {
-    return this.rolesService.remove(id, actor?.id);
+    return this.rolesService.remove(id, actor?.id, actor?.roles ?? []);
   }
 
   @Post(':id/permissions')
@@ -61,6 +61,6 @@ export class RolesController {
     @Body() body: { permissionIds: string[] },
     @CurrentUser() actor: any,
   ) {
-    return this.rolesService.assignPermissions(id, body.permissionIds, actor?.id);
+    return this.rolesService.assignPermissions(id, body.permissionIds, actor?.id, actor?.roles ?? []);
   }
 }

@@ -62,9 +62,9 @@ async function seedRolesAndPermissions() {
     ['system', 'view', 'system.audit.view'],
   ] as [string, string, string][];
 
-  const roleDefs: { name: string; description: string; isSystem: boolean }[] = [
-    { name: 'Developer', description: 'Full system access with server-side bypass', isSystem: true },
-    { name: 'Super Admin', description: 'Full access to all modules', isSystem: true },
+  const roleDefs: { name: string; description: string; isSystem: boolean; protected: boolean }[] = [
+    { name: 'Developer', description: 'Full system access with server-side bypass', isSystem: true, protected: true },
+    { name: 'Super Admin', description: 'Full access to all modules', isSystem: true, protected: true },
   ];
 
   for (const [module, action, name] of catalog) {
