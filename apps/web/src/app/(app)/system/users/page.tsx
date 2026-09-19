@@ -31,21 +31,14 @@ export default function UsersPage() {
   const { can, user } = useAuth();
   const canManage = can('users.manage');
   const isDeveloper = user?.roles?.includes('Developer') ?? false;
-  const isSystemAdmin =
-    isDeveloper || (user?.roles?.includes('Super Admin') ?? false);
   const { options: allRoleOptions } = useFlatOptions('roles');
   const roleOptions = isDeveloper
     ? allRoleOptions
-    : allRoleOptions.filter(
-        (o) => o.label !== 'Developer' && o.label !== 'Super Admin',
-      );
+    : allRoleOptions.filter((o) => o.label !== 'Developer');
 
   const canActOn = (row: User) => {
-    const rowIsFullAccess =
-      row.roles?.some((r) => r.role.name === 'Developer') ??
-      row.roles?.some((r) => r.role.name === 'Super Admin') ??
-      false;
-    return canManage && isSystemAdmin && (isDeveloper || !rowIsFullAccess);
+    const rowIsDeveloper = row.roles?.some((r) => r.role.name === 'Developer') ?? false;
+    return canManage && (isDeveloper || !rowIsDeveloper);
   };
 
   const { data, isLoading } = useQuery<Paginated<User>>({

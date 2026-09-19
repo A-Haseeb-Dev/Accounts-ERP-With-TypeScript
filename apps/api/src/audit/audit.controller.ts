@@ -4,14 +4,12 @@ import { AuditService } from './audit.service';
 import { AuditCleanupService } from './audit-cleanup.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Permissions } from '../auth/decorators/permissions.decorator';
-import { SystemAdmin } from '../auth/decorators/system-admin.decorator';
 import { ApiException } from '../common/exceptions/api.exception';
 
 const MAX_PAGE_SIZE = 200;
 
 @ApiTags('Audit Logs')
 @ApiBearerAuth()
-@SystemAdmin()
 @Controller('system/audit-logs')
 export class AuditController {
   constructor(

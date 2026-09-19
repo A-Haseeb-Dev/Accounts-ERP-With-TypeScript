@@ -2,11 +2,9 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PermissionsService } from './permissions.service';
 import { Permissions } from '../auth/decorators/permissions.decorator';
-import { SystemAdmin } from '../auth/decorators/system-admin.decorator';
 
 @ApiTags('Permissions')
 @ApiBearerAuth()
-@SystemAdmin()
 @Controller('permissions')
 export class PermissionsController {
   constructor(private readonly permissionsService: PermissionsService) {}
