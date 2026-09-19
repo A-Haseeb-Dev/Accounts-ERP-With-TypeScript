@@ -30,14 +30,11 @@ export function Sidebar({
   const { disabled } = useFeatureFlags();
   const pathname = usePathname();
   const isDeveloper = user?.roles?.includes('Developer') ?? false;
-  const isSystemAdmin =
-    isDeveloper || (user?.roles?.includes('Super Admin') ?? false);
 
   const items = filterNavigation(NAV_ITEMS, {
     permissions: user?.permissions ?? [],
     disabledFeatures: disabled,
     isDeveloper,
-    isSystemAdmin,
   });
   const topLevel = items.filter((i) => i.children);
 

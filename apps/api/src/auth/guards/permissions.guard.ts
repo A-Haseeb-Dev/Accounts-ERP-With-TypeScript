@@ -9,7 +9,6 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApiException } from '../../common/exceptions/api.exception';
 import { REQUIRED_PERMISSIONS_KEY } from '../decorators/permissions.decorator';
-import { SYSTEM_ADMIN_KEY } from '../decorators/system-admin.decorator';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
 import { FeaturesService } from '../../features/features.service';
 import { featureForPermission } from '../../features/feature-catalog';
@@ -46,23 +45,6 @@ export class PermissionsGuard implements CanActivate {
 
     if (!user) {
       throw ApiException.unauthorized();
-    }
-
-    // System-management routes (system/*, users, roles, permissions, audit) are
-    // only ever reachable by the Developer or Super Admin role. Company-level
-    // roles or feature switches cannot grant access to them.
-    const needsSystemAdmin = this.reflector.getAllAndOverride<boolean>(SYSTEM_ADMIN_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    if (needsSystemAdmin) {
-      const isSystemAdmin = await this.isSystemAdminRole(user.id);
-      if (!isSystemAdmin) {
-        throw ApiException.forbidden(
-          'Only a Developer or Super Admin can access system management',
-        );
-      }
-      return true;
     }
 
     // Developer role bypasses all permission checks.
@@ -110,13 +92,6 @@ export class PermissionsGuard implements CanActivate {
   private async isDeveloperRole(userId: string): Promise<boolean> {
     const role = await this.prisma.userRole.findFirst({
       where: { userId, role: { name: 'Developer' } },
-    });
-    return !!role;
-  }
-
-  private async isSystemAdminRole(userId: string): Promise<boolean> {
-    const role = await this.prisma.userRole.findFirst({
-      where: { userId, role: { name: { in: ['Developer', 'Super Admin'] } } },
     });
     return !!role;
   }
