@@ -50,6 +50,13 @@ model Organization {
   auditLogs         AuditLog[]
   systemSettings    SystemSetting[]
   brandingSettings  BrandingSetting[]
+  departments       Department[]
+  designations      Designation[]
+  employees         Employee[]
+  leaveTypes        HrLeaveType[]
+  leaveRequests     HrLeaveRequest[]
+  attendance        HrAttendance[]
+  payrollRuns       PayrollRun[]
 }
 
 // ============================================================
@@ -900,4 +907,194 @@ model BrandingSetting {
   organization Organization? @relation(fields: [organizationId], references: [id])
 
   @@unique([organizationId])
+}
+
+// ============================================================
+// HUMAN RESOURCES & PAYROLL
+// ============================================================
+
+model Department {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  name           String
+  description    String?
+  status         String   @default("active")
+  organizationId String   @default("default-org")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  designations Designation[]
+  employees    Employee[]
+
+  @@unique([code, organizationId])
+  @@unique([name, organizationId])
+  @@index([organizationId])
+}
+
+model Designation {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  name           String
+  description    String?
+  departmentId   String?
+  status         String   @default("active")
+  organizationId String   @default("default-org")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  department   Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  employees    Employee[]
+
+  @@unique([code, organizationId])
+  @@unique([name, organizationId])
+  @@index([departmentId])
+}
+
+model Employee {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  fullName       String
+  fatherName     String?
+  cnic           String?
+  phone          String?
+  email          String?
+  address        String?
+  departmentId   String?
+  designationId  String?
+  joinDate       DateTime @default(now())
+  employmentType String   @default("permanent") // permanent | contract | daily
+  basicSalary    Decimal  @default(0) @db.Decimal(18, 2)
+  allowance      Decimal  @default(0) @db.Decimal(18, 2)
+  status         String   @default("active") // active | inactive | terminated
+  bankName       String?
+  bankAccount    String?
+  description    String?
+  organizationId String   @default("default-org")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization  Organization?    @relation(fields: [organizationId], references: [id])
+  department    Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  designation   Designation?     @relation(fields: [designationId], references: [id], onDelete: SetNull)
+  attendance    HrAttendance[]
+  leaveRequests HrLeaveRequest[]
+  payrollItems  PayrollItem[]
+
+  @@unique([code, organizationId])
+  @@index([fullName])
+  @@index([departmentId])
+  @@index([status])
+}
+
+model HrLeaveType {
+  id             String   @id @default(cuid())
+  name           String
+  paid           Boolean  @default(true)
+  annualQuota    Int      @default(0)
+  description    String?
+  status         String   @default("active")
+  organizationId String   @default("default-org")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization?    @relation(fields: [organizationId], references: [id])
+  requests     HrLeaveRequest[]
+
+  @@unique([name, organizationId])
+}
+
+model HrLeaveRequest {
+  id             String   @id @default(cuid())
+  employeeId     String
+  leaveTypeId    String
+  fromDate       DateTime
+  toDate         DateTime
+  days           Decimal  @default(1) @db.Decimal(6, 2)
+  reason         String?
+  status         String   @default("pending") // pending | approved | rejected
+  decidedById    String?
+  decidedAt      DateTime?
+  decisionNote   String?
+  organizationId String   @default("default-org")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  employee     Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType    HrLeaveType   @relation(fields: [leaveTypeId], references: [id])
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([fromDate])
+}
+
+model HrAttendance {
+  id             String   @id @default(cuid())
+  employeeId     String
+  date           DateTime
+  status         String   @default("present") // present | absent | leave | half_day | holiday
+  overtimeHours  Decimal  @default(0) @db.Decimal(6, 2)
+  note           String?
+  organizationId String   @default("default-org")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  employee     Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, date])
+  @@index([date])
+}
+
+model PayrollRun {
+  id             String   @id @default(cuid())
+  number         String   @unique
+  periodMonth    Int
+  periodYear     Int
+  payDate        DateTime @default(now())
+  totalGross     Decimal  @default(0) @db.Decimal(18, 2)
+  totalDeduction Decimal  @default(0) @db.Decimal(18, 2)
+  totalNet       Decimal  @default(0) @db.Decimal(18, 2)
+  status         String   @default("draft") // draft | posted | cancelled
+  voucherId      String?
+  note           String?
+  postedById     String?
+  postedAt       DateTime?
+  cancelledAt    DateTime?
+  cancelReason   String?
+  organizationId String   @default("default-org")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  items        PayrollItem[]
+
+  @@unique([number, organizationId])
+  @@index([periodYear, periodMonth])
+  @@index([status])
+}
+
+model PayrollItem {
+  id              String   @id @default(cuid())
+  payrollRunId    String
+  employeeId      String
+  basic           Decimal  @default(0) @db.Decimal(18, 2)
+  allowance       Decimal  @default(0) @db.Decimal(18, 2)
+  overtimeHours   Decimal  @default(0) @db.Decimal(6, 2)
+  overtimeAmount  Decimal  @default(0) @db.Decimal(18, 2)
+  absentDays      Decimal  @default(0) @db.Decimal(6, 2)
+  absentDeduction Decimal  @default(0) @db.Decimal(18, 2)
+  otherDeduction  Decimal  @default(0) @db.Decimal(18, 2)
+  taxDeduction    Decimal  @default(0) @db.Decimal(18, 2)
+  grossPay        Decimal  @default(0) @db.Decimal(18, 2)
+  totalDeduction  Decimal  @default(0) @db.Decimal(18, 2)
+  netPay          Decimal  @default(0) @db.Decimal(18, 2)
+
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employee   Employee   @relation(fields: [employeeId], references: [id])
+
+  @@unique([payrollRunId, employeeId])
+  @@index([employeeId])
 }

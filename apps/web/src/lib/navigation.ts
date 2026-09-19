@@ -16,6 +16,11 @@ import {
   Network,
   Printer,
   ShieldCheck,
+  Briefcase,
+  CalendarCheck2,
+  ClipboardList,
+  UserRound,
+  WalletCards,
 } from 'lucide-react';
 import { isAllowed } from '@/lib/auth-types';
 
@@ -72,6 +77,19 @@ export const NAV_ITEMS: NavItem[] = [
       { label: 'Purchases', href: '/inventory/purchases', icon: Truck, permission: 'inventory.purchase.view' },
       { label: 'Purchase Returns', href: '/inventory/purchase-returns', icon: Receipt, permission: 'inventory.purchase-return.view' },
       { label: 'Stock Transfers', href: '/inventory/transfers', icon: Truck, permission: 'inventory.transfer.view' },
+    ],
+  },
+  {
+    label: 'HR & Payroll',
+    href: '/hr',
+    icon: Briefcase,
+    children: [
+      { label: 'Employees', href: '/hr/employees', icon: UserRound, permission: 'hr.employees.view' },
+      { label: 'Attendance', href: '/hr/attendance', icon: CalendarCheck2, permission: 'hr.attendance.view' },
+      { label: 'Leaves', href: '/hr/leaves', icon: ClipboardList, permission: 'hr.leaves.view' },
+      { label: 'Departments', href: '/hr/departments', icon: Briefcase, permission: 'hr.departments.view' },
+      { label: 'Designations', href: '/hr/designations', icon: Briefcase, permission: 'hr.designations.view' },
+      { label: 'Payroll', href: '/hr/payroll', icon: WalletCards, permission: 'hr.payroll.view' },
     ],
   },
   {

@@ -20,6 +20,10 @@ export const FLAT_RESOURCES = [
   'customers',
   'suppliers',
   'roles',
+  'hr/departments',
+  'hr/designations',
+  'hr/employees',
+  'hr/leave-types',
 ] as const;
 
 export type FlatResource = (typeof FLAT_RESOURCES)[number];

@@ -6,6 +6,7 @@ import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { parseDeleteGuard } from '@/lib/delete-guard';
 import { useAuth } from '@/context/auth-context';
+import { useFlatOptions, type FlatResource } from '@/hooks/use-options';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { DataTable, type Column } from '@/components/data-table';
@@ -22,8 +23,9 @@ import type { Paginated } from '@/lib/types';
 export interface FieldDef {
   name: string;
   label: string;
-  type?: 'text' | 'number' | 'select' | 'textarea' | 'status';
+  type?: 'text' | 'number' | 'select' | 'textarea' | 'status' | 'boolean' | 'date';
   options?: { value: string; label: string }[];
+  optionsResource?: FlatResource;
   required?: boolean;
   placeholder?: string;
   auto?: boolean;
@@ -38,6 +40,28 @@ export interface SimpleMasterConfig<TRecord extends { id: string }> {
   columns: Column<TRecord>[];
   fields: FieldDef[];
   allowStatusFilter?: boolean;
+}
+
+function RemoteSelect({
+  field,
+  value,
+  onChange,
+}: {
+  field: FieldDef & { optionsResource: FlatResource };
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const { options, isLoading } = useFlatOptions(field.optionsResource);
+  return (
+    <Select value={value} onChange={(e) => onChange(e.target.value)} disabled={isLoading}>
+      <option value="">{isLoading ? 'Loading…' : 'Select…'}</option>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </Select>
+  );
 }
 
 export function SimpleMaster<TRecord extends { id: string }>({ config }: { config: SimpleMasterConfig<TRecord> }) {
@@ -252,23 +276,42 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
                   onChange={(e) => onFieldChange(field.name, e.target.value)}
                 />
               </Field>
-            ) : field.type === 'select' || field.type === 'status' ? (
+            ) : field.type === 'select' || field.type === 'status' || field.optionsResource ? (
+              <Field key={field.name} label={field.label} required={field.required}>
+                {field.optionsResource ? (
+                  <RemoteSelect
+                    field={field as FieldDef & { optionsResource: FlatResource }}
+                    value={String(form[field.name] ?? '')}
+                    onChange={(v) => onFieldChange(field.name, v)}
+                  />
+) : field.type === 'boolean' ? (
               <Field key={field.name} label={field.label} required={field.required}>
                 <Select
-                  value={String(form[field.name] ?? '')}
-                  onChange={(e) => onFieldChange(field.name, e.target.value)}
+                  value={form[field.name] == null ? '' : String(form[field.name])}
+                  onChange={(e) => onFieldChange(field.name, e.target.value === 'true')}
                 >
                   <option value="">Select…</option>
-                  {optionsFor(field).map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                  {field.type === 'status' && (
-                    <>
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </>
-                  )}
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
                 </Select>
+              </Field>
+            ) : (
+                  <Select
+                    value={String(form[field.name] ?? '')}
+                    onChange={(e) => onFieldChange(field.name, e.target.value)}
+                  >
+                    <option value="">Select…</option>
+                    {optionsFor(field).map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                    {field.type === 'status' && (
+                      <>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </>
+                    )}
+                  </Select>
+                )}
               </Field>
             ) : (
               <Field
@@ -278,7 +321,7 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
                 hint={field.auto ? 'Auto-generated. You can change it if needed.' : undefined}
               >
                 <Input
-                  type={field.type === 'number' ? 'number' : 'text'}
+                  type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
                   step={field.type === 'number' ? '0.01' : undefined}
                   value={String(field.auto && !editing ? (form[field.name] ?? nextCode ?? '') : (form[field.name] ?? ''))}
                   placeholder={field.placeholder}

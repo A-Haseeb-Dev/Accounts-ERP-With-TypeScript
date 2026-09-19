@@ -440,6 +440,131 @@ export interface Permission {
   updatedAt: string;
 }
 
+export interface Department {
+  id: string;
+  code: string;
+  name: string;
+  description?: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Designation {
+  id: string;
+  code: string;
+  name: string;
+  departmentId?: string;
+  description?: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  department?: { id: string; code: string; name: string };
+}
+
+export interface Employee {
+  id: string;
+  code: string;
+  fullName: string;
+  fatherName?: string;
+  cnic?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  departmentId?: string;
+  designationId?: string;
+  joinDate?: string;
+  basicSalary: number;
+  allowance: number;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  department?: { id: string; code: string; name: string };
+  designation?: { id: string; code: string; name: string };
+}
+
+export interface HrLeaveType {
+  id: string;
+  name: string;
+  paid: boolean;
+  annualQuota: number;
+  description?: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HrLeaveRequest {
+  id: string;
+  requestNo: string;
+  employeeId: string;
+  leaveTypeId: string;
+  fromDate: string;
+  toDate: string;
+  days: number;
+  reason?: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  processedById?: string;
+  processedAt?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  employee?: { id: string; code: string; fullName: string };
+  leaveType?: { id: string; name: string; paid: boolean };
+  processedBy?: { id: string; fullName: string };
+}
+
+export interface AttendanceStatus {
+  employee: { id: string; code: string; fullName: string; status: string };
+  attendance?: { id: string; status: string; overtimeHours: number; remarks?: string };
+}
+
+export interface PayrollItem {
+  id: string;
+  employeeId: string;
+  basic: number;
+  allowance: number;
+  overtimeHours: number;
+  overtimeAmount: number;
+  grossPay: number;
+  absentDays: number;
+  absentDeduction: number;
+  advanceDeduction: number;
+  otherDeduction: number;
+  taxDeduction?: number;
+  totalDeduction: number;
+  netPay: number;
+  employee?: {
+    id: string;
+    code: string;
+    fullName: string;
+    department?: { id: string; name: string };
+    designation?: { id: string; name: string };
+  };
+}
+
+export interface PayrollRun {
+  id: string;
+  number: string;
+  period: string;
+  periodLabel: string;
+  periodMonth: number;
+  periodYear: number;
+  payDate?: string;
+  note?: string;
+  status: 'draft' | 'posted' | 'cancelled';
+  employeeCount: number;
+  totalGross: number;
+  totalDeduction: number;
+  totalNet: number;
+  voucherId?: string;
+  voucherNo?: string;
+  createdById?: string;
+  createdAt: string;
+  updatedAt: string;
+  items?: PayrollItem[];
+}
+
 export interface AuditEntry {
   id: string;
   userId?: string;

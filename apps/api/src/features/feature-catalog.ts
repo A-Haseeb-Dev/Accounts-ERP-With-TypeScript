@@ -23,6 +23,7 @@ const GROUP_ORDER = [
   'Sales',
   'Inventory',
   'Accounting',
+  'Human Resources',
   'Reports',
   'Users & Access',
   'System',
@@ -48,6 +49,7 @@ function groupFor(name: string): string {
   if (name.startsWith('inventory.')) return 'Inventory';
   if (name.startsWith('sales.')) return 'Sales';
   if (name.startsWith('accounts.')) return 'Accounting';
+  if (name.startsWith('hr.')) return 'Human Resources';
   if (name.startsWith('reports.')) return 'Reports';
   if (
     name.startsWith('users.') ||

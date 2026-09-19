@@ -63,6 +63,39 @@ export const PERMISSION_CATALOG: {
   { name: 'administration.towns.update', module: 'Administration', action: 'update' },
   { name: 'administration.towns.delete', module: 'Administration', action: 'delete' },
 
+  // Human Resources
+  { name: 'hr.departments.view', module: 'hr', action: 'view', description: 'View departments' },
+  { name: 'hr.departments.create', module: 'hr', action: 'create' },
+  { name: 'hr.departments.update', module: 'hr', action: 'update' },
+  { name: 'hr.departments.delete', module: 'hr', action: 'delete' },
+
+  { name: 'hr.designations.view', module: 'hr', action: 'view', description: 'View designations' },
+  { name: 'hr.designations.create', module: 'hr', action: 'create' },
+  { name: 'hr.designations.update', module: 'hr', action: 'update' },
+  { name: 'hr.designations.delete', module: 'hr', action: 'delete' },
+
+  { name: 'hr.employees.view', module: 'hr', action: 'view', description: 'View employees' },
+  { name: 'hr.employees.create', module: 'hr', action: 'create' },
+  { name: 'hr.employees.update', module: 'hr', action: 'update' },
+  { name: 'hr.employees.delete', module: 'hr', action: 'delete' },
+
+  { name: 'hr.attendance.view', module: 'hr', action: 'view', description: 'View attendance' },
+  { name: 'hr.attendance.manage', module: 'hr', action: 'manage', description: 'Record and edit attendance' },
+
+  { name: 'hr.leaves.view', module: 'hr', action: 'view', description: 'View leave requests and types' },
+  { name: 'hr.leaves.create', module: 'hr', action: 'create' },
+  { name: 'hr.leaves.update', module: 'hr', action: 'update' },
+  { name: 'hr.leaves.approve', module: 'hr', action: 'approve', description: 'Approve or reject leave requests' },
+  { name: 'hr.leaves.delete', module: 'hr', action: 'delete' },
+
+  { name: 'hr.payroll.view', module: 'hr', action: 'view', description: 'View payroll runs' },
+  { name: 'hr.payroll.create', module: 'hr', action: 'create', description: 'Generate a payroll run' },
+  { name: 'hr.payroll.update', module: 'hr', action: 'update' },
+  { name: 'hr.payroll.delete', module: 'hr', action: 'delete' },
+  { name: 'hr.payroll.post', module: 'hr', action: 'post', description: 'Post payroll to accounting' },
+  { name: 'hr.payroll.cancel', module: 'hr', action: 'cancel' },
+  { name: 'hr.payroll.print', module: 'hr', action: 'print', description: 'Print salary sheets and payslips' },
+
   // User management
   { name: 'users.view', module: 'users', action: 'view' },
   { name: 'users.manage', module: 'users', action: 'manage' },
