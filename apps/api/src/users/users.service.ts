@@ -6,6 +6,12 @@ import { ApiException } from '../common/exceptions/api.exception';
 import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
 
 const DEVELOPER_ROLE = 'Developer';
+const SUPER_ADMIN_ROLE = 'Super Admin';
+
+// Roles that carry unrestricted (full-rights) access. Only an existing
+// Developer may grant these roles or manage accounts that hold them; every
+// other user with `users.manage` can still work with ordinary users.
+const FULL_ACCESS_ROLES = [DEVELOPER_ROLE, SUPER_ADMIN_ROLE] as const;
 
 @Injectable()
 export class UsersService {
@@ -14,28 +20,43 @@ export class UsersService {
     private readonly audit: AuditService,
   ) {}
 
-  // The Developer role is a vendor-level privilege that bypasses all permission
-  // checks, so only an existing Developer may grant it or manage Developer
-  // accounts. Everyone else with `users.manage` can still create/edit/delete
-  // ordinary users.
-  private async assertDeveloperBoundary(opts: {
+  private async assertFullAccessBoundary(opts: {
     actorRoles: string[];
+    actorId?: string;
+    targetId?: string;
+    changingRoles?: boolean;
     requestedRoleIds?: string[];
     targetRoleNames?: string[];
   }) {
     if (opts.actorRoles.includes(DEVELOPER_ROLE)) return;
 
-    if (opts.targetRoleNames?.includes(DEVELOPER_ROLE)) {
-      throw ApiException.forbidden('Only a Developer can manage a Developer account');
+    // A user may always update their own profile (name, email, password) as long
+    // as they are not changing their own roles.
+    const managingSelf =
+      opts.actorId && opts.targetId === opts.actorId && !opts.changingRoles;
+
+    const blockedTarget = opts.targetRoleNames?.some((n) =>
+      (FULL_ACCESS_ROLES as readonly string[]).includes(n),
+    );
+    if (blockedTarget && !managingSelf) {
+      throw ApiException.forbidden(
+        'Only a Developer can manage a Developer or Super Admin account',
+      );
     }
 
-    if (opts.requestedRoleIds?.length) {
+    if (opts.requestedRoleIds?.length && !opts.actorRoles.some((r) => r === DEVELOPER_ROLE)) {
       const roles = await this.prisma.role.findMany({
         where: { id: { in: opts.requestedRoleIds } },
         select: { name: true },
       });
-      if (roles.some((r) => r.name === DEVELOPER_ROLE)) {
-        throw ApiException.forbidden('Only a Developer can assign the Developer role');
+      if (
+        roles.some((r) =>
+          (FULL_ACCESS_ROLES as readonly string[]).includes(r.name),
+        )
+      ) {
+        throw ApiException.forbidden(
+          'Only a Developer can assign the Developer or Super Admin role',
+        );
       }
     }
   }
@@ -46,7 +67,7 @@ export class UsersService {
       throw ApiException.duplicateCode('Username');
     }
 
-    await this.assertDeveloperBoundary({ actorRoles, requestedRoleIds: dto.roleIds });
+    await this.assertFullAccessBoundary({ actorRoles, requestedRoleIds: dto.roleIds });
 
     const passwordHash = await argon2.hash(dto.password);
 
@@ -136,8 +157,11 @@ export class UsersService {
     });
     if (!existing) throw ApiException.notFound('User');
 
-    await this.assertDeveloperBoundary({
+    await this.assertFullAccessBoundary({
       actorRoles,
+      actorId,
+      targetId: id,
+      changingRoles: Array.isArray(dto.roleIds),
       requestedRoleIds: dto.roleIds,
       targetRoleNames: existing.roles?.map((r: any) => r.role.name),
     });
@@ -190,7 +214,7 @@ export class UsersService {
       throw ApiException.invalidTransaction('You cannot delete your own account');
     }
 
-    await this.assertDeveloperBoundary({
+    await this.assertFullAccessBoundary({
       actorRoles,
       targetRoleNames: user.roles?.map((r: any) => r.role.name),
     });
