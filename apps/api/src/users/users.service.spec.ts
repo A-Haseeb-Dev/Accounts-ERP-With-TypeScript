@@ -103,7 +103,7 @@ describe('UsersService.create', () => {
   });
 });
 
-describe('UsersService Developer boundary', () => {
+describe('UsersService boundary (Developer / Super Admin only by Developer)', () => {
   beforeEach(() => {
     argon2HashMock.mockReset();
   });
@@ -121,7 +121,24 @@ describe('UsersService Developer boundary', () => {
       ),
     );
     expect(err.status).toBe(403);
-    expect(err.message).toMatch(/Developer role/);
+    expect(err.message).toMatch(/Developer or Super Admin/);
+    expect(prisma.user.create).not.toHaveBeenCalled();
+  });
+
+  it('blocks a non-developer from granting the Super Admin role', async () => {
+    const { svc, prisma } = buildService();
+    (prisma.user.findUnique as MockFn).mockResolvedValue(null);
+    (prisma.role.findMany as MockFn).mockResolvedValue([{ name: 'Super Admin' }]);
+
+    const err = await extractError(
+      svc.create(
+        { fullName: 'X', username: 'x', password: 'secret1234', roleIds: ['sa-role'] },
+        'actor-1',
+        ['Manager'],
+      ),
+    );
+    expect(err.status).toBe(403);
+    expect(err.message).toMatch(/Developer or Super Admin/);
     expect(prisma.user.create).not.toHaveBeenCalled();
   });
 
@@ -133,6 +150,21 @@ describe('UsersService Developer boundary', () => {
 
     const result = await svc.create(
       { fullName: 'X', username: 'x', password: 'secret1234', roleIds: ['dev-role'] },
+      'actor-1',
+      ['Developer'],
+    );
+    expect(result.username).toBe('testuser');
+    expect(prisma.user.create).toHaveBeenCalled();
+  });
+
+  it('allows a developer to grant the Super Admin role', async () => {
+    argon2HashMock.mockResolvedValue('hashed');
+    const { svc, prisma } = buildService();
+    (prisma.user.findUnique as MockFn).mockResolvedValue(null);
+    (prisma.role.findMany as MockFn).mockResolvedValue([{ name: 'Super Admin' }]);
+
+    const result = await svc.create(
+      { fullName: 'X', username: 'x', password: 'secret1234', roleIds: ['sa-role'] },
       'actor-1',
       ['Developer'],
     );
@@ -163,7 +195,19 @@ describe('UsersService Developer boundary', () => {
 
     const err = await extractError(svc.update('u3', { fullName: 'New' }, 'actor-1', ['Super Admin']));
     expect(err.status).toBe(403);
-    expect(err.message).toMatch(/Developer account/);
+    expect(err.message).toMatch(/Developer or Super Admin/);
+  });
+
+  it('blocks a non-developer from modifying a Super Admin account', async () => {
+    const { svc, prisma } = buildService();
+    (prisma.user.findUnique as MockFn).mockResolvedValue({
+      ...mockCreatedUser,
+      roles: [{ role: { name: 'Super Admin' } }],
+    });
+
+    const err = await extractError(svc.update('u4', { fullName: 'New' }, 'actor-1', ['Manager']));
+    expect(err.status).toBe(403);
+    expect(err.message).toMatch(/Developer or Super Admin/);
   });
 
   it('blocks a non-developer from deleting a Developer account', async () => {
@@ -174,6 +218,17 @@ describe('UsersService Developer boundary', () => {
     });
 
     const err = await extractError(svc.remove('u3', 'actor-1', ['Super Admin']));
+    expect(err.status).toBe(403);
+  });
+
+  it('blocks a non-developer from deleting a Super Admin account', async () => {
+    const { svc, prisma } = buildService();
+    (prisma.user.findUnique as MockFn).mockResolvedValue({
+      ...mockCreatedUser,
+      roles: [{ role: { name: 'Super Admin' } }],
+    });
+
+    const err = await extractError(svc.remove('u4', 'actor-1', ['Super Admin']));
     expect(err.status).toBe(403);
   });
 });
