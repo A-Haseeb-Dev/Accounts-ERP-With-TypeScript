@@ -30,6 +30,19 @@ export class ReportsController {
     return this.accounting.generalLedger({ accountId, from, to, page: Number(page), pageSize: Number(pageSize) });
   }
 
+  @Get('general-ledger-summary')
+  @Permissions('reports.accounting.view')
+  @ApiOperation({ summary: 'General Ledger Summary (grouped by sub-head)' })
+  generalLedgerSummary(
+    @Query('headId') headId?: string,
+    @Query('subHeadId') subHeadId?: string,
+    @Query('accountType') accountType?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.accounting.generalLedgerSummary({ headId, subHeadId, accountType, from, to });
+  }
+
   @Get('general-journal')
   @Permissions('reports.accounting.view')
   @ApiOperation({ summary: 'General Journal' })
