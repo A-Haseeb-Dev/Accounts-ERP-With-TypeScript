@@ -289,7 +289,28 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
               const party = r.supplier ?? r.customer;
               return <span className="text-slate-700">{party?.name ?? '-'}</span>;
             } },
-            { key: 'grandTotal', header: 'Total', align: 'right', render: (r) => <span className="font-medium text-slate-800">{money(r.grandTotal, 'PKR')}</span> },
+...(showDueDate ? [{ key: 'whatsapp', header: 'WhatsApp', render: (r: TransactionDoc) => {
+              const party = r.supplier ?? r.customer ?? r.party;
+              const url = r.status === 'posted' && party?.phone
+                ? buildWhatsAppUrl(
+                    party.phone,
+                    `Assalam-o-Alaikum ${party?.name ?? ''},\nYour ${partyLabel === 'Supplier' ? 'bill' : 'invoice'} ${r.number ?? ''} of ${money(r.grandTotal ?? 0, 'PKR')}${r.dueDate ? ` is due on ${new Date(String(r.dueDate)).toLocaleDateString('en-GB')}` : ''}.\nThank you!`,
+                  )
+                : null;
+              return url ? (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+                  title={`Share ${partyLabel.toLowerCase()} on WhatsApp`}
+                >
+                  <MessageCircle className="h-3.5 w-3.5" /> {party?.phone}
+                </a>
+              ) : (
+                <span className="text-xs text-slate-300">—</span>
+              );
+            } }] : []),
             ...(showAmountPaid ? [{ key: 'amountPaid', header: 'Paid', align: 'right' as const, render: (r: TransactionDoc) => <span className="text-slate-500">{money(r.amountPaid ?? 0, 'PKR')}</span> }] : []),
             ...(showDueDate ? [{ key: 'dueDate', header: 'Due', render: (r: TransactionDoc) => dueBadge(r) }] : []),
             { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
