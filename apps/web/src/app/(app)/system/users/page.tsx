@@ -14,7 +14,7 @@ import { useFlatOptions } from '@/hooks/use-options';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { dateTime } from '@/lib/utils';
 import { useAuth } from '@/context/auth-context';
-import type { Paginated, User } from '@/lib/types';
+import type { Paginated, Role, User } from '@/lib/types';
 
 interface UserForm {
   fullName: string;
@@ -31,14 +31,22 @@ export default function UsersPage() {
   const { can, user } = useAuth();
   const canManage = can('users.manage');
   const isDeveloper = user?.roles?.includes('Developer') ?? false;
-  const { options: allRoleOptions } = useFlatOptions('roles');
-  const roleOptions = isDeveloper
+  const isSystemAdmin =
+    isDeveloper || (user?.roles?.includes('Super Admin') ?? false);
+  const { options: allRoleOptions, data: allRoleData } = useFlatOptions('roles');
+  const roleOptions = isSystemAdmin
     ? allRoleOptions
-    : allRoleOptions.filter((o) => o.label !== 'Developer');
+    : allRoleOptions.filter((o) => {
+        const role = allRoleData.find((r) => r.id === o.value);
+        return !(role as Role | undefined)?.protected;
+      });
 
   const canActOn = (row: User) => {
-    const rowIsDeveloper = row.roles?.some((r) => r.role.name === 'Developer') ?? false;
-    return canManage && (isDeveloper || !rowIsDeveloper);
+    const rowIsProtected =
+      row.roles?.some((r) => r.role.protected) ?? false;
+    // Any system admin (Developer or Super Admin) can manage protected rows;
+    // non-system-admins can only touch rows without protected roles.
+    return canManage && (isSystemAdmin || !rowIsProtected);
   };
 
   const { data, isLoading } = useQuery<Paginated<User>>({

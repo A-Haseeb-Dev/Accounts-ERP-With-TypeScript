@@ -22,6 +22,11 @@ export class CreateRoleDto {
   @IsOptional()
   isSystem?: boolean;
 
+  /** Protected roles can only be created, edited, deleted and assigned by a Developer or Super Admin. */
+  @IsBoolean()
+  @IsOptional()
+  protected?: boolean;
+
   @IsArray()
   @IsString({ each: true })
   @IsOptional()
@@ -38,6 +43,11 @@ export class UpdateRoleDto {
   @IsOptional()
   @MaxLength(500)
   description?: string;
+
+  /** Protected roles can only be created, edited, deleted and assigned by a Developer or Super Admin. */
+  @IsBoolean()
+  @IsOptional()
+  protected?: boolean;
 
   @IsArray()
   @IsString({ each: true })

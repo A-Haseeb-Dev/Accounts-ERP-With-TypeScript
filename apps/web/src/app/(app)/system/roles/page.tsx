@@ -10,18 +10,23 @@ import { Modal } from '@/components/ui/modal';
 import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/page-header';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/auth-context';
 import type { Permission, Role } from '@/lib/types';
 
 interface RoleForm {
   name: string;
   description?: string;
+  protected?: boolean;
 }
 
 export default function RolesPage() {
   const qc = useQueryClient();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const canManage = can('roles.manage');
+  const isSystemAdmin =
+    (user?.roles?.includes('Developer') ?? false) ||
+    (user?.roles?.includes('Super Admin') ?? false);
 
   const { data: roles, isLoading: rolesLoading } = useQuery<Role[]>({
     queryKey: ['roles'],
@@ -58,7 +63,7 @@ function permissionLabel(p: Permission): string {
 }
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [form, setForm] = useState<RoleForm>({ name: '', description: '' });
+  const [form, setForm] = useState<RoleForm>({ name: '', description: '', protected: false });
   const [selectedPerms, setSelectedPerms] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
@@ -109,7 +114,7 @@ function permissionLabel(p: Permission): string {
   };
 
   const startEdit = (row: Role) => {
-    setForm({ name: row.name ?? '', description: row.description ?? '' });
+    setForm({ name: row.name ?? '', description: row.description ?? '', protected: row.protected ?? false });
     const rolePerms = (row.permissions ?? []).map((rp) => rp.permission.id);
     setSelectedPerms(new Set(rolePerms.filter(Boolean)));
     setEditId(row.id);
@@ -117,7 +122,7 @@ function permissionLabel(p: Permission): string {
     setModalOpen(true);
   };
 
-  const startCreate = () => { setForm({ name: '', description: '' }); setSelectedPerms(new Set()); setEditId(null); setError(''); setModalOpen(true); };
+  const startCreate = () => { setForm({ name: '', description: '', protected: false }); setSelectedPerms(new Set()); setEditId(null); setError(''); setModalOpen(true); };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,7 +130,7 @@ function permissionLabel(p: Permission): string {
     const permIds = Array.from(selectedPerms);
     if (editId) {
       savePerms.mutate({ id: editId, permissionIds: permIds }, { onError: () => {}, onSuccess: () => {
-        update.mutate({ id: editId, name: form.name, description: form.description || undefined });
+        update.mutate({ id: editId, name: form.name, description: form.description || undefined, protected: form.protected });
       }});
     } else {
       create.mutate({ ...form, permissionIds: permIds });
@@ -146,6 +151,7 @@ function permissionLabel(p: Permission): string {
                 <th className="px-4 py-2">Permissions</th>
                 <th className="px-4 py-2">Users</th>
                 <th className="px-4 py-2">System</th>
+                <th className="px-4 py-2">Protected</th>
                 <th className="px-4 py-2">Actions</th>
               </tr>
             </thead>
@@ -157,12 +163,16 @@ function permissionLabel(p: Permission): string {
                   <td className="px-4 py-2 text-xs text-slate-600">{r.permissions?.length ?? 0}</td>
                   <td className="px-4 py-2 text-xs text-slate-600">{r._count?.users ?? 0}</td>
                   <td className="px-4 py-2">{r.isSystem ? <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">System</span> : '—'}</td>
+                  <td className="px-4 py-2">{r.protected ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">Protected</span> : '—'}</td>
                   <td className="px-4 py-2">
                     <div className="flex gap-0.5">
-                      {canManage && (
+                      {canManage && (isSystemAdmin || !r.protected) && (
                         <button onClick={() => startEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="Edit"><Pencil className="h-4 w-4" /></button>
                       )}
-                      {canManage && !r.isSystem && (
+                      {canManage && isSystemAdmin && !r.isSystem && r.protected && r._count?.users === 0 && (
+                        <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>
+                      )}
+                      {canManage && !r.isSystem && !r.protected && (
                         <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>
                       )}
                     </div>
@@ -183,6 +193,16 @@ function permissionLabel(p: Permission): string {
             <Field label="Role Name" required><Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required /></Field>
             <Field label="Description"><Textarea value={form.description ?? ''} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} /></Field>
           </div>
+
+          {isSystemAdmin && (
+            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-slate-700">Protected role</p>
+                <p className="text-xs text-slate-500">Only a Developer or Super Admin can assign, edit or delete this role.</p>
+              </div>
+              <Toggle checked={!!form.protected} onChange={(v) => setForm((f) => ({ ...f, protected: v }))} />
+            </div>
+          )}
 
           <div>
             <p className="mb-2 text-sm font-medium text-slate-700">Permissions</p>
@@ -231,5 +251,36 @@ function permissionLabel(p: Permission): string {
         onConfirm={() => deleteTarget?.id && del.mutate(deleteTarget.id)}
       />
     </div>
+  );
+}
+
+function Toggle({
+  checked,
+  disabled,
+  onChange,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+        checked ? 'bg-teal-600' : 'bg-slate-300',
+      )}
+    >
+      <span
+        className={cn(
+          'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+          checked ? 'translate-x-6' : 'translate-x-1',
+        )}
+      />
+    </button>
   );
 }

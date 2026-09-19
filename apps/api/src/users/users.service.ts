@@ -8,10 +8,9 @@ import { CreateUserDto, UpdateUserDto } from './dto/users.dto';
 const DEVELOPER_ROLE = 'Developer';
 const SUPER_ADMIN_ROLE = 'Super Admin';
 
-// Roles that carry unrestricted (full-rights) access. Only an existing
-// Developer may grant these roles or manage accounts that hold them; every
-// other user with `users.manage` can still work with ordinary users.
-const FULL_ACCESS_ROLES = [DEVELOPER_ROLE, SUPER_ADMIN_ROLE] as const;
+// Roles that may hand out / change protected roles. Everyone else with
+// `users.manage` / `roles.manage` can still work with ordinary roles.
+const SYSTEM_ADMIN_ROLES = [DEVELOPER_ROLE, SUPER_ADMIN_ROLE] as const;
 
 @Injectable()
 export class UsersService {
@@ -20,7 +19,7 @@ export class UsersService {
     private readonly audit: AuditService,
   ) {}
 
-  private async assertFullAccessBoundary(opts: {
+  private async assertProtectedRoleBoundary(opts: {
     actorRoles: string[];
     actorId?: string;
     targetId?: string;
@@ -28,34 +27,44 @@ export class UsersService {
     requestedRoleIds?: string[];
     targetRoleNames?: string[];
   }) {
-    if (opts.actorRoles.includes(DEVELOPER_ROLE)) return;
+    if (opts.actorRoles.some((r) =>
+      (SYSTEM_ADMIN_ROLES as readonly string[]).includes(r),
+    )) {
+      return;
+    }
 
     // A user may always update their own profile (name, email, password) as long
     // as they are not changing their own roles.
     const managingSelf =
       opts.actorId && opts.targetId === opts.actorId && !opts.changingRoles;
 
-    const blockedTarget = opts.targetRoleNames?.some((n) =>
-      (FULL_ACCESS_ROLES as readonly string[]).includes(n),
-    );
-    if (blockedTarget && !managingSelf) {
-      throw ApiException.forbidden(
-        'Only a Developer can manage a Developer or Super Admin account',
-      );
+    // Resolve protected status for the roles being touched (requested + current).
+    const roleIds = opts.requestedRoleIds ?? [];
+    if (opts.targetRoleNames?.length) {
+      const current = await this.prisma.role.findMany({
+        where: { name: { in: opts.targetRoleNames } },
+        select: { id: true, name: true, protected: true },
+      });
+      for (const r of current) {
+        if (r.protected && !managingSelf) {
+          throw ApiException.forbidden(
+            'Only a Developer or Super Admin can manage a protected role',
+          );
+        }
+      }
     }
 
-    if (opts.requestedRoleIds?.length && !opts.actorRoles.some((r) => r === DEVELOPER_ROLE)) {
-      const roles = await this.prisma.role.findMany({
-        where: { id: { in: opts.requestedRoleIds } },
-        select: { name: true },
+    if (
+      roleIds.length &&
+      !opts.actorRoles.some((r) => r === DEVELOPER_ROLE)
+    ) {
+      const requested = await this.prisma.role.findMany({
+        where: { id: { in: roleIds } },
+        select: { id: true, protected: true },
       });
-      if (
-        roles.some((r) =>
-          (FULL_ACCESS_ROLES as readonly string[]).includes(r.name),
-        )
-      ) {
+      if (requested.some((r) => r.protected)) {
         throw ApiException.forbidden(
-          'Only a Developer can assign the Developer or Super Admin role',
+          'Only a Developer or Super Admin can assign a protected role',
         );
       }
     }
@@ -67,7 +76,7 @@ export class UsersService {
       throw ApiException.duplicateCode('Username');
     }
 
-    await this.assertFullAccessBoundary({ actorRoles, requestedRoleIds: dto.roleIds });
+    await this.assertProtectedRoleBoundary({ actorRoles, requestedRoleIds: dto.roleIds });
 
     const passwordHash = await argon2.hash(dto.password);
 
@@ -157,7 +166,7 @@ export class UsersService {
     });
     if (!existing) throw ApiException.notFound('User');
 
-    await this.assertFullAccessBoundary({
+    await this.assertProtectedRoleBoundary({
       actorRoles,
       actorId,
       targetId: id,
@@ -214,7 +223,7 @@ export class UsersService {
       throw ApiException.invalidTransaction('You cannot delete your own account');
     }
 
-    await this.assertFullAccessBoundary({
+    await this.assertProtectedRoleBoundary({
       actorRoles,
       targetRoleNames: user.roles?.map((r: any) => r.role.name),
     });

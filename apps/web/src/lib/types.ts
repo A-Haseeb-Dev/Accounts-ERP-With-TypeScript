@@ -416,7 +416,7 @@ export interface User {
   lastLoginAt?: string;
   createdAt: string;
   updatedAt: string;
-  roles?: { id: string; role: { id: string; name: string; isSystem: boolean } }[];
+  roles?: { id: string; role: { id: string; name: string; isSystem: boolean; protected?: boolean } }[];
 }
 
 export interface Role {
@@ -424,6 +424,7 @@ export interface Role {
   name: string;
   description?: string;
   isSystem: boolean;
+  protected: boolean;
   createdAt: string;
   updatedAt: string;
   permissions?: { id: string; permission: { id: string; name: string; module: string; action: string } }[];

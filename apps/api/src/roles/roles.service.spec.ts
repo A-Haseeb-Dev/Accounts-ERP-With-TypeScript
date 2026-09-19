@@ -7,6 +7,7 @@ const mockRole = {
   name: 'Manager',
   description: 'Can manage stuff',
   isSystem: false,
+  protected: false,
   permissions: [],
 };
 
@@ -63,6 +64,21 @@ describe('RolesService.create', () => {
     expect(err.code).toBe('DUPLICATE_CODE');
     expect(err.message).toMatch(/Role name/);
   });
+
+  it('creates a protected role when the actor is a Super Admin', async () => {
+    const { svc } = buildService();
+    const result = await svc.create({ name: 'Boss', protected: true }, 'admin', ['Super Admin']);
+    expect(result.name).toBe('Manager');
+  });
+
+  it('blocks a non-system-admin from creating a protected role', async () => {
+    const { svc } = buildService();
+    const err = await extractError(
+      svc.create({ name: 'Boss', protected: true }, 'admin', ['Manager']),
+    );
+    expect(err.status).toBe(403);
+    expect(err.message).toMatch(/Developer or Super Admin/);
+  });
 });
 
 describe('RolesService.findOne', () => {
@@ -109,6 +125,48 @@ describe('RolesService.update', () => {
     const err = await extractError(svc.update('r1', { name: 'Renamed' }));
     expect(err.status).toBe(422);
     expect(err.message).toMatch(/System roles cannot be renamed/);
+  });
+
+  it('blocks a non-system-admin from updating a protected role', async () => {
+    const prisma = {
+      role: {
+        findUnique: vi.fn().mockResolvedValue({ ...mockRole, protected: true }),
+      },
+      rolePermission: { deleteMany: vi.fn(), createMany: vi.fn() },
+    };
+    const { svc } = buildService({ prisma });
+    const err = await extractError(
+      svc.update('r1', { name: 'Renamed' }, 'admin', ['Manager']),
+    );
+    expect(err.status).toBe(403);
+    expect(err.message).toMatch(/Developer or Super Admin/);
+  });
+
+  it('blocks a non-system-admin from removing the protected flag from a role', async () => {
+    const prisma = {
+      role: {
+        findUnique: vi.fn().mockResolvedValue({ ...mockRole, protected: true }),
+      },
+      rolePermission: { deleteMany: vi.fn(), createMany: vi.fn() },
+    };
+    const { svc } = buildService({ prisma });
+    const err = await extractError(
+      svc.update('r1', { protected: false }, 'admin', ['Manager']),
+    );
+    expect(err.status).toBe(403);
+  });
+
+  it('allows a Super Admin to edit a protected role', async () => {
+    const prisma = {
+      role: {
+        findUnique: vi.fn().mockResolvedValue({ ...mockRole, protected: true }),
+        update: vi.fn().mockResolvedValue({ ...mockRole, name: 'Renamed', protected: true }),
+      },
+      rolePermission: { deleteMany: vi.fn(), createMany: vi.fn() },
+    };
+    const { svc } = buildService({ prisma });
+    const result = await svc.update('r1', { name: 'Renamed' }, 'admin', ['Super Admin']);
+    expect(result.name).toBe('Renamed');
   });
 
   it('throws NOT_FOUND for missing role', async () => {
@@ -162,6 +220,31 @@ describe('RolesService.remove', () => {
     expect(err.status).toBe(422);
     expect(err.message).toMatch(/assigned to 5 user/);
   });
+
+  it('blocks a non-system-admin from deleting a protected role', async () => {
+    const prisma = {
+      role: {
+        findUnique: vi.fn().mockResolvedValue({ ...mockRole, protected: true, _count: { users: 0 } }),
+      },
+      rolePermission: { deleteMany: vi.fn() },
+    };
+    const { svc } = buildService({ prisma });
+    const err = await extractError(svc.remove('r1', 'admin', ['Manager']));
+    expect(err.status).toBe(403);
+  });
+
+  it('allows a Super Admin to delete a protected role', async () => {
+    const prisma = {
+      role: {
+        findUnique: vi.fn().mockResolvedValue({ ...mockRole, protected: true, _count: { users: 0 } }),
+        delete: vi.fn(),
+      },
+      rolePermission: { deleteMany: vi.fn() },
+    };
+    const { svc } = buildService({ prisma });
+    const result = await svc.remove('r1', 'admin', ['Super Admin']);
+    expect(result.deleted).toBe(true);
+  });
 });
 
 describe('RolesService.assignPermissions', () => {
@@ -190,5 +273,17 @@ describe('RolesService.assignPermissions', () => {
     const err = await extractError(svc.assignPermissions('ghost', []));
     expect(err.status).toBe(404);
     expect(err.message).toMatch(/not found/i);
+  });
+
+  it('blocks a non-system-admin from changing permissions on a protected role', async () => {
+    const prisma = {
+      role: { findUnique: vi.fn().mockResolvedValue({ ...mockRole, protected: true }) },
+      rolePermission: { deleteMany: vi.fn(), createMany: vi.fn() },
+    };
+    const { svc } = buildService({ prisma });
+    const err = await extractError(
+      svc.assignPermissions('r1', ['perm-1'], 'admin', ['Manager']),
+    );
+    expect(err.status).toBe(403);
   });
 });
