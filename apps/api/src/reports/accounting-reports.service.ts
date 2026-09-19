@@ -106,6 +106,125 @@ export class AccountingReportsService {
     };
   }
 
+  /** General Ledger summary - account balances grouped by sub-head (filterable by head / type / sub-head). */
+  async generalLedgerSummary(query: { headId?: string; subHeadId?: string; accountType?: string; from?: string; to?: string }) {
+    const { headId, subHeadId, accountType, from, to } = query;
+
+    const accountWhere: any = { status: 'active' };
+    if (headId) accountWhere.subHead = { headAccountId: headId };
+    if (subHeadId) accountWhere.subHeadId = subHeadId;
+    if (accountType) accountWhere.accountType = accountType;
+
+    const accounts = await this.prisma.mainAccount.findMany({
+      where: accountWhere,
+      include: {
+        subHead: { include: { headAccount: true } },
+      },
+      orderBy: [{ subHead: { code: 'asc' } }, { code: 'asc' }],
+    });
+
+    const voucherWhere: any = { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } };
+    if (from || to) {
+      voucherWhere.voucherDate = {
+        ...(from ? { gte: new Date(from) } : {}),
+        ...(to ? { lte: new Date(to) } : {}),
+      };
+    }
+
+    const rows: any[] = [];
+    let totalDebit = 0;
+    let totalCredit = 0;
+    let totalOpening = 0;
+
+    for (const acc of accounts) {
+      const agg = await this.prisma.voucherEntry.aggregate({
+        where: { mainAccountId: acc.id, voucher: voucherWhere },
+        _sum: { debit: true, credit: true },
+      });
+      let openingBalance = await this.accountOpening(acc);
+      if (from) {
+        const before = await this.prisma.voucherEntry.aggregate({
+          where: {
+            mainAccountId: acc.id,
+            voucher: {
+              status: 'posted',
+              voucherDate: { lt: new Date(from) },
+              NOT: { reference: { startsWith: 'OB:' } },
+            },
+          },
+          _sum: { debit: true, credit: true },
+        });
+        openingBalance += Number(before._sum.debit ?? 0) - Number(before._sum.credit ?? 0);
+      }
+      const debit = round2(Number(agg._sum.debit ?? 0));
+      const credit = round2(Number(agg._sum.credit ?? 0));
+      const opening = round2(openingBalance);
+      const closing = round2(opening + debit - credit);
+      totalOpening += opening;
+      totalDebit += debit;
+      totalCredit += credit;
+
+      rows.push({
+        accountId: acc.id,
+        code: acc.code,
+        name: acc.name,
+        accountType: acc.accountType,
+        headId: acc.subHead?.headAccount.id ?? null,
+        headName: acc.subHead?.headAccount.name ?? '—',
+        subHeadId: acc.subHead?.id ?? null,
+        subHeadName: acc.subHead?.name ?? '—',
+        opening,
+        debit,
+        credit,
+        closing,
+        balanceType: closing > 0 ? 'DR' : closing < 0 ? 'CR' : null,
+      });
+    }
+
+    const groupsMap = new Map<string, any>();
+    for (const r of rows) {
+      const key = r.subHeadName;
+      if (!groupsMap.has(key)) {
+        groupsMap.set(key, {
+          subHeadId: r.subHeadId,
+          subHeadName: r.subHeadName,
+          headName: r.headName,
+          headId: r.headId,
+          rows: [],
+          opening: 0,
+          debit: 0,
+          credit: 0,
+          closing: 0,
+        });
+      }
+      const g = groupsMap.get(key);
+      g.rows.push(r);
+      g.opening += r.opening;
+      g.debit += r.debit;
+      g.credit += r.credit;
+      g.closing += r.closing;
+    }
+
+    const groups = [...groupsMap.values()].map((g) => ({
+      ...g,
+      opening: round2(g.opening),
+      debit: round2(g.debit),
+      credit: round2(g.credit),
+      closing: round2(g.closing),
+    }));
+
+    return {
+      groups,
+      rows,
+      totals: {
+        opening: round2(totalOpening),
+        debit: round2(totalDebit),
+        credit: round2(totalCredit),
+        closing: round2(totalOpening + totalDebit - totalCredit),
+      },
+    };
+  }
+
   /** General Journal - all posted vouchers in date order. */
   async generalJournal(query: { from?: string; to?: string; page?: number; pageSize?: number }) {
     const { from, to, page = 1, pageSize = 100 } = query;
