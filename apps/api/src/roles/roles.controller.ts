@@ -3,10 +3,12 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RolesService } from './roles.service';
 import { CreateRoleDto, UpdateRoleDto } from './dto/roles.dto';
 import { Permissions } from '../auth/decorators/permissions.decorator';
+import { SystemAdmin } from '../auth/decorators/system-admin.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('Roles')
 @ApiBearerAuth()
+@SystemAdmin()
 @Controller('roles')
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}

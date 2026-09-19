@@ -3,8 +3,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FeaturesService } from './features.service';
 import { UpdateFeatureDto, UpdateFeaturesDto } from './dto/update-feature.dto';
 import { Permissions } from '../auth/decorators/permissions.decorator';
+import { SystemAdmin } from '../auth/decorators/system-admin.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { ApiException } from '../common/exceptions/api.exception';
 
 @ApiTags('System')
 @ApiBearerAuth()
@@ -20,23 +20,17 @@ export class FeaturesController {
 
   @Patch()
   @Permissions('system.features.manage')
-  @ApiOperation({ summary: 'Enable/disable a company feature (Developer role only)' })
+  @SystemAdmin()
+  @ApiOperation({ summary: 'Enable/disable a company feature (Developer/Super Admin only)' })
   async setFeature(@Body() dto: UpdateFeatureDto, @CurrentUser() actor: any) {
-    // Deliberately stricter than a normal permission: feature switches are only
-    // ever controllable by the Developer role, never by Super Admin or others.
-    if (!actor?.roles?.includes('Developer')) {
-      throw ApiException.forbidden('Only the Developer role can change company features');
-    }
     return this.features.setEnabled(dto.code, dto.enabled, actor?.id);
   }
 
   @Patch('bulk')
   @Permissions('system.features.manage')
-  @ApiOperation({ summary: 'Enable/disable many company features (Developer role only)' })
+  @SystemAdmin()
+  @ApiOperation({ summary: 'Enable/disable many company features (Developer/Super Admin only)' })
   async setFeatures(@Body() dto: UpdateFeaturesDto, @CurrentUser() actor: any) {
-    if (!actor?.roles?.includes('Developer')) {
-      throw ApiException.forbidden('Only the Developer role can change company features');
-    }
     return this.features.setManyEnabled(dto.codes, dto.enabled, actor?.id);
   }
 }

@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SystemService } from './system.service';
 import { ImportSettingsDto, UpdateBrandingDto, UpdateSettingsDto } from './dto/system.dto';
 import { Permissions } from '../auth/decorators/permissions.decorator';
+import { SystemAdmin } from '../auth/decorators/system-admin.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('System')
@@ -19,6 +20,7 @@ export class SystemController {
 
   @Patch('branding')
   @Permissions('system.branding.manage')
+  @SystemAdmin()
   @ApiOperation({ summary: 'Update branding configuration' })
   updateBranding(@Body() dto: UpdateBrandingDto, @CurrentUser() actor: any) {
     return this.service.updateBranding(dto, actor?.id);
@@ -32,6 +34,7 @@ export class SystemController {
 
   @Patch('settings')
   @Permissions('system.settings.manage')
+  @SystemAdmin()
   @ApiOperation({ summary: 'Update system settings' })
   updateSettings(@Body() dto: UpdateSettingsDto, @CurrentUser() actor: any) {
     return this.service.updateSettings(dto, actor?.id);
@@ -39,6 +42,7 @@ export class SystemController {
 
   @Get('settings/export')
   @Permissions('system.settings.manage')
+  @SystemAdmin()
   @ApiOperation({ summary: 'Export all settings and branding as a JSON backup' })
   exportSettings() {
     return this.service.exportSettings();
@@ -46,6 +50,7 @@ export class SystemController {
 
   @Post('settings/import')
   @Permissions('system.settings.manage')
+  @SystemAdmin()
   @ApiOperation({ summary: 'Restore settings and branding from a JSON backup' })
   importSettings(@Body() dto: ImportSettingsDto, @CurrentUser() actor: any) {
     return this.service.importSettings(dto, actor?.id);
