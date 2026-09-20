@@ -94,6 +94,19 @@ export class ReportsController {
     return this.inventory.productLedger({ itemId, locationId, from, to, page: Number(page), pageSize: Number(pageSize) });
   }
 
+  @Get('product-ledger-summary')
+  @Permissions('reports.inventory.view')
+  @ApiOperation({ summary: 'Product Ledger Summary (grouped by item type)' })
+  productLedgerSummary(
+    @Query('itemTypeId') itemTypeId?: string,
+    @Query('brandId') brandId?: string,
+    @Query('locationId') locationId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.inventory.productLedgerSummary({ itemTypeId, brandId, locationId, from, to });
+  }
+
   @Get('stock')
   @Permissions('reports.inventory.view')
   @ApiOperation({ summary: 'Total Stock Report' })

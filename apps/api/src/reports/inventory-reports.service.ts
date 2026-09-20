@@ -51,6 +51,117 @@ export class InventoryReportsService {
     };
   }
 
+  /** Product ledger summary - item quantities grouped by item type (filterable by type / brand / location). */
+  async productLedgerSummary(query: { itemTypeId?: string; brandId?: string; locationId?: string; from?: string; to?: string }) {
+    const { itemTypeId, brandId, locationId, from, to } = query;
+
+    const where: any = { status: 'active' };
+    if (itemTypeId) where.itemTypeId = itemTypeId;
+    if (brandId) where.brandId = brandId;
+
+    const items = await this.prisma.item.findMany({
+      where,
+      include: { itemType: true, brand: true },
+      orderBy: [{ itemType: { name: 'asc' } }, { code: 'asc' }],
+    });
+
+    const locationWhere = locationId ? { locationId } : undefined;
+
+    const rows: any[] = [];
+    const groupsMap = new Map<string, any>();
+    type TotalAcc = { opening: number; stockIn: number; stockOut: number; closing: number; value: number };
+    const totals: TotalAcc = { opening: 0, stockIn: 0, stockOut: 0, closing: 0, value: 0 };
+
+    for (const item of items) {
+      const inBefore = await this.prisma.inventoryTransaction.aggregate({
+        where: {
+          itemId: item.id,
+          ...locationWhere,
+          ...(from ? { createdAt: { lt: new Date(from) } } : {}),
+        },
+        _sum: { quantityIn: true, quantityOut: true },
+      });
+      const inRange = await this.prisma.inventoryTransaction.aggregate({
+        where: {
+          itemId: item.id,
+          ...locationWhere,
+          ...(from || to ? { createdAt: fromTo(from, to) } : {}),
+        },
+        _sum: { quantityIn: true, quantityOut: true },
+      });
+
+      const opening = round2(Number(inBefore._sum.quantityIn ?? 0) - Number(inBefore._sum.quantityOut ?? 0));
+      const stockIn = round2(Number(inRange._sum.quantityIn ?? 0));
+      const stockOut = round2(Number(inRange._sum.quantityOut ?? 0));
+      const closing = round2(opening + stockIn - stockOut);
+      const value = round2(closing * Number(item.purchasePrice));
+      const typeName = item.itemType?.name ?? 'Uncategorized';
+
+      const row = {
+        itemId: item.id,
+        code: item.code,
+        name: item.name,
+        unit: item.unit,
+        itemTypeId: item.itemTypeId ?? null,
+        itemType: typeName,
+        brand: item.brand?.name ?? null,
+        opening,
+        stockIn,
+        stockOut,
+        closing,
+        value,
+      };
+      rows.push(row);
+
+      totals.opening += opening;
+      totals.stockIn += stockIn;
+      totals.stockOut += stockOut;
+      totals.closing += closing;
+      totals.value += value;
+
+      if (!groupsMap.has(typeName)) {
+        groupsMap.set(typeName, {
+          itemTypeId: item.itemTypeId ?? null,
+          itemType: typeName,
+          rows: [],
+          opening: 0,
+          stockIn: 0,
+          stockOut: 0,
+          closing: 0,
+          value: 0,
+        });
+      }
+      const g = groupsMap.get(typeName);
+      g.rows.push(row);
+      g.opening += opening;
+      g.stockIn += stockIn;
+      g.stockOut += stockOut;
+      g.closing += closing;
+      g.value += value;
+    }
+
+    const groups = [...groupsMap.values()].map((g) => ({
+      ...g,
+      opening: round2(g.opening),
+      stockIn: round2(g.stockIn),
+      stockOut: round2(g.stockOut),
+      closing: round2(g.closing),
+      value: round2(g.value),
+    }));
+
+    return {
+      groups,
+      rows,
+      totals: {
+        opening: round2(totals.opening),
+        stockIn: round2(totals.stockIn),
+        stockOut: round2(totals.stockOut),
+        closing: round2(totals.closing),
+        value: round2(totals.value),
+      },
+    };
+  }
+
   /** Total stock - quantity and value across locations. */
   async totalStock(query: { locationId?: string; itemTypeId?: string; brandId?: string }) {
     const { locationId, itemTypeId, brandId } = query;

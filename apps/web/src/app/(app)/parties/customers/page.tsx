@@ -263,12 +263,49 @@ function CustomerDetail({
   onClose: () => void;
 }) {
   const customerId = customer?.id ?? '';
+  const [ledgerView, setLedgerView] = useState<'detail' | 'summary'>('detail');
+  const [ledgerFrom, setLedgerFrom] = useState('');
+  const [ledgerTo, setLedgerTo] = useState('');
 
-  const { data: ledger, isLoading: ledgerLoading } = useQuery<{ items: { id: string; date: string; voucherNumber: string; debit: number; credit: number; balance: number; description: string }[] }>({
-    queryKey: ['customer-ledger', customerId],
-    queryFn: () => apiFetch(`/customers/${customerId}/ledger${qs({ pageSize: 100 })}`),
+  const { data: ledgerResp, isLoading: ledgerLoading } = useQuery<{ entries: Array<{ id: string; debit: string | number; credit: string | number; runningBalance: string | number; description?: string | null; voucher?: { number: string; voucherDate: string; description?: string | null } | null }> }>({
+    queryKey: ['customer-ledger', customerId, ledgerView, ledgerFrom, ledgerTo],
+    queryFn: () => apiFetch(`/customers/${customerId}/ledger${qs({ pageSize: ledgerView === 'summary' ? 10000 : 100, from: ledgerFrom || undefined, to: ledgerTo || undefined })}`),
     enabled: !!customerId,
   });
+
+  const ledgerEntries = (ledgerResp?.entries ?? []).map((e) => ({
+    key: e.id,
+    date: e.voucher?.voucherDate ?? new Date().toISOString(),
+    voucherNumber: e.voucher?.number ?? '',
+    description: e.description ?? e.voucher?.description ?? '',
+    debit: Number(e.debit ?? 0),
+    credit: Number(e.credit ?? 0),
+    balance: Number(e.runningBalance ?? 0),
+  }));
+
+  const ledgerSummary = (() => {
+    if (ledgerView !== 'summary' || ledgerEntries.length === 0) return [];
+    let lastMonth = '';
+    let current: { month: string; monthLabel: string; count: number; opening: number; debit: number; credit: number; closing: number } | null = null;
+    const out: { month: string; monthLabel: string; count: number; opening: number; debit: number; credit: number; closing: number }[] = [];
+    for (const e of ledgerEntries) {
+      const d = new Date(e.date);
+      const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const monthLabel = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      if (month !== lastMonth) {
+        if (current) out.push(current);
+        current = { month, monthLabel, count: 0, opening: e.balance - (e.debit - e.credit), debit: 0, credit: 0, closing: 0 };
+        lastMonth = month;
+      }
+      if (!current) continue;
+      current.count += 1;
+      current.debit += e.debit;
+      current.credit += e.credit;
+      current.closing = e.balance;
+    }
+    if (current) out.push(current);
+    return out;
+  })();
 
   const { data: sales } = useQuery<{ items: { id: string; number: string; saleDate: string; dueDate?: string; grandTotal: number; status: string; outstanding: number }[] }>({
     queryKey: ['customer-sales', customerId],
@@ -317,31 +354,74 @@ function CustomerDetail({
           </div>
 
           {tab === 'ledger' && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                    <th className="px-3 py-2">Date</th>
-                    <th className="px-3 py-2">Voucher</th>
-                    <th className="px-3 py-2">Description</th>
-                    <th className="px-3 py-2 text-right">Debit</th>
-                    <th className="px-3 py-2 text-right">Credit</th>
-                    <th className="px-3 py-2 text-right">Balance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ledgerLoading ? <tr><td colSpan={6}><Spinner className="py-8" /></td></tr> : (ledger?.items ?? []).map((e) => (
-                    <tr key={e.id} className="border-b border-slate-100">
-                      <td className="px-3 py-2 text-slate-600">{new Date(e.date).toLocaleDateString('en-GB')}</td>
-                      <td className="px-3 py-2 font-mono text-slate-700">{e.voucherNumber}</td>
-                      <td className="px-3 py-2 text-slate-500">{e.description ?? '-'}</td>
-                      <td className="px-3 py-2 text-right text-slate-700">{money(e.debit)}</td>
-                      <td className="px-3 py-2 text-right text-slate-700">{money(e.credit)}</td>
-                      <td className="px-3 py-2 text-right font-medium text-slate-800">{money(e.balance)}</td>
+            <div>
+              <div className="mb-3 flex flex-wrap items-end gap-2">
+                <Field label="View">
+                  <Select value={ledgerView} onChange={(e) => setLedgerView(e.target.value as 'detail' | 'summary')} className="w-36">
+                    <option value="detail">Detail</option>
+                    <option value="summary">Summary (by month)</option>
+                  </Select>
+                </Field>
+                <Field label="From"><Input type="date" value={ledgerFrom} onChange={(e) => setLedgerFrom(e.target.value)} className="w-36" /></Field>
+                <Field label="To"><Input type="date" value={ledgerTo} onChange={(e) => setLedgerTo(e.target.value)} className="w-36" /></Field>
+              </div>
+              {ledgerView === 'summary' ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                        <th className="px-3 py-2">Month</th>
+                        <th className="px-3 py-2 text-right">Entries</th>
+                        <th className="px-3 py-2 text-right">Opening</th>
+                        <th className="px-3 py-2 text-right">Debit</th>
+                        <th className="px-3 py-2 text-right">Credit</th>
+                        <th className="px-3 py-2 text-right">Closing</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ledgerLoading ? <tr><td colSpan={6}><Spinner className="py-8" /></td></tr> : ledgerSummary.length === 0 ? (
+                        <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">No entries found.</td></tr>
+                      ) : ledgerSummary.map((g) => (
+                        <tr key={g.month} className="border-b border-slate-100">
+                          <td className="px-3 py-2 font-semibold text-slate-800">{g.monthLabel}</td>
+                          <td className="px-3 py-2 text-right text-slate-500">{g.count}</td>
+                          <td className="px-3 py-2 text-right text-slate-600">{money(g.opening)}</td>
+                          <td className="px-3 py-2 text-right text-teal-700">{money(g.debit)}</td>
+                          <td className="px-3 py-2 text-right text-red-700">{money(g.credit)}</td>
+                          <td className="px-3 py-2 text-right font-medium text-slate-800">{money(g.closing)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                      <th className="px-3 py-2">Date</th>
+                      <th className="px-3 py-2">Voucher</th>
+                      <th className="px-3 py-2">Description</th>
+                      <th className="px-3 py-2 text-right">Debit</th>
+                      <th className="px-3 py-2 text-right">Credit</th>
+                      <th className="px-3 py-2 text-right">Balance</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {ledgerLoading ? <tr><td colSpan={6}><Spinner className="py-8" /></td></tr> : ledgerEntries.map((e) => (
+                      <tr key={e.key} className="border-b border-slate-100">
+                        <td className="px-3 py-2 text-slate-600">{new Date(e.date).toLocaleDateString('en-GB')}</td>
+                        <td className="px-3 py-2 font-mono text-slate-700">{e.voucherNumber}</td>
+                        <td className="px-3 py-2 text-slate-500">{e.description ?? '-'}</td>
+                        <td className="px-3 py-2 text-right text-slate-700">{money(e.debit)}</td>
+                        <td className="px-3 py-2 text-right text-slate-700">{money(e.credit)}</td>
+                        <td className="px-3 py-2 text-right font-medium text-slate-800">{money(e.balance)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              )}
             </div>
           )}
 
