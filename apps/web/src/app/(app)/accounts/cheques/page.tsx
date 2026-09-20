@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { ArrowLeftRight, Eye, Landmark, RefreshCcw, Search } from 'lucide-react';
+import { ArrowLeftRight, ArrowDownCircle, ArrowUpCircle, Eye, Landmark, RefreshCcw, Search } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { depositCheque, bounceCheque, endorseCheque } from '@/lib/accounts-api';
 import { Button } from '@/components/ui/button';
@@ -23,7 +23,7 @@ const STATUS_OPTIONS = [
   { value: '', label: 'All cheque states' },
   { value: 'PENDING', label: 'Pending approval' },
   { value: 'IN_HAND', label: 'In hand' },
-  { value: 'CLEARED', label: 'Cleared (immediate)' },
+  { value: 'CLEARED', label: 'Cleared' },
   { value: 'DEPOSITED', label: 'Deposited' },
   { value: 'ENDORSED', label: 'Endorsed to party' },
   { value: 'BOUNCED', label: 'Bounced' },
@@ -45,6 +45,7 @@ export default function ChequesRegisterPage() {
 
   const [search, setSearch] = useState('');
   const [chequeStatus, setChequeStatus] = useState('');
+  const [paymentType, setPaymentType] = useState('');
   const [page, setPage] = useState(1);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [bounceEntry, setBounceEntry] = useState<PaymentEntry | null>(null);
@@ -58,7 +59,7 @@ export default function ChequesRegisterPage() {
   const { options: supplierOptions } = useFlatOptions('suppliers');
 
   const { data, isLoading } = useQuery<Paginated<PaymentEntry>>({
-    queryKey: ['cheques', page, search, chequeStatus],
+    queryKey: ['cheques', page, search, chequeStatus, paymentType],
     queryFn: () =>
       apiFetch(
         '/payments' +
@@ -68,6 +69,7 @@ export default function ChequesRegisterPage() {
             method: 'CHEQUE',
             search: search || undefined,
             chequeStatus: chequeStatus || undefined,
+            paymentType: paymentType || undefined,
           }),
       ),
   });
@@ -125,7 +127,7 @@ export default function ChequesRegisterPage() {
     <div>
       <PageHeader
         title="Cheques Register"
-        description="Track post-dated and regular cheques received — deposit them into the bank or mark them bounced."
+        description="Track post-dated and regular cheques received and issued — clear them into the bank or mark them bounced."
       />
 
       <Card>
@@ -134,6 +136,11 @@ export default function ChequesRegisterPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search number / party / cheque…" className="pl-9" />
           </div>
+          <Select value={paymentType} onChange={(e) => { setPaymentType(e.target.value); setPage(1); }} className="w-40">
+            <option value="">All cheque types</option>
+            <option value="RECEIPT">Received</option>
+            <option value="PAYMENT">Issued</option>
+          </Select>
           <Select value={chequeStatus} onChange={(e) => { setChequeStatus(e.target.value); setPage(1); }} className="w-44">
             {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </Select>
@@ -141,7 +148,16 @@ export default function ChequesRegisterPage() {
 
         <DataTable<PaymentEntry>
           columns={[
-            { key: 'number', header: 'Receipt', render: (r) => <span className="font-mono font-semibold text-slate-800">{r.number}</span> },
+            { key: 'number', header: 'Entry', render: (r) => <span className="font-mono font-semibold text-slate-800">{r.number}</span> },
+            {
+              key: 'paymentType', header: 'Direction',
+              render: (r) => (
+                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${r.paymentType === 'RECEIPT' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                  {r.paymentType === 'RECEIPT' ? <ArrowDownCircle className="h-3 w-3" /> : <ArrowUpCircle className="h-3 w-3" />}
+                  {r.paymentType === 'RECEIPT' ? 'Received' : 'Issued'}
+                </span>
+              ),
+            },
             { key: 'paymentDate', header: 'Date', render: (r) => <span className="text-slate-600">{new Date(r.paymentDate).toLocaleDateString('en-GB')}</span> },
             { key: 'party', header: 'Party', render: (r) => <span className="text-slate-700">{r.partyName ?? '-'}</span> },
             { key: 'chequeNumber', header: 'Cheque no.', render: (r) => <span className="font-mono text-slate-600">{r.chequeNumber ?? '-'}</span> },
@@ -153,7 +169,7 @@ export default function ChequesRegisterPage() {
                 )}
               </span>
             ) },
-            { key: 'pdcAccount', header: 'PDC account', render: (r) => <span className="text-slate-600">{r.pdcAccount?.name ?? '-'}</span> },
+            { key: 'pdcAccount', header: 'PDC account', render: (r) => <span className="text-slate-600">{r.pdcAccount?.name ?? (r.paymentType === 'PAYMENT' ? (r.mainAccount?.name ?? 'Cheques Issued') : '-')}</span> },
             { key: 'bankAccount', header: 'Bank', render: (r) => <span className="text-slate-600">{r.bankAccount?.name ?? '-'}</span> },
             { key: 'amount', header: 'Amount', align: 'right', render: (r) => <span className="font-medium text-slate-800">{money(r.amount, 'PKR')}</span> },
             {
@@ -174,9 +190,11 @@ export default function ChequesRegisterPage() {
                       <button onClick={() => deposit.mutate(r.id)} className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 hover:text-blue-700" title="Clear cheque into bank">
                         <Landmark className="h-4 w-4" />
                       </button>
-                      <button onClick={() => { setEndorseEntry(r); setEndorsePartyType(r.paymentType === 'RECEIPT' ? 'SUPPLIER' : 'CUSTOMER'); setEndorsePartyId(''); }} className="rounded-lg p-1.5 text-violet-600 hover:bg-violet-50 hover:text-violet-700" title="Endorse cheque to party">
-                        <ArrowLeftRight className="h-4 w-4" />
-                      </button>
+                      {r.paymentType === 'RECEIPT' && (
+                        <button onClick={() => { setEndorseEntry(r); setEndorsePartyType(r.paymentType === 'RECEIPT' ? 'SUPPLIER' : 'CUSTOMER'); setEndorsePartyId(''); }} className="rounded-lg p-1.5 text-violet-600 hover:bg-violet-50 hover:text-violet-700" title="Endorse cheque to party">
+                          <ArrowLeftRight className="h-4 w-4" />
+                        </button>
+                      )}
                       <button onClick={() => { setBounceEntry(r); setBounceReason(''); }} className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 hover:text-red-600" title="Mark as bounced">
                         <RefreshCcw className="h-4 w-4" />
                       </button>
@@ -200,11 +218,12 @@ export default function ChequesRegisterPage() {
         {detailLoading || !detail ? null : (
           <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
             <KV label="Party" value={detail.partyName ?? '-'} />
-            <KV label="Receipt date" value={new Date(detail.paymentDate).toLocaleDateString('en-GB')} />
+            <KV label="Direction" value={detail.paymentType === 'RECEIPT' ? 'Received' : 'Issued'} />
+            <KV label="Date" value={new Date(detail.paymentDate).toLocaleDateString('en-GB')} />
             <KV label="Cheque no." value={detail.chequeNumber ?? '-'} />
             <KV label="Cheque date" value={detail.chequeDate ? dateOnly(detail.chequeDate) : '-'} />
             <KV label="Bank" value={detail.bankAccount?.name ?? '-'} />
-            <KV label="PDC account" value={detail.pdcAccount?.name ?? '-'} />
+            <KV label="PDC account" value={detail.pdcAccount?.name ?? (detail.paymentType === 'PAYMENT' ? (detail.mainAccount?.name ?? 'Cheques Issued') : '-')} />
             <KV label="State" value={detail.chequeStatus ?? '-'} />
             <KV label="Amount" value={money(detail.amount, 'PKR')} />
             <KV label="Entry status" value={detail.status} />
@@ -222,7 +241,7 @@ export default function ChequesRegisterPage() {
         open={!!bounceEntry}
         danger
         title="Mark cheque as bounced"
-        message={`This reverses the cheque (${bounceEntry?.number ?? ''}) back to ${bounceEntry?.partyName ?? 'the party'} and re-opens the allocated invoices.`}
+        message={`This reverses the cheque (${bounceEntry?.number ?? ''}) back to ${bounceEntry?.partyName ?? 'the party'} and re-opens the allocated documents.`}
         confirmLabel="Mark bounced"
         loading={bounce.isPending}
         onCancel={() => setBounceEntry(null)}
