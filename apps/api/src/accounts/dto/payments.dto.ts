@@ -101,3 +101,36 @@ export class EndorseChequeDto {
   @IsNotEmpty({ message: 'Payee party is required' })
   partyId: string;
 }
+
+export class EditChequeDto {
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  chequeNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  bankAccountId?: string;
+
+  @IsOptional()
+  @IsDateString({}, { message: 'Invalid cheque date' })
+  chequeDate?: string;
+
+  @IsOptional()
+  @IsDateString({}, { message: 'Invalid date' })
+  paymentDate?: string;
+
+  @IsNumber()
+  @IsOptional()
+  amount?: number;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  reference?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  narration?: string;
+}

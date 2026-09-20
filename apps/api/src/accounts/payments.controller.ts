@@ -1,7 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
-import { CreatePaymentDto, CancelPaymentDto, EndorseChequeDto } from './dto/payments.dto';
+import { CreatePaymentDto, CancelPaymentDto, EndorseChequeDto, EditChequeDto } from './dto/payments.dto';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -94,5 +94,12 @@ export class PaymentsController {
   @ApiOperation({ summary: 'Endorse a cheque in hand to another party (PDC payment voucher)' })
   endorse(@Param('id') id: string, @Body() dto: EndorseChequeDto, @CurrentUser() actor: any) {
     return this.service.endorse(id, dto, actor?.id);
+  }
+
+  @Patch(':id/cheque')
+  @Permissions('accounts.payments.update')
+  @ApiOperation({ summary: 'Correct a mistake on a cheque entry (number, date, bank, amount, reference)' })
+  updateCheque(@Param('id') id: string, @Body() dto: EditChequeDto, @CurrentUser() actor: any) {
+    return this.service.updateCheque(id, dto, actor?.id);
   }
 }
