@@ -66,6 +66,56 @@ export class LeavesService {
     });
   }
 
+  /** Leave balances (quota / used / remaining) per employee and leave type for a year. */
+  async balances(employeeId?: string, year?: number) {
+    const usedYear = year ?? new Date().getFullYear();
+    const [leaveTypes, employees, requests] = await Promise.all([
+      this.prisma.hrLeaveType.findMany({
+        where: { status: 'active' },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.employee.findMany({
+        where: { status: 'active', ...(employeeId ? { id: employeeId } : {}) },
+        orderBy: { code: 'asc' },
+        select: { id: true, code: true, fullName: true },
+      }),
+      this.prisma.hrLeaveRequest.findMany({
+        where: {
+          status: 'approved',
+          fromDate: { gte: new Date(Date.UTC(usedYear, 0, 1)) },
+          toDate: { lte: new Date(Date.UTC(usedYear, 11, 31, 23, 59, 59, 999)) },
+        },
+        select: { employeeId: true, leaveTypeId: true, days: true },
+      }),
+    ]);
+
+    const byEmployee = new Map<string, Map<string, number>>();
+    for (const r of requests) {
+      const m = byEmployee.get(r.employeeId) ?? new Map<string, number>();
+      m.set(r.leaveTypeId, (m.get(r.leaveTypeId) ?? 0) + Number(r.days));
+      byEmployee.set(r.employeeId, m);
+    }
+
+    const rows = employees.map((e) => ({
+      employeeId: e.id,
+      code: e.code,
+      employeeName: e.fullName,
+      balances: leaveTypes.map((lt) => {
+        const used = byEmployee.get(e.id)?.get(lt.id) ?? 0;
+        const quota = lt.annualQuota;
+        return {
+          leaveTypeId: lt.id,
+          name: lt.name,
+          paid: lt.paid,
+          quota,
+          used: Math.round(used * 10) / 10,
+          remaining: Math.max(0, Math.round((quota - used) * 10) / 10),
+        };
+      }),
+    }));
+    return { year: usedYear, items: rows };
+  }
+
   async findOneLeaveType(id: string) {
     const item = await this.prisma.hrLeaveType.findUnique({ where: { id } });
     if (!item) throw ApiException.notFound('Leave type');

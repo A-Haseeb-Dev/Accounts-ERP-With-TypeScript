@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -8,21 +8,30 @@ import { EmployeesService } from './services/employees.service';
 import { AttendanceService } from './services/attendance.service';
 import { LeavesService } from './services/leaves.service';
 import { PayrollService } from './services/payroll.service';
+import { SalaryComponentsService } from './services/salary-components.service';
+import { LoansService } from './services/loans.service';
 import {
   AttendanceBulkDto,
   CancelPayrollDto,
   CreateDepartmentDto,
   CreateDesignationDto,
   CreateEmployeeDto,
+  CreateEmployeeLoanDto,
   CreateLeaveRequestDto,
   CreateLeaveTypeDto,
+  CreateSalaryComponentDto,
+  CreateSalaryRecordDto,
   DecideLeaveDto,
+  DisbursePayrollDto,
   GeneratePayrollDto,
   UpdateDepartmentDto,
   UpdateDesignationDto,
   UpdateEmployeeDto,
+  UpdateEmployeeLoanDto,
   UpdateLeaveTypeDto,
   UpdatePayrollItemsDto,
+  UpdateSalaryComponentDto,
+  UpdateSalaryStructureDto,
   UpsertAttendanceDto,
 } from './dto/hr.dto';
 
@@ -78,7 +87,10 @@ export class DesignationsController {
 @ApiBearerAuth()
 @Controller('hr/employees')
 export class EmployeesController {
-  constructor(private readonly service: EmployeesService) {}
+  constructor(
+    private readonly service: EmployeesService,
+    private readonly salaryComponents: SalaryComponentsService,
+  ) {}
 
   @Post() @Permissions('hr.employees.create') @ApiOperation({ summary: 'Create an employee' })
   create(@Body() dto: CreateEmployeeDto, @CurrentUser() actor: any) { return this.service.create(dto, actor?.id); }
@@ -92,6 +104,14 @@ export class EmployeesController {
   async nextCode() { const code = await this.service.previewCode(); return code ? { code } : {}; }
   @Get(':id') @Permissions('hr.employees.view') @ApiOperation({ summary: 'Get an employee' })
   findOne(@Param('id') id: string) { return this.service.findOne(id); }
+  @Get(':id/salary-structure') @Permissions('hr.employees.view') @ApiOperation({ summary: 'Get an employee salary structure' })
+  salaryStructure(@Param('id') id: string) { return this.salaryComponents.getEmployeeStructure(id); }
+  @Put(':id/salary-structure') @Permissions('hr.employees.update') @ApiOperation({ summary: 'Set employee component amounts' })
+  updateSalaryStructure(@Param('id') id: string, @Body() dto: UpdateSalaryStructureDto, @CurrentUser() actor: any) { return this.salaryComponents.updateEmployeeStructure(id, dto, actor?.id); }
+  @Get(':id/salary-history') @Permissions('hr.employees.view') @ApiOperation({ summary: 'Salary change history of an employee' })
+  salaryHistory(@Param('id') id: string) { return this.salaryComponents.getSalaryHistory(id); }
+  @Post(':id/salary-history') @Permissions('hr.salary-history.create') @ApiOperation({ summary: 'Apply a salary increment / adjustment' })
+  createSalaryRecord(@Param('id') id: string, @Body() dto: CreateSalaryRecordDto, @CurrentUser() actor: any) { return this.salaryComponents.createSalaryRecord({ ...dto, employeeId: id }, actor?.id); }
   @Patch(':id') @Permissions('hr.employees.update') @ApiOperation({ summary: 'Update an employee' })
   update(@Param('id') id: string, @Body() dto: UpdateEmployeeDto, @CurrentUser() actor: any) { return this.service.update(id, dto, actor?.id); }
   @Delete(':id') @Permissions('hr.employees.delete') @ApiOperation({ summary: 'Delete an employee' })
@@ -152,6 +172,10 @@ export class LeaveRequestsController {
   findAll(@Query('page') page = '1', @Query('pageSize') pageSize = '25', @Query('status') status?: string, @Query('employeeId') employeeId?: string, @Query('from') from?: string, @Query('to') to?: string) {
     return this.service.findAllRequests({ page: Number(page), pageSize: Number(pageSize), status, employeeId, from, to });
   }
+  @Get('balances') @Permissions('hr.leaves.view') @ApiOperation({ summary: 'Leave balances per employee and type' })
+  balances(@Query('employeeId') employeeId?: string, @Query('year') year?: string) {
+    return this.service.balances(employeeId, year ? Number(year) : undefined);
+  }
   @Get(':id') @Permissions('hr.leaves.view') @ApiOperation({ summary: 'Get a leave request' })
   findOne(@Param('id') id: string) { return this.service.findOneRequest(id); }
   @Post(':id/decide') @Permissions('hr.leaves.approve') @ApiOperation({ summary: 'Approve or reject a leave request' })
@@ -172,16 +196,70 @@ export class PayrollController {
   findAll(@Query('page') page = '1', @Query('pageSize') pageSize = '25', @Query('status') status?: string, @Query('year') year?: string, @Query('month') month?: string) {
     return this.service.findAll({ page: Number(page), pageSize: Number(pageSize), status, year, month });
   }
+  @Get('report/register') @Permissions('reports.hr.view') @ApiOperation({ summary: 'Monthly payroll register' })
+  registerReport(@Query('year') year: string, @Query('month') month?: string) {
+    return this.service.reportRegister(Number(year), month ? Number(month) : undefined);
+  }
+  @Get('report/department-cost') @Permissions('reports.hr.view') @ApiOperation({ summary: 'Payroll cost by department for a year' })
+  departmentCost(@Query('year') year: string) {
+    return this.service.reportDepartmentCost(Number(year));
+  }
   @Get('next-code') @Permissions('hr.payroll.view') @ApiOperation({ summary: 'Next auto-generated payroll number' })
   async nextCode() { const code = await this.service.previewCode(); return code ? { code } : {}; }
   @Get(':id') @Permissions('hr.payroll.view') @ApiOperation({ summary: 'Get a payroll run with items' })
   findOne(@Param('id') id: string) { return this.service.findOne(id); }
+  @Get(':id/export') @Permissions('hr.payroll.export') @ApiOperation({ summary: 'Export bank payment file (CSV)' })
+  exportBank(@Param('id') id: string) { return this.service.exportBankFile(id); }
   @Patch(':id/items') @Permissions('hr.payroll.update') @ApiOperation({ summary: 'Adjust payroll items (overtime / deductions)' })
   updateItems(@Param('id') id: string, @Body() dto: UpdatePayrollItemsDto, @CurrentUser() actor: any) { return this.service.updateItems(id, dto, actor?.id); }
   @Post(':id/post') @Permissions('hr.payroll.post') @ApiOperation({ summary: 'Post payroll to accounting' })
   post(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.post(id, actor?.id); }
+  @Post(':id/disburse') @Permissions('hr.payroll.disburse') @ApiOperation({ summary: 'Disburse salaries via bank' })
+  disburse(@Param('id') id: string, @Body() dto: DisbursePayrollDto, @CurrentUser() actor: any) { return this.service.disburse(id, dto, actor?.id); }
   @Post(':id/cancel') @Permissions('hr.payroll.cancel') @ApiOperation({ summary: 'Cancel a posted payroll' })
   cancel(@Param('id') id: string, @Body() dto: CancelPayrollDto, @CurrentUser() actor: any) { return this.service.cancel(id, dto.reason, actor?.id); }
   @Delete(':id') @Permissions('hr.payroll.delete') @ApiOperation({ summary: 'Delete a draft payroll' })
+  remove(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.remove(id, actor?.id); }
+}
+
+@ApiTags('HR - Salary Components')
+@ApiBearerAuth()
+@Controller('hr/salary-components')
+export class SalaryComponentsController {
+  constructor(private readonly service: SalaryComponentsService) {}
+
+  @Post() @Permissions('hr.salary-components.create') @ApiOperation({ summary: 'Create a salary component' })
+  create(@Body() dto: CreateSalaryComponentDto, @CurrentUser() actor: any) { return this.service.create(dto, actor?.id); }
+  @Get() @Permissions('hr.salary-components.view') @ApiOperation({ summary: 'List salary components' })
+  findAll(@Query('page') page = '1', @Query('pageSize') pageSize = '25', @Query('search') search?: string, @Query('status') status?: string) {
+    return this.service.findAll({ page: Number(page), pageSize: Number(pageSize), search, status });
+  }
+  @Get('flat') @Permissions('hr.salary-components.view') @ApiOperation({ summary: 'List active components (for selects)' })
+  findAllFlat() { return this.service.findAllFlat(); }
+  @Get(':id') @Permissions('hr.salary-components.view') @ApiOperation({ summary: 'Get a salary component' })
+  findOne(@Param('id') id: string) { return this.service.findOne(id); }
+  @Patch(':id') @Permissions('hr.salary-components.update') @ApiOperation({ summary: 'Update a salary component' })
+  update(@Param('id') id: string, @Body() dto: UpdateSalaryComponentDto, @CurrentUser() actor: any) { return this.service.update(id, dto, actor?.id); }
+  @Delete(':id') @Permissions('hr.salary-components.delete') @ApiOperation({ summary: 'Delete a salary component' })
+  remove(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.remove(id, actor?.id); }
+}
+
+@ApiTags('HR - Employee Loans')
+@ApiBearerAuth()
+@Controller('hr/loans')
+export class LoansController {
+  constructor(private readonly service: LoansService) {}
+
+  @Post() @Permissions('hr.loans.create') @ApiOperation({ summary: 'Create an employee loan' })
+  create(@Body() dto: CreateEmployeeLoanDto, @CurrentUser() actor: any) { return this.service.create(dto, actor?.id); }
+  @Get() @Permissions('hr.loans.view') @ApiOperation({ summary: 'List employee loans' })
+  findAll(@Query('page') page = '1', @Query('pageSize') pageSize = '25', @Query('status') status?: string, @Query('employeeId') employeeId?: string) {
+    return this.service.findAll({ page: Number(page), pageSize: Number(pageSize), status, employeeId });
+  }
+  @Get(':id') @Permissions('hr.loans.view') @ApiOperation({ summary: 'Get an employee loan' })
+  findOne(@Param('id') id: string) { return this.service.findOne(id); }
+  @Patch(':id') @Permissions('hr.loans.update') @ApiOperation({ summary: 'Update an employee loan' })
+  update(@Param('id') id: string, @Body() dto: UpdateEmployeeLoanDto, @CurrentUser() actor: any) { return this.service.update(id, dto, actor?.id); }
+  @Delete(':id') @Permissions('hr.loans.delete') @ApiOperation({ summary: 'Delete an employee loan' })
   remove(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.remove(id, actor?.id); }
 }

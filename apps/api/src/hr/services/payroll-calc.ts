@@ -1,3 +1,17 @@
+export interface PayrollComponentInput {
+  name: string;
+  type: 'EARNING' | 'DEDUCTION';
+  calcType: 'FIXED' | 'PERCENT_BASIC';
+  value: number;
+  amount?: number;
+}
+
+export interface PayrollBreakdownItem {
+  name: string;
+  type: string;
+  amount: number;
+}
+
 export interface PayrollLineInput {
   basicSalary: number;
   allowance: number;
@@ -5,6 +19,10 @@ export interface PayrollLineInput {
   attendance: { status: string; overtimeHours: number }[];
   /** Number of calendar days in the pay period. */
   daysInMonth: number;
+  /** Active salary components (with per-employee overrides already resolved). */
+  components?: PayrollComponentInput[];
+  /** Monthly loan installments active for the employee this period. */
+  loanInstallments?: number[];
 }
 
 export interface PayrollLineResult {
@@ -19,6 +37,7 @@ export interface PayrollLineResult {
   grossPay: number;
   totalDeduction: number;
   netPay: number;
+  componentBreakdown: PayrollBreakdownItem[];
 }
 
 /**
@@ -27,9 +46,14 @@ export interface PayrollLineResult {
  * - basic + fixed allowance are always paid in full
  * - overtime hours earn (basic / (days * 8)) per hour
  * - absent days are deducted at (basic / days) per day; half-days count as 0.5
+ * - configurable EARNING components add to gross (FIXED amount or % of basic)
+ * - configurable DEDUCTION components reduce pay (FIXED amount or % of basic)
+ * - active loan installments are deducted as well
  */
 export function computePayrollLine(input: PayrollLineInput): PayrollLineResult {
   const { basicSalary, allowance, attendance, daysInMonth } = input;
+  const components = input.components ?? [];
+  const loanInstallments = input.loanInstallments ?? [];
   const days = Math.max(1, daysInMonth);
 
   const basic = round2(basicSalary);
@@ -50,9 +74,39 @@ export function computePayrollLine(input: PayrollLineInput): PayrollLineResult {
   const perDay = basic > 0 ? basic / days : 0;
   const absentDeduction = round2(perDay * absentDays);
 
-  const grossPay = round2(basic + allowanceAmount + overtimeAmount);
-  const totalDeduction = round2(absentDeduction);
+  const earnings: PayrollBreakdownItem[] = [];
+  const deductionBreakdown: PayrollBreakdownItem[] = [];
+  let otherDeduction = 0;
+  for (const c of components) {
+    const amount =
+      c.calcType === 'PERCENT_BASIC' ? round2((c.value / 100) * basic) : round2(c.amount ?? c.value);
+    if (c.type === 'EARNING') {
+      earnings.push({ name: c.name, type: 'EARNING', amount });
+    } else {
+      otherDeduction = round2(otherDeduction + amount);
+      deductionBreakdown.push({ name: c.name, type: 'DEDUCTION', amount });
+    }
+  }
+  const earningsTotal = earnings.reduce((sum, e) => sum + e.amount, 0);
+
+  const loanTotal = round2(loanInstallments.reduce((sum, a) => sum + a, 0));
+  if (loanTotal > 0) {
+    otherDeduction = round2(otherDeduction + loanTotal);
+    deductionBreakdown.push({ name: 'Loan/Advance', type: 'DEDUCTION', amount: loanTotal });
+  }
+
+  const grossPay = round2(basic + allowanceAmount + overtimeAmount + earningsTotal);
+  const totalDeduction = round2(absentDeduction + otherDeduction);
   const netPay = round2(grossPay - totalDeduction);
+
+  const componentBreakdown: PayrollBreakdownItem[] = [
+    { name: 'Basic', type: 'EARNING', amount: basic },
+    { name: 'Allowance', type: 'EARNING', amount: allowanceAmount },
+  ];
+  if (overtimeAmount > 0) componentBreakdown.push({ name: 'Overtime', type: 'EARNING', amount: overtimeAmount });
+  componentBreakdown.push(...earnings);
+  if (absentDeduction > 0) componentBreakdown.push({ name: 'Absent Deduction', type: 'DEDUCTION', amount: absentDeduction });
+  componentBreakdown.push(...deductionBreakdown);
 
   return {
     basic,
@@ -61,11 +115,12 @@ export function computePayrollLine(input: PayrollLineInput): PayrollLineResult {
     overtimeAmount,
     absentDays,
     absentDeduction,
-    otherDeduction: 0,
+    otherDeduction,
     taxDeduction: 0,
     grossPay,
     totalDeduction,
     netPay,
+    componentBreakdown,
   };
 }
 

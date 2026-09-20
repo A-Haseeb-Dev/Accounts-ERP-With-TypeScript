@@ -95,6 +95,20 @@ export const PERMISSION_CATALOG: {
   { name: 'hr.payroll.post', module: 'hr', action: 'post', description: 'Post payroll to accounting' },
   { name: 'hr.payroll.cancel', module: 'hr', action: 'cancel' },
   { name: 'hr.payroll.print', module: 'hr', action: 'print', description: 'Print salary sheets and payslips' },
+  { name: 'hr.payroll.disburse', module: 'hr', action: 'disburse', description: 'Pay salaries through the bank' },
+  { name: 'hr.payroll.export', module: 'hr', action: 'export', description: 'Export bank salary files' },
+
+  { name: 'hr.salary-components.view', module: 'hr', action: 'view', description: 'View salary components' },
+  { name: 'hr.salary-components.create', module: 'hr', action: 'create' },
+  { name: 'hr.salary-components.update', module: 'hr', action: 'update' },
+  { name: 'hr.salary-components.delete', module: 'hr', action: 'delete' },
+
+  { name: 'hr.loans.view', module: 'hr', action: 'view', description: 'View employee loans & advances' },
+  { name: 'hr.loans.create', module: 'hr', action: 'create' },
+  { name: 'hr.loans.update', module: 'hr', action: 'update' },
+  { name: 'hr.loans.delete', module: 'hr', action: 'delete' },
+
+  { name: 'hr.salary-history.create', module: 'hr', action: 'create', description: 'Record salary increments' },
 
   // User management
   { name: 'users.view', module: 'users', action: 'view' },
@@ -177,6 +191,7 @@ export const PERMISSION_CATALOG: {
   { name: 'reports.inventory.view', module: 'reports', action: 'view', description: 'View inventory reports (stock, product ledger)' },
   { name: 'reports.sales.view', module: 'reports', action: 'view', description: 'View the sales book' },
   { name: 'reports.purchase.view', module: 'reports', action: 'view', description: 'View the purchase book' },
+  { name: 'reports.hr.view', module: 'reports', action: 'view', description: 'View payroll & HR reports (register, department cost)' },
   { name: 'reports.print', module: 'reports', action: 'print', description: 'Print reports' },
   { name: 'reports.export', module: 'reports', action: 'export', description: 'Export reports' },
 

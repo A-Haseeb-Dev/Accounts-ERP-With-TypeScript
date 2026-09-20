@@ -61,6 +61,8 @@ export class CreateEmployeeDto {
   @IsString() @IsOptional() bankAccount?: string;
   @IsString() @IsOptional() @MaxLength(500) description?: string;
   @IsString() @IsOptional() status?: string;
+  @IsDateString() @IsOptional() exitDate?: string;
+  @IsString() @IsOptional() @MaxLength(500) exitReason?: string;
 }
 
 export class UpdateEmployeeDto {
@@ -81,6 +83,66 @@ export class UpdateEmployeeDto {
   @IsString() @IsOptional() bankAccount?: string;
   @IsString() @IsOptional() @MaxLength(500) description?: string;
   @IsString() @IsOptional() status?: string;
+  @IsDateString() @IsOptional() exitDate?: string;
+  @IsString() @IsOptional() @MaxLength(500) exitReason?: string;
+}
+
+export class CreateSalaryComponentDto {
+  @IsString() @MaxLength(150) name: string;
+  @IsIn(['EARNING', 'DEDUCTION']) type: 'EARNING' | 'DEDUCTION';
+  @IsIn(['FIXED', 'PERCENT_BASIC']) calcType: 'FIXED' | 'PERCENT_BASIC';
+  @IsNumber() @Min(0) value: number;
+  @IsString() @IsOptional() status?: string;
+  @IsInt() @IsOptional() sortOrder?: number;
+}
+
+export class UpdateSalaryComponentDto {
+  @IsString() @IsOptional() @MaxLength(150) name?: string;
+  @IsIn(['EARNING', 'DEDUCTION']) @IsOptional() type?: 'EARNING' | 'DEDUCTION';
+  @IsIn(['FIXED', 'PERCENT_BASIC']) @IsOptional() calcType?: 'FIXED' | 'PERCENT_BASIC';
+  @IsNumber() @IsOptional() @Min(0) value?: number;
+  @IsString() @IsOptional() status?: string;
+  @IsInt() @IsOptional() sortOrder?: number;
+}
+
+export class SalaryStructureItemDto {
+  @IsString() componentId: string;
+  @IsNumber() @Min(0) amount: number;
+}
+
+export class UpdateSalaryStructureDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SalaryStructureItemDto)
+  items: SalaryStructureItemDto[];
+}
+
+export class CreateEmployeeLoanDto {
+  @IsString() employeeId: string;
+  @IsNumber() @Min(0) amount: number;
+  @IsNumber() @Min(0) installment: number;
+  @IsInt() @Min(1) startMonth: number;
+  @IsInt() @Min(2000) startYear: number;
+  @IsString() @IsOptional() @MaxLength(500) note?: string;
+}
+
+export class UpdateEmployeeLoanDto {
+  @IsNumber() @IsOptional() @Min(0) amount?: number;
+  @IsNumber() @IsOptional() @Min(0) installment?: number;
+  @IsString() @IsOptional() status?: string;
+  @IsString() @IsOptional() @MaxLength(500) note?: string;
+}
+
+export class CreateSalaryRecordDto {
+  @IsString() employeeId: string;
+  @IsNumber() @Min(0) basicSalary: number;
+  @IsNumber() @Min(0) allowance: number;
+  @IsDateString() effectiveDate: string;
+  @IsString() @IsOptional() @MaxLength(500) note?: string;
+}
+
+export class DisbursePayrollDto {
+  @IsString() @IsOptional() bankAccountId?: string;
 }
 
 export class CreateLeaveTypeDto {

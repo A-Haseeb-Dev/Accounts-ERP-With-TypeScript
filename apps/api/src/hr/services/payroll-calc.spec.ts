@@ -77,4 +77,80 @@ describe('computePayrollLine', () => {
     expect(line.overtimeAmount).toBe(1209.68);
     expect(line.netPay).toBe(101209.68);
   });
+
+  it('adds FIXED earning components and PERCENT_BASIC earning components', () => {
+    const line = computePayrollLine({
+      basicSalary: 100000,
+      allowance: 5000,
+      attendance: [],
+      daysInMonth: 30,
+      components: [
+        { name: 'House Rent', type: 'EARNING', calcType: 'FIXED', value: 15000 },
+        { name: 'Conveyance', type: 'EARNING', calcType: 'PERCENT_BASIC', value: 10 },
+      ],
+    });
+    expect(line.grossPay).toBe(130000); // 100000 + 5000 + 15000 + 10000
+    expect(line.netPay).toBe(130000);
+    const byName = Object.fromEntries(line.componentBreakdown.map((b) => [b.name, b.amount]));
+    expect(byName['House Rent']).toBe(15000);
+    expect(byName['Conveyance']).toBe(10000);
+  });
+
+  it('allows a per-employee override of the default component amount', () => {
+    const line = computePayrollLine({
+      basicSalary: 100000,
+      allowance: 0,
+      attendance: [],
+      daysInMonth: 30,
+      components: [{ name: 'House Rent', type: 'EARNING', calcType: 'FIXED', value: 15000, amount: 20000 }],
+    });
+    expect(line.grossPay).toBe(120000);
+    expect(line.netPay).toBe(120000);
+  });
+
+  it('deducts FIXED/PERCENT deduction components and loan installments', () => {
+    const line = computePayrollLine({
+      basicSalary: 100000,
+      allowance: 0,
+      attendance: [],
+      daysInMonth: 30,
+      components: [
+        { name: 'Income Tax', type: 'DEDUCTION', calcType: 'PERCENT_BASIC', value: 4 },
+        { name: 'Health Insurance', type: 'DEDUCTION', calcType: 'FIXED', value: 2000 },
+      ],
+      loanInstallments: [10000],
+    });
+    expect(line.totalDeduction).toBe(16000); // 4000 + 2000 + 10000
+    expect(line.netPay).toBe(84000);
+    const byName = Object.fromEntries(line.componentBreakdown.map((b) => [b.name, b.amount]));
+    expect(byName['Income Tax']).toBe(4000);
+    expect(byName['Loan/Advance']).toBe(10000);
+  });
+
+  it('includes component breakdown with basic/allowance/overtime/absents', () => {
+    const line = computePayrollLine({
+      basicSalary: 30000,
+      allowance: 3000,
+      attendance: [{ status: 'absent', overtimeHours: 0 }],
+      daysInMonth: 30,
+      components: [{ name: 'House Rent', type: 'EARNING', calcType: 'FIXED', value: 2000 }],
+    });
+    const byName = Object.fromEntries(line.componentBreakdown.map((b) => [b.name, b.amount]));
+    expect(byName['Basic']).toBe(30000);
+    expect(byName['Allowance']).toBe(3000);
+    expect(byName['House Rent']).toBe(2000);
+    expect(byName['Absent Deduction']).toBe(1000);
+  });
+
+  it('ignores loan installments when the deduction sum would overflow', () => {
+    const line = computePayrollLine({
+      basicSalary: 10000,
+      allowance: 0,
+      attendance: [],
+      daysInMonth: 30,
+      loanInstallments: [0],
+    });
+    expect(line.totalDeduction).toBe(0);
+    expect(line.netPay).toBe(10000);
+  });
 });
