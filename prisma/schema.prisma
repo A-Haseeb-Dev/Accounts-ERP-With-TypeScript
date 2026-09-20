@@ -57,6 +57,10 @@ model Organization {
   leaveRequests     HrLeaveRequest[]
   attendance        HrAttendance[]
   payrollRuns       PayrollRun[]
+  salaryComponents  SalaryComponent[]
+  employeeSalaryComponents EmployeeSalaryComponent[]
+  employeeLoans     EmployeeLoan[]
+  employeeSalaryRecords EmployeeSalaryRecord[]
 }
 
 // ============================================================
@@ -238,6 +242,7 @@ model MainAccount {
   pdcCustomers   Customer[]      @relation("PartyPdcAccount")
   pdcSuppliers   Supplier[]      @relation("PartyPdcAccount")
   pdcPaymentEntries PaymentEntry[] @relation("PaymentPdcAccount")
+  salaryExpenseDepartments Department[] @relation("DepartmentSalaryExpenseAccount")
 
   @@unique([code, organizationId])
   @@index([organizationId])
@@ -915,22 +920,25 @@ model BrandingSetting {
 // ============================================================
 
 model Department {
-  id             String   @id @default(cuid())
-  code           String   @unique
-  name           String
-  description    String?
-  status         String   @default("active")
-  organizationId String   @default("default-org")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                    String       @id @default(cuid())
+  code                  String       @unique
+  name                  String
+  description           String?
+  salaryExpenseAccountId String?
+  status                String       @default("active")
+  organizationId        String       @default("default-org")
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 
-  organization Organization? @relation(fields: [organizationId], references: [id])
-  designations Designation[]
-  employees    Employee[]
+  organization         Organization? @relation(fields: [organizationId], references: [id])
+  salaryExpenseAccount MainAccount?  @relation("DepartmentSalaryExpenseAccount", fields: [salaryExpenseAccountId], references: [id], onDelete: SetNull)
+  designations         Designation[]
+  employees            Employee[]
 
   @@unique([code, organizationId])
   @@unique([name, organizationId])
   @@index([organizationId])
+  @@index([salaryExpenseAccountId])
 }
 
 model Designation {
@@ -969,6 +977,8 @@ model Employee {
   basicSalary    Decimal  @default(0) @db.Decimal(18, 2)
   allowance      Decimal  @default(0) @db.Decimal(18, 2)
   status         String   @default("active") // active | inactive | terminated
+  exitDate       DateTime?
+  exitReason     String?
   bankName       String?
   bankAccount    String?
   description    String?
@@ -976,17 +986,95 @@ model Employee {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization  Organization?    @relation(fields: [organizationId], references: [id])
-  department    Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  designation   Designation?     @relation(fields: [designationId], references: [id], onDelete: SetNull)
-  attendance    HrAttendance[]
-  leaveRequests HrLeaveRequest[]
-  payrollItems  PayrollItem[]
+  organization     Organization?               @relation(fields: [organizationId], references: [id])
+  department       Department?                 @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  designation      Designation?                @relation(fields: [designationId], references: [id], onDelete: SetNull)
+  attendance       HrAttendance[]
+  leaveRequests    HrLeaveRequest[]
+  payrollItems     PayrollItem[]
+  salaryComponents EmployeeSalaryComponent[]
+  loans            EmployeeLoan[]
+  salaryHistory    EmployeeSalaryRecord[]
 
   @@unique([code, organizationId])
   @@index([fullName])
   @@index([departmentId])
   @@index([status])
+}
+
+model SalaryComponent {
+  id             String   @id @default(cuid())
+  name           String
+  type           String   @default("EARNING") // EARNING | DEDUCTION
+  calcType       String   @default("FIXED") // FIXED | PERCENT_BASIC
+  value          Decimal  @default(0) @db.Decimal(18, 2)
+  status         String   @default("active")
+  sortOrder      Int      @default(0)
+  organizationId String   @default("default-org")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization    Organization?              @relation(fields: [organizationId], references: [id])
+  employeeLinks   EmployeeSalaryComponent[]
+
+  @@unique([name, organizationId])
+  @@index([type, status])
+}
+
+model EmployeeSalaryComponent {
+  id             String   @id @default(cuid())
+  employeeId     String
+  componentId    String
+  amount         Decimal  @default(0) @db.Decimal(18, 2) // fixed amount OR percent x basic for PERCENT_BASIC
+  organizationId String   @default("default-org")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  employee  Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  component SalaryComponent  @relation(fields: [componentId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, componentId])
+  @@index([componentId])
+}
+
+model EmployeeLoan {
+  id             String   @id @default(cuid())
+  employeeId     String
+  amount         Decimal  @default(0) @db.Decimal(18, 2)
+  installment    Decimal  @default(0) @db.Decimal(18, 2)
+  startMonth     Int
+  startYear      Int
+  paidAmount     Decimal  @default(0) @db.Decimal(18, 2)
+  status         String   @default("active") // active | paid | cancelled
+  note           String?
+  organizationId String   @default("default-org")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  employee     Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+model EmployeeSalaryRecord {
+  id           String   @id @default(cuid())
+  employeeId   String
+  basicSalary  Decimal  @default(0) @db.Decimal(18, 2)
+  allowance    Decimal  @default(0) @db.Decimal(18, 2)
+  effectiveDate DateTime @default(now())
+  note         String?
+  createdById  String?
+  organizationId String @default("default-org")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
 }
 
 model HrLeaveType {
@@ -1060,6 +1148,8 @@ model PayrollRun {
   totalNet       Decimal  @default(0) @db.Decimal(18, 2)
   status         String   @default("draft") // draft | posted | cancelled
   voucherId      String?
+  disbursementVoucherId String?
+  paidAt         DateTime?
   note           String?
   postedById     String?
   postedAt       DateTime?
@@ -1092,6 +1182,7 @@ model PayrollItem {
   grossPay        Decimal  @default(0) @db.Decimal(18, 2)
   totalDeduction  Decimal  @default(0) @db.Decimal(18, 2)
   netPay          Decimal  @default(0) @db.Decimal(18, 2)
+  componentBreakdown Json?
 
   payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
   employee   Employee   @relation(fields: [employeeId], references: [id])

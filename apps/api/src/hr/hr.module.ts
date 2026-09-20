@@ -7,7 +7,9 @@ import {
   EmployeesController,
   LeaveRequestsController,
   LeaveTypesController,
+  LoansController,
   PayrollController,
+  SalaryComponentsController,
 } from './hr.controller';
 import { DepartmentsService } from './services/departments.service';
 import { DesignationsService } from './services/designations.service';
@@ -15,6 +17,8 @@ import { EmployeesService } from './services/employees.service';
 import { AttendanceService } from './services/attendance.service';
 import { LeavesService } from './services/leaves.service';
 import { PayrollService } from './services/payroll.service';
+import { SalaryComponentsService } from './services/salary-components.service';
+import { LoansService } from './services/loans.service';
 
 @Module({
   imports: [FeaturesModule],
@@ -26,6 +30,8 @@ import { PayrollService } from './services/payroll.service';
     LeaveTypesController,
     LeaveRequestsController,
     PayrollController,
+    SalaryComponentsController,
+    LoansController,
   ],
   providers: [
     DepartmentsService,
@@ -34,6 +40,8 @@ import { PayrollService } from './services/payroll.service';
     AttendanceService,
     LeavesService,
     PayrollService,
+    SalaryComponentsService,
+    LoansService,
   ],
   exports: [EmployeesService],
 })

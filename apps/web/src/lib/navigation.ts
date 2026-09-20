@@ -89,6 +89,8 @@ export const NAV_ITEMS: NavItem[] = [
       { label: 'Leaves', href: '/hr/leaves', icon: ClipboardList, permission: 'hr.leaves.view' },
       { label: 'Departments', href: '/hr/departments', icon: Briefcase, permission: 'hr.departments.view' },
       { label: 'Designations', href: '/hr/designations', icon: Briefcase, permission: 'hr.designations.view' },
+      { label: 'Salary Components', href: '/hr/salary-components', icon: WalletCards, permission: 'hr.salary-components.view' },
+      { label: 'Employee Loans', href: '/hr/loans', icon: WalletCards, permission: 'hr.loans.view' },
       { label: 'Payroll', href: '/hr/payroll', icon: WalletCards, permission: 'hr.payroll.view' },
     ],
   },

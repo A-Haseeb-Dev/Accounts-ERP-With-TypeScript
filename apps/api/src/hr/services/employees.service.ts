@@ -140,6 +140,8 @@ export class EmployeesService {
         ...(dto.bankAccount !== undefined ? { bankAccount: dto.bankAccount ?? null } : {}),
         ...(dto.description !== undefined ? { description: dto.description ?? null } : {}),
         ...(dto.status !== undefined ? { status: dto.status } : {}),
+        ...(dto.exitDate !== undefined ? { exitDate: dto.exitDate ? new Date(dto.exitDate) : null } : {}),
+        ...(dto.exitReason !== undefined ? { exitReason: dto.exitReason ?? null } : {}),
       },
       include: { department: true, designation: true },
     });

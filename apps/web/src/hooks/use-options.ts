@@ -24,6 +24,7 @@ export const FLAT_RESOURCES = [
   'hr/designations',
   'hr/employees',
   'hr/leave-types',
+  'hr/salary-components',
 ] as const;
 
 export type FlatResource = (typeof FLAT_RESOURCES)[number];

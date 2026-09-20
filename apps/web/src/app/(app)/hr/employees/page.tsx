@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import { Eye } from 'lucide-react';
 import { SimpleMaster } from '@/components/simple-master';
 import type { Column } from '@/components/data-table';
 import type { Employee } from '@/lib/types';
@@ -24,6 +26,20 @@ const columns: Column<Employee>[] = [
     key: 'salary',
     header: 'Salary',
     render: (r) => <span className="text-slate-600">{money(Number(r.basicSalary) + Number(r.allowance || 0))}</span>,
+  },
+  {
+    key: 'actions',
+    header: 'Actions',
+    className: 'w-14',
+    render: (r) => (
+      <Link
+        href={`/hr/employees/${r.id}`}
+        className="inline-flex rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700"
+        title="Salary, leave balances & history"
+      >
+        <Eye className="h-4 w-4" />
+      </Link>
+    ),
   },
 ];
 
@@ -58,6 +74,8 @@ export default function EmployeesPage() {
           ] },
           { name: 'bankName', label: 'Bank Name' },
           { name: 'bankAccount', label: 'Bank Account' },
+          { name: 'exitDate', label: 'Exit Date', type: 'date' },
+          { name: 'exitReason', label: 'Exit Reason', type: 'textarea' },
           { name: 'status', label: 'Status', type: 'status' },
         ],
       }}

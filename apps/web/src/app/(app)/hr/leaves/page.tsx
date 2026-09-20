@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { CalendarPlus, Check, Search, Trash2, X } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { useAuth } from '@/context/auth-context';
@@ -17,7 +17,7 @@ import { StatusBadge } from '@/components/ui/badge';
 import { dateOnly } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { Column } from '@/components/data-table';
-import type { HrLeaveRequest, Paginated } from '@/lib/types';
+import type { HrLeaveRequest, LeaveBalance, Paginated } from '@/lib/types';
 
 export default function LeavesPage() {
   const qc = useQueryClient();
@@ -28,6 +28,32 @@ export default function LeavesPage() {
 
   const { options: employeeOptions } = useFlatOptions('hr/employees');
   const { options: leaveTypeOptions } = useFlatOptions('hr/leave-types');
+
+  const [tab, setTab] = useState<'requests' | 'balances'>('requests');
+
+  const { data: balances } = useQuery<{ year: number; items: LeaveBalance[] }>({
+    queryKey: ['hr/leaves', 'balances'],
+    queryFn: () => apiFetch('/hr/leaves/balances'),
+  });
+
+  const balanceRows = useMemo(() => {
+    const rows: {
+      employeeId: string;
+      code: string;
+      employeeName: string;
+      leaveTypeId: string;
+      name: string;
+      quota: number;
+      used: number;
+      remaining: number;
+    }[] = [];
+    for (const e of balances?.items ?? []) {
+      for (const b of e.balances) {
+        rows.push({ employeeId: e.employeeId, code: e.code, employeeName: e.employeeName, ...b });
+      }
+    }
+    return rows;
+  }, [balances]);
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -179,7 +205,7 @@ export default function LeavesPage() {
         title="Leaves"
         description="Applicable leave requests, ready to be approved or rejected."
         actions={
-          canCreate && (
+          canCreate && tab === 'requests' && (
             <Button onClick={() => { setFormError(''); setModalOpen(true); }}>
               <CalendarPlus className="h-4 w-4" /> New Request
             </Button>
@@ -187,7 +213,51 @@ export default function LeavesPage() {
         }
       />
 
+      <div className="mb-4 flex gap-1 rounded-xl bg-slate-100 p-1 text-sm font-medium">
+        {(['requests', 'balances'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`rounded-lg px-4 py-1.5 ${tab === t ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            {t === 'requests' ? 'Requests' : 'Leave Balances'}
+          </button>
+        ))}
+      </div>
+
       <Card>
+        {tab === 'balances' ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
+                  <th className="px-4 py-2.5 font-medium">Employee</th>
+                  <th className="px-4 py-2.5 font-medium">Leave Type</th>
+                  <th className="px-4 py-2.5 font-medium">Quota</th>
+                  <th className="px-4 py-2.5 font-medium">Used</th>
+                  <th className="px-4 py-2.5 font-medium">Remaining</th>
+                </tr>
+              </thead>
+              <tbody>
+                {balanceRows.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-6 text-center text-slate-400">No leave types / employees yet.</td>
+                  </tr>
+                )}
+                {balanceRows.map((r) => (
+                  <tr key={`${r.employeeId}-${r.leaveTypeId}`} className="border-b border-slate-50 last:border-0">
+                    <td className="px-4 py-2.5 text-slate-700">{r.code} · {r.employeeName}</td>
+                    <td className="px-4 py-2.5 text-slate-600">{r.name}</td>
+                    <td className="px-4 py-2.5 text-slate-600">{r.quota}</td>
+                    <td className="px-4 py-2.5 text-slate-600">{r.used}</td>
+                    <td className={`px-4 py-2.5 font-semibold ${r.remaining > 0 ? 'text-teal-600' : 'text-red-500'}`}>{r.remaining}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+        <>
         <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
           <div className="relative flex-1 max-w-xs">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -218,6 +288,8 @@ export default function LeavesPage() {
           emptyTitle="No leave requests yet"
           emptyMessage="Create a leave request to get started."
         />
+        </>
+        )}
       </Card>
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="New Leave Request" size="md">

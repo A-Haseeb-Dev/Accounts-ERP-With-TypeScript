@@ -475,6 +475,11 @@ export interface Employee {
   departmentId?: string;
   designationId?: string;
   joinDate?: string;
+  employmentType?: string;
+  bankName?: string;
+  bankAccount?: string;
+  exitDate?: string;
+  exitReason?: string;
   basicSalary: number;
   allowance: number;
   status: string;
@@ -535,10 +540,13 @@ export interface PayrollItem {
   taxDeduction?: number;
   totalDeduction: number;
   netPay: number;
+  componentBreakdown?: PayrollBreakdownItem[];
   employee?: {
     id: string;
     code: string;
     fullName: string;
+    bankName?: string;
+    bankAccount?: string;
     department?: { id: string; name: string };
     designation?: { id: string; name: string };
   };
@@ -560,10 +568,82 @@ export interface PayrollRun {
   totalNet: number;
   voucherId?: string;
   voucherNo?: string;
+  disbursementVoucherId?: string;
+  paidAt?: string;
   createdById?: string;
   createdAt: string;
   updatedAt: string;
   items?: PayrollItem[];
+}
+
+export interface SalaryComponent {
+  id: string;
+  name: string;
+  type: 'EARNING' | 'DEDUCTION';
+  calcType: 'FIXED' | 'PERCENT_BASIC';
+  value: number;
+  status: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SalaryStructureItem {
+  id: string;
+  componentId: string;
+  name: string;
+  type: 'EARNING' | 'DEDUCTION';
+  calcType: 'FIXED' | 'PERCENT_BASIC';
+  defaultValue: number;
+  amount: number;
+  status: string;
+}
+
+export interface SalaryRecord {
+  id: string;
+  employeeId: string;
+  basicSalary: number;
+  allowance: number;
+  effectiveDate: string;
+  note?: string;
+  createdById?: string;
+  createdAt: string;
+  createdBy?: { id: string; fullName: string };
+}
+
+export interface EmployeeLoan {
+  id: string;
+  employeeId: string;
+  amount: number;
+  installment: number;
+  startMonth: number;
+  startYear: number;
+  status: string;
+  note?: string;
+  remaining?: number;
+  createdAt: string;
+  updatedAt: string;
+  employee?: { id: string; code: string; fullName: string };
+}
+
+export interface LeaveBalance {
+  employeeId: string;
+  code: string;
+  employeeName: string;
+  balances: {
+    leaveTypeId: string;
+    name: string;
+    paid: boolean;
+    quota: number;
+    used: number;
+    remaining: number;
+  }[];
+}
+
+export interface PayrollBreakdownItem {
+  name: string;
+  type: string;
+  amount: number;
 }
 
 export interface AuditEntry {

@@ -1,10 +1,11 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
-import { Eye, Plus, Printer, Send, Trash2, XCircle } from 'lucide-react';
+import { Fragment, useMemo, useState } from 'react';
+import { CheckCircle2, Download, Eye, Plus, Printer, Send, Trash2, XCircle } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { useAuth } from '@/context/auth-context';
+import { useFlatOptions } from '@/hooks/use-options';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { DataTable } from '@/components/data-table';
@@ -23,6 +24,39 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
+function FragmentItem({
+  item,
+  itemColumns,
+}: {
+  item: PayrollItem;
+  itemColumns: Column<PayrollItem>[];
+}) {
+  return (
+    <Fragment>
+      <tr className="border-b border-slate-50 last:border-0">
+        {itemColumns.map((c) => (
+          <td key={c.key} className="px-3 py-2.5">
+            {c.render ? c.render(item) : String(item[c.key as keyof PayrollItem] ?? '')}
+          </td>
+        ))}
+      </tr>
+      {item.componentBreakdown && item.componentBreakdown.length > 0 && (
+        <tr className="border-b border-slate-50 bg-slate-50/50 last:border-0">
+          <td colSpan={itemColumns.length} className="px-3 py-1.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+              {item.componentBreakdown.map((b) => (
+                <span key={b.name} className={b.type === 'EARNING' ? 'text-teal-700' : 'text-red-500'}>
+                  {b.name} {money(b.amount)}
+                </span>
+              ))}
+            </div>
+          </td>
+        </tr>
+      )}
+    </Fragment>
+  );
+}
+
 export default function PayrollPage() {
   const qc = useQueryClient();
   const { can } = useAuth();
@@ -31,6 +65,10 @@ export default function PayrollPage() {
   const canPost = can('hr.payroll.post');
   const canCancel = can('hr.payroll.cancel');
   const canDelete = can('hr.payroll.delete');
+  const canDisburse = can('hr.payroll.disburse');
+  const canExport = can('hr.payroll.export');
+
+  const { options: bankOptions } = useFlatOptions('banks');
 
   const year = new Date().getFullYear();
   const monthNow = new Date().getMonth() + 1;
@@ -43,6 +81,9 @@ export default function PayrollPage() {
   const [cancelTarget, setCancelTarget] = useState<PayrollRun | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<PayrollRun | null>(null);
+  const [disburseTarget, setDisburseTarget] = useState<PayrollRun | null>(null);
+  const [disburseBank, setDisburseBank] = useState('');
+  const [printTargetId, setPrintTargetId] = useState<string | null>(null);
 
   const [genMonth, setGenMonth] = useState(monthNow);
   const [genYear, setGenYear] = useState(year);
@@ -59,6 +100,43 @@ export default function PayrollPage() {
     queryKey: ['hr/payroll', 'detail', detailId],
     queryFn: () => apiFetch(`/hr/payroll/${detailId}`),
     enabled: !!detailId,
+  });
+
+  const { data: printData } = useQuery<PayrollRun | null>({
+    queryKey: ['hr/payroll', 'detail', printTargetId],
+    queryFn: () => apiFetch(`/hr/payroll/${printTargetId}`),
+    enabled: !!printTargetId,
+  });
+
+  const exportMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiFetch<{ filename: string; csv: string }>(`/hr/payroll/${id}/export`);
+      if (!res?.csv) throw new Error('Empty bank file');
+      const blob = new Blob([res.csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = res.filename ?? `Salary_${id}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      return res.filename;
+    },
+    onSuccess: (name) => toast.success(`Bank file ${name} downloaded`),
+    onError: (e: Error) => toast.error(e.message || 'Export failed'),
+  });
+
+  const disburseMutation = useMutation({
+    mutationFn: ({ id, bankAccountId }: { id: string; bankAccountId?: string }) =>
+      apiFetch(`/hr/payroll/${id}/disburse`, { method: 'POST', body: JSON.stringify({ bankAccountId: bankAccountId || undefined }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['hr/payroll'] });
+      setDisburseTarget(null);
+      setDisburseBank('');
+      toast.success('Salaries disbursed');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Disburse failed'),
   });
 
   const genMutation = useMutation({
@@ -191,6 +269,21 @@ export default function PayrollPage() {
           {canPost && r.status === 'draft' && (
             <button onClick={() => setPostTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-600" title="Post">
               <Send className="h-4 w-4" />
+            </button>
+          )}
+          {canDisburse && r.status === 'posted' && !r.paidAt && (
+            <button onClick={() => setDisburseTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600" title="Disburse salaries">
+              <CheckCircle2 className="h-4 w-4" />
+            </button>
+          )}
+          {canExport && r.status !== 'cancelled' && (
+            <button
+              onClick={() => exportMutation.mutate(r.id)}
+              disabled={exportMutation.isPending}
+              className="rounded-lg p-1.5 text-slate-500 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-40"
+              title="Export bank file (CSV)"
+            >
+              <Download className="h-4 w-4" />
             </button>
           )}
           {canCancel && r.status === 'posted' && (
@@ -347,13 +440,28 @@ export default function PayrollPage() {
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-4 rounded-xl bg-slate-50 p-4 text-sm">
               <StatusBadge status={detail.status} />
+              {detail.paidAt && (
+                <span className="inline-flex items-center gap-1 text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4" /> Disbursed {dateOnly(detail.paidAt)}
+                </span>
+              )}
               <span className="text-slate-600">Created {dateOnly(detail.createdAt)}</span>
               {detail.voucherNo && <span className="text-slate-600">Voucher: {detail.voucherNo}</span>}
-              <div className="ml-auto flex gap-3 font-medium">
-                <span className="text-slate-600">Gross {money(detail.totalGross)}</span>
-                <span className="text-red-500">− Deductions {money(detail.totalDeduction)}</span>
-                <span className="text-teal-700">= Net {money(detail.totalNet)}</span>
+              <div className="ml-auto flex items-center gap-2">
+                {canExport && detail.status !== 'cancelled' && (
+                  <Button size="sm" variant="outline" onClick={() => exportMutation.mutate(detail.id)} loading={exportMutation.isPending}>
+                    <Download className="h-4 w-4" /> Bank File
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" onClick={() => setPrintTargetId(detail.id)}>
+                  <Printer className="h-4 w-4" /> Payslips
+                </Button>
               </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-sm font-medium">
+              <span className="text-slate-600">Gross {money(detail.totalGross)}</span>
+              <span className="text-red-500">− Deductions {money(detail.totalDeduction)}</span>
+              <span className="text-teal-700">= Net {money(detail.totalNet)}</span>
             </div>
 
             <div className="overflow-x-auto">
@@ -367,13 +475,7 @@ export default function PayrollPage() {
                 </thead>
                 <tbody>
                   {(detail.items ?? []).map((item) => (
-                    <tr key={item.id} className="border-b border-slate-50 last:border-0">
-                      {itemColumns.map((c) => (
-                        <td key={c.key} className="px-3 py-2.5">
-                          {c.render ? c.render(item) : String(item[c.key as keyof PayrollItem] ?? '')}
-                        </td>
-                      ))}
-                    </tr>
+                    <FragmentItem key={item.id} item={item} itemColumns={itemColumns} />
                   ))}
                 </tbody>
               </table>
@@ -388,6 +490,85 @@ export default function PayrollPage() {
               </div>
             )}
           </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!printTargetId}
+        onClose={() => setPrintTargetId(null)}
+        title={printData ? `Payslips — ${printData.number} (${printData.periodLabel})` : 'Payslips'}
+        size="xl"
+      >
+        {printData && (
+          <div className="space-y-3">
+            <div className="flex justify-end">
+              <Button size="sm" variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print</Button>
+            </div>
+            {(printData.items ?? []).map((item) => (
+              <div key={item.id} className="rounded-xl border border-slate-200 p-4 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                  <div>
+                    <div className="font-semibold text-slate-800">{item.employee?.fullName ?? item.employeeId}</div>
+                    <div className="text-xs text-slate-500">
+                      {item.employee?.code} {item.employee?.department ? `· ${item.employee.department.name}` : ''}
+                      {item.employee?.bankAccount ? `· A/C ${item.employee.bankAccount}` : ''}
+                    </div>
+                  </div>
+                  <div className="font-medium text-teal-700">Net {money(item.netPay)}</div>
+                </div>
+                <div className="grid grid-cols-1 gap-1 pt-2 sm:grid-cols-3">
+                  <div>Basic <span className="float-right font-medium text-slate-700">{money(item.basic)}</span></div>
+                  <div>Allowance <span className="float-right font-medium text-slate-700">{money(item.allowance)}</span></div>
+                  <div>Overtime <span className="float-right font-medium text-slate-700">{money(item.overtimeAmount)}</span></div>
+                  {(item.componentBreakdown ?? []).map((b) => (
+                    <div key={b.name}>
+                      {b.name}{' '}
+                      <span className={`float-right font-medium ${b.type === 'EARNING' ? 'text-teal-700' : 'text-red-500'}`}>
+                        {money(b.amount)}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="border-t border-slate-100 pt-1">Total Deductions <span className="float-right font-medium text-red-600">{money(item.totalDeduction)}</span></div>
+                  <div className="border-t border-slate-100 pt-1 font-semibold">Net Payable <span className="float-right text-teal-700">{money(item.netPay)}</span></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!disburseTarget} onClose={() => setDisburseTarget(null)} title="Disburse Salaries" size="sm">
+        {disburseTarget && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              disburseMutation.mutate({ id: disburseTarget.id, bankAccountId: disburseBank || undefined });
+            }}
+            className="space-y-4"
+          >
+            <div className="rounded-xl bg-slate-50 p-3 text-sm">
+              <div className="text-slate-700 font-medium">
+                {disburseTarget.number} — {disburseTarget.periodLabel} ({money(disburseTarget.totalNet)})
+              </div>
+              <div className="mt-0.5 text-xs text-slate-500">
+                Creates a journal entry Dr Salaries Payable / Cr bank, then marks salaries as paid.
+              </div>
+            </div>
+            <Field label="Bank Account">
+              <Select value={disburseBank} onChange={(e) => setDisburseBank(e.target.value)}>
+                <option value="">Use default bank</option>
+                {bankOptions.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </Select>
+            </Field>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setDisburseTarget(null)}>Cancel</Button>
+              <Button type="submit" loading={disburseMutation.isPending}>
+                <CheckCircle2 className="h-4 w-4" /> Disburse
+              </Button>
+            </div>
+          </form>
         )}
       </Modal>
 
