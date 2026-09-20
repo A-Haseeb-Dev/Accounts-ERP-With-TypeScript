@@ -223,7 +223,7 @@ export default function PaymentsPage() {
       setError('Amount must be greater than zero.');
       return;
     }
-    const pdcMode = type === 'RECEIPT' && method === 'CHEQUE' && !!chequeDate;
+    const pdcMode = method === 'CHEQUE' && !!chequeDate;
     if (!partyId) {
       setError('Select the party.');
       return;
@@ -236,7 +236,7 @@ export default function PaymentsPage() {
       setError('Enter the cheque number.');
       return;
     }
-    if (method === 'CHEQUE' && !pdcMode && !bankAccountId) {
+    if (method === 'CHEQUE' && (!pdcMode || type === 'PAYMENT') && !bankAccountId) {
       setError('Select the bank account for the cheque.');
       return;
     }
@@ -248,11 +248,11 @@ export default function PaymentsPage() {
       paymentType: type,
       partyType,
       partyId,
-      mainAccountId: pdcMode ? (pdcAccountId || undefined) : mainAccountId,
+      mainAccountId: pdcMode ? (type === 'RECEIPT' ? (pdcAccountId || undefined) : undefined) : mainAccountId,
       method,
       chequeNumber: method === 'CHEQUE' ? chequeNumber.trim() : undefined,
-      bankAccountId: method === 'CHEQUE' ? (pdcMode ? (bankAccountId || undefined) : bankAccountId) : undefined,
-      pdcAccountId: method === 'CHEQUE' && pdcMode ? (pdcAccountId || undefined) : undefined,
+      bankAccountId: method === 'CHEQUE' ? (pdcMode && type === 'RECEIPT' ? (bankAccountId || undefined) : bankAccountId) : undefined,
+      pdcAccountId: method === 'CHEQUE' && pdcMode && type === 'RECEIPT' ? (pdcAccountId || undefined) : undefined,
       chequeDate: method === 'CHEQUE' && chequeDate ? chequeDate : undefined,
       amount: amt,
       paymentDate: payDate,
@@ -301,7 +301,7 @@ export default function PaymentsPage() {
   const pdcOptions = (accountsData ?? [])
     .filter((a) => a.subHead?.name === 'PDCS')
     .map((a) => ({ value: a.id, label: [a.code, a.name].filter(Boolean).join(' · ') }));
-  const pdcMode = type === 'RECEIPT' && method === 'CHEQUE' && !!chequeDate;
+  const pdcMode = method === 'CHEQUE' && !!chequeDate;
   const endorsePartyOptions = endorsePartyType === 'CUSTOMER' ? customerOptions : supplierOptions;
 
   const renderDueDate = (dueDate?: string, paid = false) => {
@@ -385,9 +385,11 @@ export default function PaymentsPage() {
                       <button onClick={() => deposit.mutate(r.id)} className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 hover:text-blue-700" title="Clear cheque into bank">
                         <Landmark className="h-4 w-4" />
                       </button>
-                      <button onClick={() => { setEndorseEntry(r); setEndorsePartyType(r.paymentType === 'RECEIPT' ? 'SUPPLIER' : 'CUSTOMER'); setEndorsePartyId(''); }} className="rounded-lg p-1.5 text-violet-600 hover:bg-violet-50 hover:text-violet-700" title="Endorse cheque to party">
-                        <ArrowLeftRight className="h-4 w-4" />
-                      </button>
+                      {r.paymentType === 'RECEIPT' && (
+                        <button onClick={() => { setEndorseEntry(r); setEndorsePartyType(r.paymentType === 'RECEIPT' ? 'SUPPLIER' : 'CUSTOMER'); setEndorsePartyId(''); }} className="rounded-lg p-1.5 text-violet-600 hover:bg-violet-50 hover:text-violet-700" title="Endorse cheque to party">
+                          <ArrowLeftRight className="h-4 w-4" />
+                        </button>
+                      )}
                       <button onClick={() => { setBounceEntry(r); setBounceReason(''); }} className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 hover:text-red-600" title="Mark as bounced">
                         <RefreshCcw className="h-4 w-4" />
                       </button>
@@ -460,7 +462,7 @@ export default function PaymentsPage() {
                 <Field label="Cheque date (post-dated?)">
                   <Input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} />
                 </Field>
-                {pdcMode ? (
+                {pdcMode && type === 'RECEIPT' ? (
                   <>
                     <Field label="PDC account (receiving)">
                       <Select value={pdcAccountId} onChange={(e) => setPdcAccountId(e.target.value)}>
@@ -486,10 +488,17 @@ export default function PaymentsPage() {
               </>
             )}
             {pdcMode && (
-              <p className="text-xs text-slate-400">
-                Post-dated cheque receipt is booked as <span className="font-medium">Dr PDC account / Cr party</span>.
-                A PDC MGC-type account (under the PDCS sub-head) is created per party on save.
-              </p>
+              type === 'RECEIPT' ? (
+                <p className="text-xs text-slate-400">
+                  Post-dated cheque receipt is booked as <span className="font-medium">Dr PDC account / Cr party</span>.
+                  A PDC MGC-type account (under the PDCS sub-head) is created per party on save.
+                </p>
+              ) : (
+                <p className="text-xs text-slate-400">
+                  Post-dated cheque issue is booked as <span className="font-medium">Dr {partyType === 'SUPPLIER' ? 'supplier' : 'party'} / Cr Cheques Issued</span>.
+                  Once the payee presents it and it clears, the bank is debited from the Cheques Register.
+                </p>
+              )
             )}
             <Field label="Date" required>
               <Input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} required />
@@ -608,7 +617,7 @@ export default function PaymentsPage() {
         open={!!bounceEntry}
         danger
         title="Mark cheque as bounced"
-        message={`This reverses the cheque (${bounceEntry?.number ?? ''}) back to ${bounceEntry?.partyName ?? 'the party'} and re-opens the allocated invoices.`}
+        message={`This reverses the cheque (${bounceEntry?.number ?? ''}) back to ${bounceEntry?.partyName ?? 'the party'} and re-opens the allocated documents.`}
         confirmLabel="Mark bounced"
         loading={bounce.isPending}
         onCancel={() => setBounceEntry(null)}

@@ -57,26 +57,29 @@ export class PaymentsService {
     const chequeDate = dto.chequeDate ? new Date(dto.chequeDate) : null;
     const paymentType = dto.paymentType.toUpperCase();
     const isReceipt = paymentType === 'RECEIPT';
-    // Post-dated cheques received are booked to the issuing party's PDC
-    // account (under the PDCS sub-head): Dr PDC account / Cr party.
-    const isPdc = isReceipt && method === 'CHEQUE' && !!chequeDate;
-
-    const resolvedPdcAccount = isPdc ? await this.resolvePdcAccount(dto, party) : null;
+    // Post-dated cheques are held in holding accounts until they mature:
+    //  - Cheque RECEIVED -> Dr PDC account / Cr party (asset)
+    //  - Cheque ISSUED   -> Dr Supplier / Cr "Cheques Issued" (liability)
+    const isPdc = method === 'CHEQUE' && !!chequeDate;
+    const resolvedPdcAccount = isPdc
+      ? isReceipt
+        ? await this.resolvePdcAccount(dto, party)
+        : await this.resolveChequeIssuedAccount()
+      : null;
 
     let bankAccountId: string | null = null;
     if (method === 'CHEQUE') {
-      if (isPdc) {
-        if (dto.bankAccountId) {
-          const bank = await this.prisma.bankAccount.findUnique({
-            where: { id: dto.bankAccountId },
-          });
-          if (!bank) throw ApiException.notFound('Bank account');
-          bankAccountId = bank.id;
-        }
-      } else {
+      const requireBank = !(isPdc && isReceipt);
+      if (requireBank) {
         if (!dto.bankAccountId) {
           throw ApiException.validation('Select the bank account for the cheque');
         }
+        const bank = await this.prisma.bankAccount.findUnique({
+          where: { id: dto.bankAccountId },
+        });
+        if (!bank) throw ApiException.notFound('Bank account');
+        bankAccountId = bank.id;
+      } else if (dto.bankAccountId) {
         const bank = await this.prisma.bankAccount.findUnique({
           where: { id: dto.bankAccountId },
         });
@@ -161,7 +164,7 @@ export class PaymentsService {
           method,
           chequeNumber: dto.chequeNumber ?? null,
           bankAccountId,
-          pdcAccountId: isPdc ? (resolvedPdcAccount?.id ?? null) : null,
+          pdcAccountId: isPdc && isReceipt ? (resolvedPdcAccount?.id ?? null) : null,
           chequeDate,
           chequeStatus: isPdc ? 'PENDING' : null,
           amount: usable,
@@ -217,14 +220,14 @@ export class PaymentsService {
       );
     }
 
-    // Post-dated cheques received stay on the issuing party's PDC account
-    // until they mature: debit PDC account, credit party. Older entries fall
-    // back to the "Cheque in Hand" account configured in settings.
-    const isPdc = entry.method === 'CHEQUE' && !!entry.chequeDate && entry.paymentType === 'RECEIPT';
+    // Post-dated cheques stay in holding accounts until they mature:
+    //  - Cheque RECEIVED -> debit PDC account, credit party.
+    //  - Cheque ISSUED   -> debit supplier, credit "Cheques Issued".
+    const isPdc = entry.method === 'CHEQUE' && !!entry.chequeDate;
     let postAccount: string;
     if (isPdc && entry.pdcAccountId) {
       postAccount = entry.pdcAccountId;
-    } else if (isPdc) {
+    } else if (isPdc && entry.paymentType === 'RECEIPT') {
       const chequeInHand = await this.defaultAccounts.resolveAccount(
         'accounting.cheque_in_hand_account',
         'Cheque in Hand',
@@ -375,6 +378,67 @@ export class PaymentsService {
     }
     const bankMainAccountId = bank.mainAccountId;
     await this.fiscal.assertOpen(entry.paymentDate, 'Cannot clear a cheque');
+    const amount = Number(entry.amount);
+
+    // Post-dated CHEQUES ISSUED: when the payee presents the cheque and our
+    // bank debits our account, move the obligation into the bank —
+    //   Dr "Cheques Issued" / Cr Bank.
+    if (entry.paymentType === 'PAYMENT') {
+      const holdingAccount =
+        entry.mainAccountId ??
+        (await this.defaultAccounts.resolveAccount('accounting.cheque_issued_account', 'Cheques Issued'));
+      if (!holdingAccount) {
+        throw ApiException.invalidTransaction(
+          'The "Cheques Issued" holding account is not configured.',
+        );
+      }
+      const issuedResult = await this.prisma.runInTransaction(async (tx) => {
+        const voucher = await this.accounting.createVoucher(
+          tx,
+          {
+            voucherType: 'DEBIT' as any,
+            voucherDate: new Date(),
+            description: `Cheque presented & cleared ${entry.number} - ${entry.partyName}`,
+            reference: entry.number,
+            entries: [
+              {
+                mainAccountId: holdingAccount,
+                debit: amount,
+                narration: `Cheques Issued - ${entry.number}`,
+              },
+              {
+                mainAccountId: bankMainAccountId,
+                credit: amount,
+                narration: `Bank ${bank.name} - ${entry.number}`,
+              },
+            ],
+            createdById: actorId,
+          },
+          await this.numbering.next('voucher_payment', 'PY', tx),
+        );
+        await this.accounting.postVoucher(tx, voucher.id, actorId);
+
+        return tx.paymentEntry.update({
+          where: { id },
+          data: {
+            chequeStatus: 'CLEARED',
+            depositedById: actorId,
+            depositedAt: new Date(),
+          },
+          include: { allocations: true },
+        });
+      });
+
+      this.audit.record({
+        userId: actorId,
+        action: 'DEPOSIT',
+        module: 'PAYMENT',
+        entity: 'PaymentEntry',
+        entityId: id,
+        message: `Issued cheque ${entry.number} cleared via ${bank.name}`,
+      });
+      return issuedResult;
+    }
 
     const pdcAccount = entry.pdcAccountId ?? (await this.defaultAccounts.resolveAccount(
       'accounting.cheque_in_hand_account',
@@ -386,7 +450,6 @@ export class PaymentsService {
       );
     }
 
-    const amount = Number(entry.amount);
     const result = await this.prisma.runInTransaction(async (tx) => {
       const voucher = await this.accounting.createVoucher(
         tx,
@@ -457,11 +520,23 @@ export class PaymentsService {
         'Party is not linked to an account and the control account is not configured',
       );
     }
+    // Post-dated cheques ISSUED that come back (dishonoured / stale):
+    //   Dr "Cheques Issued" / Cr Supplier — re-opens the allocated bills.
+    const isIssued = entry.paymentType === 'PAYMENT';
+    const holdingAccount = isIssued
+      ? (entry.mainAccountId ??
+        (await this.defaultAccounts.resolveAccount('accounting.cheque_issued_account', 'Cheques Issued')))
+      : null;
+    if (isIssued && !holdingAccount) {
+      throw ApiException.invalidTransaction(
+        'The "Cheques Issued" holding account is not configured.',
+      );
+    }
     const pdcAccount = entry.pdcAccountId ?? (await this.defaultAccounts.resolveAccount(
       'accounting.cheque_in_hand_account',
       'Cheque in Hand',
     ));
-    if (!pdcAccount) {
+    if (!isIssued && !pdcAccount) {
       throw ApiException.invalidTransaction(
         'The "Cheque in Hand" account is not configured.',
       );
@@ -476,18 +551,31 @@ export class PaymentsService {
           voucherDate: new Date(),
           description: `Cheque bounced ${entry.number} - ${entry.partyName}`,
           reference: entry.number,
-          entries: [
-            {
-              mainAccountId: partyAccount,
-              debit: amount,
-              narration: `Cheque bounced - ${entry.number}`,
-            },
-            {
-              mainAccountId: pdcAccount,
-              credit: amount,
-              narration: `Bounce ${entry.number} - ${entry.partyName}`,
-            },
-          ],
+          entries: isIssued
+            ? [
+                {
+                  mainAccountId: holdingAccount as string,
+                  debit: amount,
+                  narration: `Cheques Issued - ${entry.number}`,
+                },
+                {
+                  mainAccountId: partyAccount,
+                  credit: amount,
+                  narration: `Bounce ${entry.number} - ${entry.partyName}`,
+                },
+              ]
+            : [
+                {
+                  mainAccountId: partyAccount,
+                  debit: amount,
+                  narration: `Cheque bounced - ${entry.number}`,
+                },
+                {
+                  mainAccountId: pdcAccount as string,
+                  credit: amount,
+                  narration: `Bounce ${entry.number} - ${entry.partyName}`,
+                },
+              ],
           createdById: actorId,
         },
         await this.numbering.next('voucher_receipt', 'RV', tx),
@@ -858,6 +946,34 @@ export class PaymentsService {
       });
     }
     return account;
+  }
+
+  private async resolveChequeIssuedAccount() {
+    const configured = await this.defaultAccounts.resolveAccount(
+      'accounting.cheque_issued_account',
+      'Cheques Issued',
+    );
+    if (configured) {
+      const account = await this.prisma.mainAccount.findUnique({
+        where: { id: configured },
+      });
+      if (account && account.status === 'active') return account;
+    }
+
+    const subHead =
+      (await this.prisma.subHead.findFirst({ where: { name: 'Current Liabilities' } })) ?? null;
+    const count = await this.prisma.mainAccount.count({
+      where: { code: { startsWith: 'CI-' } },
+    });
+    return this.prisma.mainAccount.create({
+      data: {
+        code: `CI-${String(count + 1).padStart(3, '0')}`,
+        name: 'Cheques Issued',
+        accountType: 'LIABILITY',
+        subHeadId: subHead?.id ?? null,
+        status: 'active',
+      },
+    });
   }
 }
 
