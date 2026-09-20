@@ -6,7 +6,7 @@ import { AccountingService, VoucherEntryInput } from '../common/services/account
 import { DefaultAccountsService } from '../common/services/default-accounts.service';
 import { FiscalPeriodGuard } from '../common/services/fiscal-period.guard';
 import { ApiException } from '../common/exceptions/api.exception';
-import { CreatePaymentDto } from './dto/payments.dto';
+import { CreatePaymentDto, EditChequeDto } from './dto/payments.dto';
 
 const DOC_PREFIXES: Record<string, string> = { RECEIPT: 'RN', PAYMENT: 'PN' };
 
@@ -762,6 +762,135 @@ export class PaymentsService {
       metadata: { reason },
     });
     return cancelled;
+  }
+
+  /**
+   * Correct a mistake on a cheque entry (cheque number, date, bank, amount,
+   * date, reference or narration) without touching the underlying ledger.
+   *
+   * Guard-rails:
+   *  - cancelled and bounced/endorsed cheques are terminal — they cannot be edited.
+   *  - once a cheque is cleared/deposited the bank is fixed (it is already in the
+   *    ledger), so the bank account cannot be changed.
+   *  - once posted, the voucher and allocations exist, so amount and payment date
+   *    are locked; only cheque metadata can be corrected.
+   *  - closing a pending post-dated receipt re-resolves its PDC holding account.
+   */
+  async updateCheque(id: string, dto: EditChequeDto, actorId?: string) {
+    const entry = await this.prisma.paymentEntry.findUnique({
+      where: { id },
+      include: { allocations: true },
+    });
+    if (!entry) throw ApiException.notFound('Payment entry');
+    if (entry.method !== 'CHEQUE') {
+      throw ApiException.invalidTransaction('Only cheque entries can be edited this way');
+    }
+    if (entry.status === 'cancelled') {
+      throw ApiException.invalidTransaction('A cancelled cheque cannot be edited');
+    }
+    if (entry.chequeStatus === 'BOUNCED' || entry.chequeStatus === 'ENDORSED') {
+      throw ApiException.invalidTransaction(
+        `A ${entry.chequeStatus.toLowerCase()} cheque is terminal and cannot be edited`,
+      );
+    }
+    await this.fiscal.assertOpen(entry.paymentDate, 'Cannot edit a payment entry');
+
+    const isPending = entry.status === 'pending';
+    const bankLocked = entry.chequeStatus === 'DEPOSITED' || entry.chequeStatus === 'CLEARED';
+
+    if (dto.amount !== undefined && !isPending) {
+      throw ApiException.invalidTransaction(
+        'The amount can only be corrected while the entry is still pending (before posting)',
+      );
+    }
+    if (dto.paymentDate !== undefined && !isPending) {
+      throw ApiException.invalidTransaction(
+        'The payment date can only be corrected while the entry is still pending',
+      );
+    }
+    if (dto.bankAccountId !== undefined && bankLocked) {
+      throw ApiException.invalidTransaction(
+        'This cheque has already been cleared into the bank; the bank account cannot be changed',
+      );
+    }
+
+    const data: Record<string, unknown> = {};
+
+    if (dto.chequeNumber !== undefined) {
+      if (!dto.chequeNumber.trim()) {
+        throw ApiException.validation('Cheque number is required for cheque payments');
+      }
+      data.chequeNumber = dto.chequeNumber.trim();
+    }
+
+    if (dto.bankAccountId !== undefined && !bankLocked) {
+      if (dto.bankAccountId) {
+        const bank = await this.prisma.bankAccount.findUnique({
+          where: { id: dto.bankAccountId },
+        });
+        if (!bank) throw ApiException.notFound('Bank account');
+        data.bankAccountId = bank.id;
+      } else {
+        data.bankAccountId = null;
+      }
+    }
+
+    if (dto.chequeDate !== undefined) {
+      const newChequeDate = dto.chequeDate ? new Date(dto.chequeDate) : null;
+      const wasPdc = !!entry.chequeDate;
+      const willBePdc = !!newChequeDate;
+      if (wasPdc !== willBePdc) {
+        // Flipping a cheque between post-dated and regular changes which account
+        // it is booked against (PDC holding vs cash/bank), so a wrong PDC state
+        // cannot be silently corrected here — create a replacement entry instead.
+        throw ApiException.invalidTransaction(
+          'You cannot change whether a cheque is post-dated here. Delete or cancel the entry and create a new one instead.',
+        );
+      }
+      data.chequeDate = newChequeDate;
+    }
+
+    if (dto.paymentDate !== undefined && isPending) {
+      data.paymentDate = new Date(dto.paymentDate);
+    }
+
+    if (dto.amount !== undefined && isPending) {
+      const usable = Number(dto.amount ?? 0);
+      if (usable <= 0) throw ApiException.validation('Amount must be greater than zero');
+      const allocatedTotal = round2(
+        entry.allocations.reduce((s, a) => s + Number(a.allocatedAmount), 0),
+      );
+      if (allocatedTotal > usable) {
+        throw ApiException.validation(
+          `Amount ${usable} cannot be lower than the allocated total ${allocatedTotal}`,
+        );
+      }
+      data.amount = usable;
+    }
+
+    if (dto.reference !== undefined) data.reference = dto.reference || null;
+    if (dto.narration !== undefined) data.narration = dto.narration || null;
+
+    if (Object.keys(data).length === 0) {
+      throw ApiException.validation('Nothing to update');
+    }
+
+    const updated = await this.prisma.paymentEntry.update({
+      where: { id },
+      data,
+      include: { allocations: true, mainAccount: true, bankAccount: true, pdcAccount: true },
+    });
+
+    this.audit.record({
+      userId: actorId,
+      action: 'UPDATE',
+      module: 'PAYMENT',
+      entity: 'PaymentEntry',
+      entityId: id,
+      message: `Cheque ${entry.number} edited (${entry.partyName})`,
+    });
+
+    return updated;
   }
 
   async findAll(query: {

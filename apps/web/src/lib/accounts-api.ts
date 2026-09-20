@@ -59,6 +59,19 @@ export const bounceCheque = (id: string, reason: string) =>
 export const endorseCheque = (id: string, partyType: 'CUSTOMER' | 'SUPPLIER', partyId: string) =>
   apiFetch<PaymentEntry>(`/payments/${id}/endorse`, { method: 'POST', body: JSON.stringify({ partyType, partyId }) });
 
+export interface EditChequePayload {
+  chequeNumber?: string;
+  bankAccountId?: string;
+  chequeDate?: string;
+  paymentDate?: string;
+  amount?: number;
+  reference?: string;
+  narration?: string;
+}
+
+export const editCheque = (id: string, payload: EditChequePayload) =>
+  apiFetch<PaymentEntry>(`/payments/${id}/cheque`, { method: 'PATCH', body: JSON.stringify(payload) });
+
 export const cancelPayment = (id: string, reason: string) =>
   apiFetch<PaymentEntry>(`/payments/${id}/cancel`, { method: 'DELETE', body: JSON.stringify({ reason }) });
 

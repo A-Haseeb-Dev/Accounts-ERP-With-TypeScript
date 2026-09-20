@@ -2,9 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { ArrowLeftRight, ArrowDownCircle, ArrowUpCircle, Eye, Landmark, RefreshCcw, Search } from 'lucide-react';
+import { ArrowLeftRight, ArrowDownCircle, ArrowUpCircle, Eye, Landmark, Pencil, RefreshCcw, Search } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
-import { depositCheque, bounceCheque, endorseCheque } from '@/lib/accounts-api';
+import { depositCheque, bounceCheque, endorseCheque, editCheque, type EditChequePayload } from '@/lib/accounts-api';
 import { Button } from '@/components/ui/button';
 import { Input, Select, Field, Textarea } from '@/components/ui/field';
 import { DataTable } from '@/components/data-table';
@@ -42,6 +42,7 @@ export default function ChequesRegisterPage() {
   const qc = useQueryClient();
   const { can } = useAuth();
   const canPost = can('accounts.payments.post');
+  const canUpdate = can('accounts.payments.update');
 
   const [search, setSearch] = useState('');
   const [chequeStatus, setChequeStatus] = useState('');
@@ -55,8 +56,14 @@ export default function ChequesRegisterPage() {
   const [endorsePartyType, setEndorsePartyType] = useState<'CUSTOMER' | 'SUPPLIER'>('SUPPLIER');
   const [endorsePartyId, setEndorsePartyId] = useState('');
 
+  const [editEntry, setEditEntry] = useState<PaymentEntry | null>(null);
+  const [editForm, setEditForm] = useState<EditChequePayload>({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+
   const { options: customerOptions } = useFlatOptions('customers');
   const { options: supplierOptions } = useFlatOptions('suppliers');
+  const { options: bankOptions } = useFlatOptions('banks');
 
   const { data, isLoading } = useQuery<Paginated<PaymentEntry>>({
     queryKey: ['cheques', page, search, chequeStatus, paymentType],
@@ -115,11 +122,60 @@ export default function ChequesRegisterPage() {
     onError: (e: Error) => toast.error(e.message || 'Could not endorse cheque'),
   });
 
+  const saveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editEntry) return;
+    setEditSaving(true);
+    setEditError('');
+    try {
+      const payload: EditChequePayload = {};
+      if (editForm.chequeNumber?.trim()) payload.chequeNumber = editForm.chequeNumber.trim();
+      if (!editChequeDateLocked && editForm.chequeDate) payload.chequeDate = editForm.chequeDate;
+      if (!editBankLocked && editForm.bankAccountId) payload.bankAccountId = editForm.bankAccountId;
+      if (!editDateLocked && editForm.paymentDate) payload.paymentDate = editForm.paymentDate;
+      if (!editAmountLocked && editForm.amount !== undefined) payload.amount = editForm.amount;
+      payload.reference = editForm.reference ?? '';
+      payload.narration = editForm.narration ?? '';
+      await editCheque(editEntry.id, payload);
+      qc.invalidateQueries({ queryKey: ['cheques'] });
+      qc.invalidateQueries({ queryKey: ['payments'] });
+      setEditEntry(null);
+      setEditForm({});
+      toast.success('Cheque details updated');
+    } catch (err) {
+      setEditError((err as Error).message || 'Could not update cheque');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const isDueToday = (date?: string | null) => {
     if (!date) return false;
     const today = new Date().toISOString().slice(0, 10);
     return new Date(date).toISOString().slice(0, 10) === today;
   };
+
+  const toDateInput = (value?: string | null) => (value ? new Date(value).toISOString().slice(0, 10) : '');
+
+  const openEdit = (r: PaymentEntry) => {
+    setEditForm({
+      chequeNumber: r.chequeNumber ?? '',
+      bankAccountId: r.bankAccountId ?? '',
+      chequeDate: toDateInput(r.chequeDate),
+      paymentDate: toDateInput(r.paymentDate),
+      amount: r.amount,
+      reference: r.reference ?? '',
+      narration: r.narration ?? '',
+    });
+    setEditError('');
+    setEditEntry(r);
+  };
+
+  const editBankLocked = !!editEntry && (editEntry.chequeStatus === 'DEPOSITED' || editEntry.chequeStatus === 'CLEARED');
+  const editAmountLocked = !!editEntry && editEntry.status !== 'pending';
+  const editDateLocked = !!editEntry && editEntry.status !== 'pending';
+  // Flipping a cheque between post-dated and regular is not allowed; only a PDC's date can be corrected.
+  const editChequeDateLocked = !!editEntry && !editEntry.chequeDate;
 
   const endorsePartyOptions = endorsePartyType === 'CUSTOMER' ? customerOptions : supplierOptions;
 
@@ -185,6 +241,11 @@ export default function ChequesRegisterPage() {
               render: (r) => (
                 <div className="flex items-center gap-0.5">
                   <button onClick={() => setDetailId(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
+                  {canUpdate && r.status !== 'cancelled' && r.chequeStatus !== 'BOUNCED' && r.chequeStatus !== 'ENDORSED' && (
+                    <button onClick={() => openEdit(r)} className="rounded-lg p-1.5 text-amber-600 hover:bg-amber-50 hover:text-amber-700" title="Edit cheque details">
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  )}
                   {r.status === 'posted' && r.chequeStatus === 'IN_HAND' && canPost && (
                     <>
                       <button onClick={() => deposit.mutate(r.id)} className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 hover:text-blue-700" title="Clear cheque into bank">
@@ -234,6 +295,80 @@ export default function ChequesRegisterPage() {
               </div>
             )}
           </div>
+        )}
+      </Modal>
+
+      <Modal open={!!editEntry} onClose={() => setEditEntry(null)} title={`Edit cheque · ${editEntry?.number ?? ''}`} size="lg">
+        {!editEntry ? null : (
+          <form onSubmit={saveEdit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-700 sm:col-span-2">
+              {editEntry.partyName} · {editEntry.paymentType === 'RECEIPT' ? 'Received' : 'Issued'} · {money(editEntry.amount, 'PKR')}
+              {editEntry.chequeStatus ? ` · ${STATUS_BADGES[editEntry.chequeStatus]?.label ?? editEntry.chequeStatus}` : ''}
+            </div>
+            <Field label="Cheque number" required>
+              <Input
+                value={editForm.chequeNumber ?? ''}
+                onChange={(e) => setEditForm((f) => ({ ...f, chequeNumber: e.target.value }))}
+                placeholder="e.g. 00421579"
+                required
+              />
+            </Field>
+            <Field label="Cheque date" hint={editChequeDateLocked ? 'This cheque is not post-dated (no PDC account)' : 'Post-dated date — PDC treatment stays as is'}>
+              <Input
+                type="date"
+                value={editForm.chequeDate ?? ''}
+                disabled={editChequeDateLocked}
+                onChange={(e) => setEditForm((f) => ({ ...f, chequeDate: e.target.value }))}
+              />
+            </Field>
+            <Field label="Bank account" hint={editBankLocked ? 'Cleared into the bank — locked' : undefined}>
+              <Select
+                value={editForm.bankAccountId ?? ''}
+                disabled={editBankLocked}
+                onChange={(e) => setEditForm((f) => ({ ...f, bankAccountId: e.target.value || undefined }))}
+              >
+                <option value="">Select bank…</option>
+                {bankOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </Select>
+            </Field>
+            <Field label="Payment date" hint={editDateLocked ? 'Locked after posting' : undefined}>
+              <Input
+                type="date"
+                value={editForm.paymentDate ?? ''}
+                disabled={editDateLocked}
+                onChange={(e) => setEditForm((f) => ({ ...f, paymentDate: e.target.value }))}
+              />
+            </Field>
+            <Field label="Amount (₨)" hint={editAmountLocked ? 'Locked after posting — edit before posting' : undefined}>
+              <Input
+                type="number" min={0} step="0.01"
+                value={editForm.amount ?? 0}
+                disabled={editAmountLocked}
+                onChange={(e) => setEditForm((f) => ({ ...f, amount: Number(e.target.value) || 0 }))}
+              />
+            </Field>
+            <Field label="Reference">
+              <Input
+                value={editForm.reference ?? ''}
+                onChange={(e) => setEditForm((f) => ({ ...f, reference: e.target.value }))}
+                placeholder="optional"
+              />
+            </Field>
+            <div className="sm:col-span-2">
+              <Field label="Narration">
+                <Textarea
+                  value={editForm.narration ?? ''}
+                  onChange={(e) => setEditForm((f) => ({ ...f, narration: e.target.value }))}
+                  placeholder="Optional note printed on the voucher…"
+                />
+              </Field>
+            </div>
+            {editError && <div className="sm:col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{editError}</div>}
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-4 sm:col-span-2">
+              <Button type="button" variant="outline" onClick={() => setEditEntry(null)}>Cancel</Button>
+              <Button type="submit" loading={editSaving}>Save changes</Button>
+            </div>
+          </form>
         )}
       </Modal>
 
