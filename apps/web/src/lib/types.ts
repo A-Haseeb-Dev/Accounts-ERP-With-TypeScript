@@ -681,6 +681,7 @@ export interface TrialBalanceRow {
   accountId?: string;
   code: string;
   name: string;
+  accountType?: string;
   head?: string;
   subHead?: string;
   debit?: number;
