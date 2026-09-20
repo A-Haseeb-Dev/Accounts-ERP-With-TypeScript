@@ -266,7 +266,25 @@ export class AccountingService {
       const equityAccountId = await this.resolveOpeningEquityId();
       if (!equityAccountId) return;
 
-      const number = await this.numbering.next('voucher_opening', 'OB', tx);
+      // Reserve a free number. The OB counter can be lagging behind rows that
+      // predate sequential numbering (e.g. after a reseed/reset), which would
+      // otherwise surface as "A record with the same value already exists:
+      // number" on ANY subsequent edit of an account with an opening balance.
+      // Retrying advances the atomic counter until a free number is found.
+      let number: string | null = null;
+      for (let attempt = 0; attempt < 32 && !number; attempt++) {
+        const candidate = await this.numbering.next('voucher_opening', 'OB', tx);
+        const clash = await tx.voucher.findUnique({ where: { number: candidate } });
+        if (!clash) {
+          number = candidate;
+        }
+      }
+      if (!number) {
+        throw ApiException.invalidTransaction(
+          'Unable to allocate a unique opening balance voucher number.',
+        );
+      }
+
       const voucher = await this.createVoucher(
         tx,
         {
