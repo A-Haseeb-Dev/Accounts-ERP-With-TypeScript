@@ -65,6 +65,10 @@ export interface EditChequePayload {
   chequeDate?: string;
   paymentDate?: string;
   amount?: number;
+  partyType?: 'CUSTOMER' | 'SUPPLIER';
+  partyId?: string;
+  mainAccountId?: string;
+  pdcAccountId?: string;
   reference?: string;
   narration?: string;
 }

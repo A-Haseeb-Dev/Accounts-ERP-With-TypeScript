@@ -103,6 +103,22 @@ export class EndorseChequeDto {
 }
 
 export class EditChequeDto {
+  @IsEnum(['CUSTOMER', 'SUPPLIER'], { message: 'partyType must be CUSTOMER or SUPPLIER' })
+  @IsOptional()
+  partyType?: 'CUSTOMER' | 'SUPPLIER';
+
+  @IsString()
+  @IsOptional()
+  partyId?: string;
+
+  @IsString()
+  @IsOptional()
+  mainAccountId?: string;
+
+  @IsString()
+  @IsOptional()
+  pdcAccountId?: string;
+
   @IsString()
   @IsOptional()
   @MaxLength(50)

@@ -19,6 +19,13 @@ import { useAuth } from '@/context/auth-context';
 import { useFlatOptions } from '@/hooks/use-options';
 import type { Paginated, PaymentEntry } from '@/lib/types';
 
+interface FlatAccount {
+  id: string;
+  code: string | null;
+  name: string | null;
+  subHead?: { name: string } | null;
+}
+
 const STATUS_OPTIONS = [
   { value: '', label: 'All cheque states' },
   { value: 'PENDING', label: 'Pending approval' },
@@ -64,6 +71,15 @@ export default function ChequesRegisterPage() {
   const { options: customerOptions } = useFlatOptions('customers');
   const { options: supplierOptions } = useFlatOptions('suppliers');
   const { options: bankOptions } = useFlatOptions('banks');
+  const { options: accountOptions, data: accountsData } = useFlatOptions<FlatAccount>('main-accounts');
+
+  const editPartyOptions = editForm.partyType === 'CUSTOMER' ? customerOptions : supplierOptions;
+  // PDC treatment is locked for posted entries (only a pending cheque can be flipped).
+  const editPdcFlipLocked = !!editEntry && editEntry.status !== 'pending';
+  const editIsPdc = editPdcFlipLocked ? !!editEntry?.chequeDate : !!editForm.chequeDate;
+  const editPdcOptions = (accountsData ?? [])
+    .filter((a) => a.subHead?.name === 'PDCS')
+    .map((a) => ({ value: a.id, label: [a.code, a.name].filter(Boolean).join(' · ') }));
 
   const { data, isLoading } = useQuery<Paginated<PaymentEntry>>({
     queryKey: ['cheques', page, search, chequeStatus, paymentType],
@@ -129,11 +145,24 @@ export default function ChequesRegisterPage() {
     setEditError('');
     try {
       const payload: EditChequePayload = {};
+      const originalChequeDate = toDateInput(editEntry.chequeDate);
+      const formChequeDate = editForm.chequeDate ?? '';
       if (editForm.chequeNumber?.trim()) payload.chequeNumber = editForm.chequeNumber.trim();
-      if (!editChequeDateLocked && editForm.chequeDate) payload.chequeDate = editForm.chequeDate;
+      if (formChequeDate !== originalChequeDate) payload.chequeDate = formChequeDate || '';
       if (!editBankLocked && editForm.bankAccountId) payload.bankAccountId = editForm.bankAccountId;
-      if (!editDateLocked && editForm.paymentDate) payload.paymentDate = editForm.paymentDate;
-      if (!editAmountLocked && editForm.amount !== undefined) payload.amount = editForm.amount;
+      if (editForm.paymentDate) payload.paymentDate = editForm.paymentDate;
+      if (editForm.amount !== undefined) payload.amount = editForm.amount;
+      if (editForm.partyId && editForm.partyType) {
+        if (editForm.partyId !== editEntry.partyId || editForm.partyType !== editEntry.partyType) {
+          payload.partyType = editForm.partyType;
+          payload.partyId = editForm.partyId;
+        }
+      }
+      if (editIsPdc) {
+        if (!editBankLocked && editForm.pdcAccountId) payload.pdcAccountId = editForm.pdcAccountId;
+      } else if (!editBankLocked && editForm.mainAccountId) {
+        payload.mainAccountId = editForm.mainAccountId;
+      }
       payload.reference = editForm.reference ?? '';
       payload.narration = editForm.narration ?? '';
       await editCheque(editEntry.id, payload);
@@ -161,6 +190,10 @@ export default function ChequesRegisterPage() {
     setEditForm({
       chequeNumber: r.chequeNumber ?? '',
       bankAccountId: r.bankAccountId ?? '',
+      pdcAccountId: r.pdcAccountId ?? '',
+      mainAccountId: r.mainAccountId ?? '',
+      partyType: r.partyType,
+      partyId: r.partyId ?? '',
       chequeDate: toDateInput(r.chequeDate),
       paymentDate: toDateInput(r.paymentDate),
       amount: r.amount,
@@ -172,10 +205,6 @@ export default function ChequesRegisterPage() {
   };
 
   const editBankLocked = !!editEntry && (editEntry.chequeStatus === 'DEPOSITED' || editEntry.chequeStatus === 'CLEARED');
-  const editAmountLocked = !!editEntry && editEntry.status !== 'pending';
-  const editDateLocked = !!editEntry && editEntry.status !== 'pending';
-  // Flipping a cheque between post-dated and regular is not allowed; only a PDC's date can be corrected.
-  const editChequeDateLocked = !!editEntry && !editEntry.chequeDate;
 
   const endorsePartyOptions = endorsePartyType === 'CUSTOMER' ? customerOptions : supplierOptions;
 
@@ -313,13 +342,33 @@ export default function ChequesRegisterPage() {
                 required
               />
             </Field>
-            <Field label="Cheque date" hint={editChequeDateLocked ? 'This cheque is not post-dated (no PDC account)' : 'Post-dated date — PDC treatment stays as is'}>
+            <Field label="Cheque date" hint={editPdcFlipLocked ? 'Post-dated or not is locked after posting' : 'Leave empty for a regular cheque'}>
               <Input
                 type="date"
                 value={editForm.chequeDate ?? ''}
-                disabled={editChequeDateLocked}
-                onChange={(e) => setEditForm((f) => ({ ...f, chequeDate: e.target.value }))}
+                onChange={(e) => setEditForm((f) => ({ ...f, chequeDate: e.target.value || undefined }))}
               />
+            </Field>
+            <Field label="Party" required>
+              <Select
+                value={editForm.partyType ?? ''}
+                onChange={(e) => setEditForm((f) => ({ ...f, partyType: e.target.value as never, partyId: '' }))}
+                disabled={editBankLocked}
+              >
+                <option value="SUPPLIER">Supplier (issued)</option>
+                <option value="CUSTOMER">Customer (received)</option>
+              </Select>
+            </Field>
+            <Field label={editForm.partyType === 'CUSTOMER' ? 'Customer' : 'Supplier'} required hint={editBankLocked ? 'Cleared into the bank — locked' : editEntry?.allocations.length ? 'Cheque is allocated to documents — party change locked' : undefined}>
+              <Select
+                value={editForm.partyId ?? ''}
+                onChange={(e) => setEditForm((f) => ({ ...f, partyId: e.target.value || undefined }))}
+                disabled={editBankLocked || (editEntry?.allocations.length ?? 0) > 0}
+                required
+              >
+                <option value="">Select {editForm.partyType === 'CUSTOMER' ? 'customer' : 'supplier'}…</option>
+                {editPartyOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </Select>
             </Field>
             <Field label="Bank account" hint={editBankLocked ? 'Cleared into the bank — locked' : undefined}>
               <Select
@@ -331,19 +380,40 @@ export default function ChequesRegisterPage() {
                 {bankOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </Select>
             </Field>
-            <Field label="Payment date" hint={editDateLocked ? 'Locked after posting' : undefined}>
+            {editIsPdc ? (
+              <Field label="PDC account" hint={editBankLocked ? 'Cleared into the bank — locked' : 'Post-dated holding account for this party'}>
+                <Select
+                  value={editForm.pdcAccountId ?? ''}
+                  disabled={editBankLocked}
+                  onChange={(e) => setEditForm((f) => ({ ...f, pdcAccountId: e.target.value || undefined }))}
+                >
+                  <option value="">Select PDC account…</option>
+                  {editPdcOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </Select>
+              </Field>
+            ) : (
+              <Field label="Cash / bank (ledger) account" hint={editBankLocked ? 'Cleared into the bank — locked' : 'Where the value is booked for a regular cheque'}>
+                <Select
+                  value={editForm.mainAccountId ?? ''}
+                  disabled={editBankLocked}
+                  onChange={(e) => setEditForm((f) => ({ ...f, mainAccountId: e.target.value || undefined }))}
+                >
+                  <option value="">Select account…</option>
+                  {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </Select>
+              </Field>
+            )}
+            <Field label="Payment date">
               <Input
                 type="date"
                 value={editForm.paymentDate ?? ''}
-                disabled={editDateLocked}
                 onChange={(e) => setEditForm((f) => ({ ...f, paymentDate: e.target.value }))}
               />
             </Field>
-            <Field label="Amount (₨)" hint={editAmountLocked ? 'Locked after posting — edit before posting' : undefined}>
+            <Field label="Amount (₨)">
               <Input
                 type="number" min={0} step="0.01"
                 value={editForm.amount ?? 0}
-                disabled={editAmountLocked}
                 onChange={(e) => setEditForm((f) => ({ ...f, amount: Number(e.target.value) || 0 }))}
               />
             </Field>

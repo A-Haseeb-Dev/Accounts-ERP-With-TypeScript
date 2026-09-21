@@ -41,6 +41,8 @@ const baseEntry = (overrides: Record<string, unknown> = {}) => ({
 function buildService(overrides?: {
   paymentEntry?: { findUnique?: ReturnType<typeof vi.fn>; update?: ReturnType<typeof vi.fn> };
   bankAccount?: { findUnique?: ReturnType<typeof vi.fn> };
+  supplier?: { findUnique?: ReturnType<typeof vi.fn> };
+  mainAccount?: { findUnique?: ReturnType<typeof vi.fn> };
 }) {
   const paymentEntry = {
     findUnique: vi.fn(),
@@ -52,13 +54,40 @@ function buildService(overrides?: {
     ...(overrides?.paymentEntry ?? {}),
   };
   const bankAccount = { findUnique: vi.fn().mockResolvedValue({ id: 'bank-1', name: 'Bank A' }) };
+  const supplier = {
+    findUnique: vi.fn().mockResolvedValue({ id: 'supplier-1', name: 'Test Supplier' }),
+    ...(overrides?.supplier ?? {}),
+  };
+  const mainAccount = {
+    findUnique: vi.fn().mockResolvedValue({ id: 'cash', code: '001', name: 'Cash', status: 'active' }),
+    ...(overrides?.mainAccount ?? {}),
+  };
   const prisma = {
     paymentEntry,
     bankAccount: { ...bankAccount, ...(overrides?.bankAccount ?? {}) },
+    supplier,
+    mainAccount,
+    runInTransaction: vi.fn((fn: (tx: unknown) => unknown) => fn(prisma)),
+    voucher: {
+      findUnique: vi.fn().mockResolvedValue({
+        id: 'voucher-1',
+        entries: [
+          { mainAccountId: 'cash', debit: 1000, credit: 0, narration: 'a' },
+          { mainAccountId: 'ap-1', debit: 0, credit: 1000, narration: 'b' },
+        ],
+      }),
+    },
   };
   const audit = { record: vi.fn().mockResolvedValue(undefined) };
-  const numbering = { next: vi.fn().mockResolvedValue('PN-000001') };
-  const accounting = {};
+  const numbering = { next: vi.fn().mockResolvedValue('RV-000001') };
+  const accounting = {
+    createVoucher: vi.fn(async (_tx: unknown, input: { entries: unknown[] }) => ({
+      id: 'rv-1',
+      status: 'draft',
+      entries: input.entries,
+    })),
+    postVoucher: vi.fn(async () => ({ status: 'posted' })),
+  };
   const defaultAccounts = { resolveAccount: vi.fn().mockResolvedValue(null) };
   const fiscal = { assertOpen: vi.fn().mockResolvedValue(undefined) };
   const svc = new PaymentsService(
@@ -69,7 +98,7 @@ function buildService(overrides?: {
     defaultAccounts as never,
     fiscal as never,
   );
-  return { svc, prisma, audit, fiscal };
+  return { svc, prisma, audit, fiscal, accounting };
 }
 
 describe('PaymentsService.updateCheque', () => {
@@ -107,34 +136,64 @@ describe('PaymentsService.updateCheque', () => {
     );
   });
 
-  it('rejects amount correction once the entry is posted', async () => {
-    const { svc, prisma } = buildService();
-    prisma.paymentEntry.findUnique.mockResolvedValue(baseEntry({ status: 'posted', chequeStatus: 'IN_HAND' }));
+  it('corrects amount on a posted in-hand cheque via reversal and re-post', async () => {
+    const { svc, prisma, accounting } = buildService();
+    prisma.paymentEntry.findUnique.mockResolvedValue(baseEntry({ status: 'posted', chequeStatus: 'IN_HAND', voucherId: 'voucher-1' }));
+    prisma.paymentEntry.update.mockImplementationOnce(async (args: { data: Record<string, unknown> }) => ({
+      ...baseEntry({ status: 'pending' }),
+      ...(args.data ?? {}),
+      allocations: [],
+    }));
 
-    const msg = await apiErrorMessage(
-      svc.updateCheque('cheque-1', { amount: 2500 } as EditChequeDto, 'actor'),
+    const result = await svc.updateCheque('cheque-1', {
+      amount: 2500,
+    } as EditChequeDto, 'actor');
+
+    expect(accounting.createVoucher).toHaveBeenCalled();
+    expect(prisma.paymentEntry.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amount: 2500 }) }),
     );
-    expect(msg.toLowerCase()).toContain('amount');
+    expect(result).toBeDefined();
   });
 
-  it('rejects payment date correction once the entry is posted', async () => {
-    const { svc, prisma } = buildService();
-    prisma.paymentEntry.findUnique.mockResolvedValue(baseEntry({ status: 'posted', chequeStatus: 'IN_HAND' }));
+  it('corrects payment date on a posted in-hand cheque via reversal and re-post', async () => {
+    const { svc, prisma, accounting } = buildService();
+    prisma.paymentEntry.findUnique.mockResolvedValue(baseEntry({ status: 'posted', chequeStatus: 'IN_HAND', voucherId: 'voucher-1' }));
+    prisma.paymentEntry.update.mockImplementationOnce(async (args: { data: Record<string, unknown> }) => ({
+      ...baseEntry({ status: 'pending' }),
+      ...(args.data ?? {}),
+      allocations: [],
+    }));
 
-    const msg = await apiErrorMessage(
-      svc.updateCheque('cheque-1', { paymentDate: '2026-09-05T10:00:00Z' } as EditChequeDto, 'actor'),
+    const result = await svc.updateCheque('cheque-1', {
+      paymentDate: '2026-09-10T10:00:00Z',
+    } as EditChequeDto, 'actor');
+
+    expect(accounting.createVoucher).toHaveBeenCalled();
+    expect(prisma.paymentEntry.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ paymentDate: new Date('2026-09-10T10:00:00Z') }) }),
     );
-    expect(msg.toLowerCase()).toContain('payment date');
+    expect(result).toBeDefined();
   });
 
   it('locks the bank account after the cheque is cleared', async () => {
     const { svc, prisma } = buildService();
-    prisma.paymentEntry.findUnique.mockResolvedValue(baseEntry({ status: 'posted', chequeStatus: 'CLEARED' }));
+    prisma.paymentEntry.findUnique.mockResolvedValue(baseEntry({ status: 'posted', chequeStatus: 'CLEARED', voucherId: 'voucher-1' }));
 
     const msg = await apiErrorMessage(
       svc.updateCheque('cheque-1', { bankAccountId: 'bank-2' } as EditChequeDto, 'actor'),
     );
     expect(msg.toLowerCase()).toContain('bank');
+  });
+
+  it('rejects amount changes once the cheque has been cleared into the bank', async () => {
+    const { svc, prisma } = buildService();
+    prisma.paymentEntry.findUnique.mockResolvedValue(baseEntry({ status: 'posted', chequeStatus: 'DEPOSITED', voucherId: 'voucher-1' }));
+
+    const msg = await apiErrorMessage(
+      svc.updateCheque('cheque-1', { amount: 2000 } as EditChequeDto, 'actor'),
+    );
+    expect(msg.toLowerCase()).toContain('cleared');
   });
 
   it('rejects a bounced cheque edit', async () => {
@@ -157,14 +216,45 @@ describe('PaymentsService.updateCheque', () => {
     expect(msg.toLowerCase()).toContain('cancelled');
   });
 
-  it('rejects flipping a cheque between post-dated and regular', async () => {
+  it('allows updating the cheque date on a pending post-dated cheque', async () => {
     const { svc, prisma } = buildService();
     prisma.paymentEntry.findUnique.mockResolvedValue(baseEntry({ chequeDate: new Date('2026-10-01') }));
 
-    const msg = await apiErrorMessage(
-      svc.updateCheque('cheque-1', { chequeDate: '' } as EditChequeDto, 'actor'),
+    const result = await svc.updateCheque('cheque-1', {
+      chequeDate: '2026-11-01',
+    } as EditChequeDto, 'actor');
+
+    expect(result.chequeDate).toBeInstanceOf(Date);
+    expect(prisma.paymentEntry.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows changing the party on a pending cheque', async () => {
+    const { svc, prisma } = buildService();
+    prisma.paymentEntry.findUnique.mockResolvedValue(baseEntry());
+
+    const result = await svc.updateCheque('cheque-1', {
+      partyType: 'SUPPLIER',
+      partyId: 'supplier-1',
+    } as EditChequeDto, 'actor');
+
+    expect(result.partyId).toBe('supplier-1');
+    expect(result.partyName).toBe('Test Supplier');
+  });
+
+  it('rejects changing the party while the cheque is allocated', async () => {
+    const { svc, prisma } = buildService();
+    prisma.paymentEntry.findUnique.mockResolvedValue(
+      baseEntry({ allocations: [{ documentType: 'PURCHASE', documentId: 'p-1', allocatedAmount: 800 }] }),
     );
-    expect(msg.toLowerCase()).toContain('post-dated');
+    prisma.supplier.findUnique.mockResolvedValue({ id: 'supplier-2', name: 'Other Supplier' });
+
+    const msg = await apiErrorMessage(
+      svc.updateCheque('cheque-1', {
+        partyType: 'SUPPLIER',
+        partyId: 'supplier-2',
+      } as EditChequeDto, 'actor'),
+    );
+    expect(msg.toLowerCase()).toContain('allocated');
   });
 
   it('rejects empty cheque number', async () => {
