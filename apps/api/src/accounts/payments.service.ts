@@ -765,16 +765,20 @@ export class PaymentsService {
   }
 
   /**
-   * Correct a mistake on a cheque entry (cheque number, date, bank, amount,
-   * date, reference or narration) without touching the underlying ledger.
+   * Correct a mistake on a cheque entry. Every field is editable — party, cash /
+   * bank account, PDC holding account, cheque number/date, bank, amount, payment
+   * date, reference and narration.
    *
    * Guard-rails:
    *  - cancelled and bounced/endorsed cheques are terminal — they cannot be edited.
-   *  - once a cheque is cleared/deposited the bank is fixed (it is already in the
-   *    ledger), so the bank account cannot be changed.
-   *  - once posted, the voucher and allocations exist, so amount and payment date
-   *    are locked; only cheque metadata can be corrected.
-   *  - closing a pending post-dated receipt re-resolves its PDC holding account.
+   *  - once a cheque has been cleared into the bank (DEPOSITED/CLEARED) the money
+   *    is already in the bank ledger, so bank, amount, party, payment date and
+   *    the booking accounts are locked; only cheque metadata (number, cheque date,
+   *    reference, narration) can still be corrected.
+   *  - corrections that change the posting of an already-posted cheque (amount,
+   *    payment date, party, cash/PDC account, or flipping post-dated/regular) are
+   *    applied by posting a reversal voucher and re-posting, so the ledger stays
+   *    balanced and auditable.
    */
   async updateCheque(id: string, dto: EditChequeDto, actorId?: string) {
     const entry = await this.prisma.paymentEntry.findUnique({
@@ -793,28 +797,48 @@ export class PaymentsService {
         `A ${entry.chequeStatus.toLowerCase()} cheque is terminal and cannot be edited`,
       );
     }
-    await this.fiscal.assertOpen(entry.paymentDate, 'Cannot edit a payment entry');
 
     const isPending = entry.status === 'pending';
     const bankLocked = entry.chequeStatus === 'DEPOSITED' || entry.chequeStatus === 'CLEARED';
 
-    if (dto.amount !== undefined && !isPending) {
-      throw ApiException.invalidTransaction(
-        'The amount can only be corrected while the entry is still pending (before posting)',
+    if (dto.paymentDate !== undefined) {
+      await this.fiscal.assertOpen(
+        new Date(dto.paymentDate),
+        'Cannot edit a payment entry',
       );
-    }
-    if (dto.paymentDate !== undefined && !isPending) {
-      throw ApiException.invalidTransaction(
-        'The payment date can only be corrected while the entry is still pending',
-      );
-    }
-    if (dto.bankAccountId !== undefined && bankLocked) {
-      throw ApiException.invalidTransaction(
-        'This cheque has already been cleared into the bank; the bank account cannot be changed',
-      );
+    } else {
+      await this.fiscal.assertOpen(entry.paymentDate, 'Cannot edit a payment entry');
     }
 
     const data: Record<string, unknown> = {};
+
+    // --- party -------------------------------------------------------------
+    const partyChanged =
+      (dto.partyId !== undefined && dto.partyId !== entry.partyId) ||
+      (dto.partyType !== undefined && dto.partyType !== entry.partyType);
+    if (dto.partyId !== undefined || dto.partyType !== undefined) {
+      if (!dto.partyId || !dto.partyType) {
+        throw ApiException.validation('Party type and party are required together');
+      }
+      const party =
+        dto.partyType === 'CUSTOMER'
+          ? await this.prisma.customer.findUnique({ where: { id: dto.partyId } })
+          : await this.prisma.supplier.findUnique({ where: { id: dto.partyId } });
+      if (!party) throw ApiException.notFound(dto.partyType === 'CUSTOMER' ? 'Customer' : 'Supplier');
+      if (bankLocked) {
+        throw ApiException.invalidTransaction(
+          'This cheque has been cleared into the bank; the party can no longer be changed',
+        );
+      }
+      if (entry.allocations.length > 0 && dto.partyId !== entry.partyId) {
+        throw ApiException.invalidTransaction(
+          'Cannot change the party while the cheque is allocated to documents',
+        );
+      }
+      data.partyType = dto.partyType;
+      data.partyId = dto.partyId;
+      if ('name' in party) data.partyName = (party as { name: string }).name;
+    }
 
     if (dto.chequeNumber !== undefined) {
       if (!dto.chequeNumber.trim()) {
@@ -823,7 +847,12 @@ export class PaymentsService {
       data.chequeNumber = dto.chequeNumber.trim();
     }
 
-    if (dto.bankAccountId !== undefined && !bankLocked) {
+    if (dto.bankAccountId !== undefined) {
+      if (bankLocked) {
+        throw ApiException.invalidTransaction(
+          'This cheque has already been cleared into the bank; the bank account cannot be changed',
+        );
+      }
       if (dto.bankAccountId) {
         const bank = await this.prisma.bankAccount.findUnique({
           where: { id: dto.bankAccountId },
@@ -835,26 +864,88 @@ export class PaymentsService {
       }
     }
 
+    if (dto.pdcAccountId !== undefined) {
+      if (bankLocked) {
+        throw ApiException.invalidTransaction(
+          'This cheque has been cleared into the bank; the PDC account cannot be changed',
+        );
+      }
+      if (dto.pdcAccountId) {
+        const account = await this.prisma.mainAccount.findUnique({
+          where: { id: dto.pdcAccountId },
+        });
+        if (!account || account.status !== 'active') {
+          throw ApiException.validation('The selected PDC account is not valid');
+        }
+        data.pdcAccountId = account.id;
+      } else {
+        data.pdcAccountId = null;
+      }
+    }
+
+    if (dto.mainAccountId !== undefined) {
+      if (bankLocked) {
+        throw ApiException.invalidTransaction(
+          'This cheque has been cleared into the bank; the cash / bank account cannot be changed',
+        );
+      }
+      if (dto.mainAccountId) {
+        const account = await this.prisma.mainAccount.findUnique({
+          where: { id: dto.mainAccountId },
+        });
+        if (!account || account.status !== 'active') {
+          throw ApiException.validation('The selected cash / bank account is not valid');
+        }
+        data.mainAccountId = account.id;
+      } else {
+        data.mainAccountId = null;
+      }
+    }
+
+    // --- cheque date (PDC flip is allowed; the posting handles re-booking) ---
     if (dto.chequeDate !== undefined) {
       const newChequeDate = dto.chequeDate ? new Date(dto.chequeDate) : null;
       const wasPdc = !!entry.chequeDate;
-      const willBePdc = !!newChequeDate;
-      if (wasPdc !== willBePdc) {
-        // Flipping a cheque between post-dated and regular changes which account
-        // it is booked against (PDC holding vs cash/bank), so a wrong PDC state
-        // cannot be silently corrected here — create a replacement entry instead.
+      const willBePdcNew = !!newChequeDate;
+      if (bankLocked && wasPdc !== willBePdcNew) {
         throw ApiException.invalidTransaction(
-          'You cannot change whether a cheque is post-dated here. Delete or cancel the entry and create a new one instead.',
+          'This cheque has been cleared into the bank; whether it is post-dated can no longer be changed',
         );
+      }
+      if (willBePdcNew && !wasPdc && entry.paymentType === 'RECEIPT') {
+        // A pending receipt turning post-dated needs a PDC holding account. If the
+        // user did not pick one, resolve (create) it for the (new) party so the
+        // entry stays bookable — mirrors create().
+        if (data.pdcAccountId === undefined) {
+          const currentPartyId = (data.partyId as string) ?? entry.partyId;
+          const currentPartyType = (data.partyType as 'CUSTOMER' | 'SUPPLIER') ?? entry.partyType;
+          const party =
+            currentPartyType === 'CUSTOMER'
+              ? await this.prisma.customer.findUnique({ where: { id: currentPartyId } })
+              : await this.prisma.supplier.findUnique({ where: { id: currentPartyId } });
+          const resolved = await this.resolvePdcAccount(
+            {
+              partyType: currentPartyType,
+              partyId: currentPartyId,
+              pdcAccountId: undefined,
+            } as unknown as CreatePaymentDto,
+            {
+              name: (party as { name?: string })?.name ?? entry.partyName ?? '',
+              pdcAccountId: null,
+            },
+          );
+          data.pdcAccountId = resolved.id;
+          if (data.mainAccountId === undefined) data.mainAccountId = resolved.id;
+        }
       }
       data.chequeDate = newChequeDate;
     }
 
-    if (dto.paymentDate !== undefined && isPending) {
+    if (dto.paymentDate !== undefined) {
       data.paymentDate = new Date(dto.paymentDate);
     }
 
-    if (dto.amount !== undefined && isPending) {
+    if (dto.amount !== undefined) {
       const usable = Number(dto.amount ?? 0);
       if (usable <= 0) throw ApiException.validation('Amount must be greater than zero');
       const allocatedTotal = round2(
@@ -863,6 +954,11 @@ export class PaymentsService {
       if (allocatedTotal > usable) {
         throw ApiException.validation(
           `Amount ${usable} cannot be lower than the allocated total ${allocatedTotal}`,
+        );
+      }
+      if (bankLocked) {
+        throw ApiException.invalidTransaction(
+          'This cheque has been cleared into the bank; the amount can no longer be changed',
         );
       }
       data.amount = usable;
@@ -875,11 +971,43 @@ export class PaymentsService {
       throw ApiException.validation('Nothing to update');
     }
 
-    const updated = await this.prisma.paymentEntry.update({
-      where: { id },
-      data,
-      include: { allocations: true, mainAccount: true, bankAccount: true, pdcAccount: true },
-    });
+    const willBePdcChanged =
+      dto.chequeDate !== undefined &&
+      ((dto.chequeDate ? !!new Date(dto.chequeDate) : false) !== !!entry.chequeDate);
+
+    const ledgerAffecting =
+      data.amount !== undefined ||
+      data.paymentDate !== undefined ||
+      partyChanged ||
+      data.mainAccountId !== undefined ||
+      data.pdcAccountId !== undefined ||
+      willBePdcChanged;
+
+    let updated: any;
+    if (!isPending && ledgerAffecting) {
+      updated = await this.reverseAndRepost(
+        {
+          id: entry.id,
+          number: entry.number,
+          partyName: entry.partyName ?? '',
+          voucherId: entry.voucherId,
+          paymentType: entry.paymentType,
+          allocations: entry.allocations.map((a) => ({
+            documentType: a.documentType,
+            documentId: a.documentId,
+            allocatedAmount: Number(a.allocatedAmount),
+          })),
+        },
+        data,
+        actorId,
+      );
+    } else {
+      updated = await this.prisma.paymentEntry.update({
+        where: { id },
+        data,
+        include: { allocations: true, mainAccount: true, bankAccount: true, pdcAccount: true },
+      });
+    }
 
     this.audit.record({
       userId: actorId,
@@ -891,6 +1019,100 @@ export class PaymentsService {
     });
 
     return updated;
+  }
+
+  /**
+   * Applies a ledger-affecting correction to an already-posted cheque by posting
+   * a reversal voucher for the original posting, reversing the allocations, then
+   * re-posting the entry with the corrected values.
+   */
+  private async reverseAndRepost(
+    entry: {
+      id: string;
+      number: string;
+      partyName: string;
+      voucherId: string | null;
+      paymentType: string;
+      allocations: { documentType: string; documentId: string; allocatedAmount: number }[];
+    },
+    data: Record<string, unknown>,
+    actorId?: string,
+  ) {
+    if (!entry.voucherId) {
+      throw ApiException.invalidTransaction(
+        'This cheque has no posting voucher and cannot be re-posted',
+      );
+    }
+    const originalVoucher = await this.prisma.voucher.findUnique({
+      where: { id: entry.voucherId },
+      include: { entries: true },
+    });
+    if (!originalVoucher) {
+      throw ApiException.invalidTransaction('The original posting voucher could not be found');
+    }
+
+    await this.prisma.runInTransaction(async (tx) => {
+      const reversalEntries = originalVoucher.entries.map((e) => ({
+        mainAccountId: e.mainAccountId,
+        debit: Number(e.credit ?? 0),
+        credit: Number(e.debit ?? 0),
+        narration: `Reversal ${entry.number} - ${entry.partyName}`,
+      }));
+      const reversal = await this.accounting.createVoucher(
+        tx,
+        {
+          voucherType: 'JOURNAL' as any,
+          voucherDate: new Date(),
+          description: `Correcting ${entry.number} - ${entry.partyName}`,
+          reference: entry.number,
+          entries: reversalEntries,
+          createdById: actorId,
+        },
+        await this.numbering.next('voucher_receipt', 'RV', tx),
+      );
+      await this.accounting.postVoucher(tx, reversal.id, actorId);
+
+      for (const a of entry.allocations) {
+        const amt = Number(a.allocatedAmount);
+        if (a.documentType === 'SALE') {
+          const sale = await tx.sale.findUnique({ where: { id: a.documentId } });
+          if (sale) {
+            const paid = round2(Math.max(0, Number(sale.amountPaid) - amt));
+            const paymentStatus =
+              paid >= Number(sale.grandTotal) ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+            await tx.sale.update({
+              where: { id: sale.id },
+              data: { amountPaid: paid, paymentStatus },
+            });
+          }
+        } else if (a.documentType === 'PURCHASE') {
+          const purchase = await tx.purchase.findUnique({ where: { id: a.documentId } });
+          if (purchase) {
+            const paid = round2(Math.max(0, Number(purchase.paidAmount) - amt));
+            const payStatus =
+              paid >= Number(purchase.grandTotal) ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+            await tx.purchase.update({
+              where: { id: purchase.id },
+              data: { paidAmount: paid, payStatus },
+            });
+          }
+        }
+      }
+
+      await tx.paymentEntry.update({
+        where: { id: entry.id },
+        data: {
+          ...data,
+          status: 'pending',
+          voucherId: null,
+          postedById: null,
+          postedAt: null,
+          chequeStatus: null,
+        },
+      });
+    });
+
+    return this.post(entry.id, actorId);
   }
 
   async findAll(query: {
