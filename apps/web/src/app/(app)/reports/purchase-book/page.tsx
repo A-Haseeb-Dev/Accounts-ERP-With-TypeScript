@@ -134,7 +134,7 @@ export default function PurchaseBookPage() {
                 ))}
                 <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold text-slate-900">
                   <td className="px-4 py-2" colSpan={3}>Total</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{money(totalPurchases, 'PKR')}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{money(totalPurchases)}</td>
                   <td className="px-4 py-2"></td>
                 </tr>
               </tbody>
@@ -161,7 +161,7 @@ export default function PurchaseBookPage() {
                   {cols.isVisible('date') && <td className="px-4 py-2 text-slate-600">{new Date(r.purchaseDate).toLocaleDateString('en-GB')}</td>}
                   {cols.isVisible('number') && <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.number}</td>}
                   {cols.isVisible('supplier') && <td className="px-4 py-2 text-slate-700">{r.supplier?.name ?? '-'}</td>}
-                  {cols.isVisible('total') && <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(r.grandTotal, 'PKR')}</td>}
+                  {cols.isVisible('total') && <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(r.grandTotal)}</td>}
                   {cols.isVisible('status') && <td className="px-4 py-2 text-slate-600">{r.status}</td>}
                 </tr>
               ))}
@@ -173,7 +173,7 @@ export default function PurchaseBookPage() {
               <tfoot>
                 <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-800">
                   <td colSpan={labelSpan} className="px-4 py-2 text-xs font-semibold uppercase text-slate-500">Total Purchases</td>
-                  {cols.isVisible('total') && <td className="px-4 py-2 text-right tabular-nums">{money(totalPurchases, 'PKR')}</td>}
+                  {cols.isVisible('total') && <td className="px-4 py-2 text-right tabular-nums">{money(totalPurchases)}</td>}
                   {cols.isVisible('status') && <td></td>}
                 </tr>
               </tfoot>
@@ -201,14 +201,14 @@ function PurchaseGroupRows({ group }: { group: { key: string; monthLabel: string
           <td className="px-4 py-2 text-slate-600">{new Date(r.purchaseDate).toLocaleDateString('en-GB')}</td>
           <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.number}</td>
           <td className="px-4 py-2 text-slate-700">{r.supplier?.name ?? '-'}</td>
-          <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(Number(r.grandTotal), 'PKR')}</td>
+          <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(Number(r.grandTotal))}</td>
           <td className="px-4 py-2 text-slate-600">{r.status}</td>
         </tr>
       ))}
       {group.rows.length >= 1 && (
         <tr className="border-b border-slate-200 bg-slate-50 text-[13px] font-semibold text-slate-700">
           <td className="px-4 py-1.5" colSpan={3}>Sub-total</td>
-          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.total, 'PKR')}</td>
+          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.total)}</td>
           <td className="px-4 py-1.5"></td>
         </tr>
       )}

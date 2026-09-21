@@ -127,7 +127,7 @@ export default function CustomersPage() {
             { key: 'name', header: 'Name', render: (r) => <span className="font-medium text-slate-800">{r.name}</span> },
             { key: 'phone', header: 'Phone', render: (r) => <span className="text-slate-500">{r.phone || '-'}</span> },
             { key: 'town', header: 'Town', render: (r) => <span className="text-slate-500">{r.town?.name ?? '-'}</span> },
-            { key: 'creditLimit', header: 'Credit Limit', align: 'right', render: (r) => <span className="text-slate-600">{money(r.creditLimit, 'PKR')}</span> },
+            { key: 'creditLimit', header: 'Credit Limit', align: 'right', render: (r) => <span className="text-slate-600">{money(r.creditLimit)}</span> },
             { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'updatedAt', header: 'Updated', render: (r) => <span className="text-xs text-slate-400">{dateTime(r.updatedAt)}</span> },
             {
@@ -330,7 +330,7 @@ function CustomerDetail({
             <LabelValue label="Code" value={customer.code} />
             <LabelValue label="Phone" value={customer.phone || '-'} />
             <LabelValue label="Town" value={customer.town?.name ?? '-'} />
-            <LabelValue label="Credit Limit" value={money(customer.creditLimit, 'PKR')} />
+            <LabelValue label="Credit Limit" value={money(customer.creditLimit)} />
             <LabelValue label="Credit Days" value={`${customer.creditDays ?? 30} days`} />
             {whatsAppUrl && (
               <a href={whatsAppUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100">

@@ -186,9 +186,9 @@ export default function TrialBalancePage() {
                   ))}
                   <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold text-slate-900">
                     <td className="px-4 py-2" colSpan={3}>Total</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{money(sumDebit, 'PKR')}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{money(sumCredit, 'PKR')}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{money(sumDebit - sumCredit, 'PKR')}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{money(sumDebit)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{money(sumCredit)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{money(sumDebit - sumCredit)}</td>
                   </tr>
                 </tbody>
               </table>
@@ -216,9 +216,9 @@ export default function TrialBalancePage() {
                     {cols.isVisible('code') && <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.code}</td>}
                     {cols.isVisible('account') && <td className="px-4 py-2 text-slate-700">{r.name}</td>}
                     {cols.isVisible('head') && <td className="px-4 py-2 text-xs text-slate-500">{r.head ?? r.subHead ?? ''}</td>}
-                    {cols.isVisible('debit') && <td className="px-4 py-2 text-right tabular-nums text-slate-700">{r.debit ? money(r.debit, 'PKR') : ''}</td>}
-                    {cols.isVisible('credit') && <td className="px-4 py-2 text-right tabular-nums text-slate-700">{r.credit ? money(r.credit, 'PKR') : ''}</td>}
-                    {cols.isVisible('net') && <td className={`px-4 py-2 text-right tabular-nums font-medium ${net >= 0 ? 'text-teal-600' : 'text-red-600'}`}>{money(r.balance ?? net, 'PKR')}</td>}
+                    {cols.isVisible('debit') && <td className="px-4 py-2 text-right tabular-nums text-slate-700">{r.debit ? money(r.debit) : ''}</td>}
+                    {cols.isVisible('credit') && <td className="px-4 py-2 text-right tabular-nums text-slate-700">{r.credit ? money(r.credit) : ''}</td>}
+                    {cols.isVisible('net') && <td className={`px-4 py-2 text-right tabular-nums font-medium ${net >= 0 ? 'text-teal-600' : 'text-red-600'}`}>{money(r.balance ?? net)}</td>}
                   </tr>
                 );
               })}
@@ -230,9 +230,9 @@ export default function TrialBalancePage() {
               <tfoot>
                 <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-800">
                   <td colSpan={labelSpan} className="px-4 py-2 text-xs font-semibold uppercase text-slate-500">Totals</td>
-                  {cols.isVisible('debit') && <td className="px-4 py-2 text-right tabular-nums">{money(totalDebit, 'PKR')}</td>}
-                  {cols.isVisible('credit') && <td className="px-4 py-2 text-right tabular-nums">{money(totalCredit, 'PKR')}</td>}
-                  {cols.isVisible('net') && <td className="px-4 py-2 text-right tabular-nums">{money(totalDebit - totalCredit, 'PKR')}</td>}
+                  {cols.isVisible('debit') && <td className="px-4 py-2 text-right tabular-nums">{money(totalDebit)}</td>}
+                  {cols.isVisible('credit') && <td className="px-4 py-2 text-right tabular-nums">{money(totalCredit)}</td>}
+                  {cols.isVisible('net') && <td className="px-4 py-2 text-right tabular-nums">{money(totalDebit - totalCredit)}</td>}
                 </tr>
               </tfoot>
             )}
@@ -259,17 +259,17 @@ function TBGroupRows({ group }: { group: TBGroup }) {
           <td className="px-4 py-2 font-mono text-slate-600">{r.code}</td>
           <td className="px-4 py-2 font-medium text-slate-800">{r.name}</td>
           <td className="px-4 py-2"><Badge tone="slate">{r.accountType ?? ''}</Badge></td>
-          <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.debit ?? 0, 'PKR')}</td>
-          <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.credit ?? 0, 'PKR')}</td>
-          <td className={`px-4 py-2 text-right tabular-nums font-medium ${(r.balance ?? (r.debit ?? 0) - (r.credit ?? 0)) >= 0 ? 'text-teal-600' : 'text-red-600'}`}>{money(r.balance ?? (r.debit ?? 0) - (r.credit ?? 0), 'PKR')}</td>
+          <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.debit ?? 0)}</td>
+          <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.credit ?? 0)}</td>
+          <td className={`px-4 py-2 text-right tabular-nums font-medium ${(r.balance ?? (r.debit ?? 0) - (r.credit ?? 0)) >= 0 ? 'text-teal-600' : 'text-red-600'}`}>{money(r.balance ?? (r.debit ?? 0) - (r.credit ?? 0))}</td>
         </tr>
       ))}
       {group.rows.length >= 1 && (
         <tr className="border-b border-slate-200 bg-slate-50 text-[13px] font-semibold text-slate-700">
           <td className="px-4 py-1.5" colSpan={3}>Sub-total</td>
-          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.debit, 'PKR')}</td>
-          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.credit, 'PKR')}</td>
-          <td className={`px-4 py-1.5 text-right tabular-nums ${group.net >= 0 ? 'text-teal-600' : 'text-red-600'}`}>{money(group.net, 'PKR')}</td>
+          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.debit)}</td>
+          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.credit)}</td>
+          <td className={`px-4 py-1.5 text-right tabular-nums ${group.net >= 0 ? 'text-teal-600' : 'text-red-600'}`}>{money(group.net)}</td>
         </tr>
       )}
     </>

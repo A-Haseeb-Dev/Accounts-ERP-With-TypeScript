@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/page-header';
+import { CURRENCIES } from '@/lib/currency';
 
 type Settings = Record<string, string>;
 
@@ -115,7 +116,11 @@ export default function SettingsPage() {
             <div>
               <p className="mb-3 text-sm font-semibold text-slate-700">Regional</p>
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Currency"><Input value={merged.currency ?? 'PKR'} onChange={(e) => set('currency', e.target.value)} /></Field>
+                <Field label="Currency" hint="Base currency used across the app — reports, invoices and printed amount-in-words follow this.">
+                  <Select value={merged.currency ?? 'PKR'} onChange={(e) => set('currency', e.target.value)}>
+                    {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}
+                  </Select>
+                </Field>
                 <Field label="Date Format"><Input value={merged.dateFormat ?? 'MM/DD/YYYY'} onChange={(e) => set('dateFormat', e.target.value)} /></Field>
                 <Field label="Timezone"><Input value={merged.timezone ?? 'Asia/Karachi'} onChange={(e) => set('timezone', e.target.value)} /></Field>
               </div>

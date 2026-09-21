@@ -15,6 +15,7 @@ import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { dateTime, dateOnly, money } from '@/lib/utils';
+import { getCurrencyInfo } from '@/lib/currency';
 import { useAuth } from '@/context/auth-context';
 import { useFlatOptions } from '@/hooks/use-options';
 import type { Paginated, PaymentEntry } from '@/lib/types';
@@ -256,7 +257,7 @@ export default function ChequesRegisterPage() {
             ) },
             { key: 'pdcAccount', header: 'PDC account', render: (r) => <span className="text-slate-600">{r.pdcAccount?.name ?? (r.paymentType === 'PAYMENT' ? (r.mainAccount?.name ?? 'Cheques Issued') : '-')}</span> },
             { key: 'bankAccount', header: 'Bank', render: (r) => <span className="text-slate-600">{r.bankAccount?.name ?? '-'}</span> },
-            { key: 'amount', header: 'Amount', align: 'right', render: (r) => <span className="font-medium text-slate-800">{money(r.amount, 'PKR')}</span> },
+            { key: 'amount', header: 'Amount', align: 'right', render: (r) => <span className="font-medium text-slate-800">{money(r.amount)}</span> },
             {
               key: 'chequeStatus', header: 'State',
               render: (r) => {
@@ -315,7 +316,7 @@ export default function ChequesRegisterPage() {
             <KV label="Bank" value={detail.bankAccount?.name ?? '-'} />
             <KV label="PDC account" value={detail.pdcAccount?.name ?? (detail.paymentType === 'PAYMENT' ? (detail.mainAccount?.name ?? 'Cheques Issued') : '-')} />
             <KV label="State" value={detail.chequeStatus ?? '-'} />
-            <KV label="Amount" value={money(detail.amount, 'PKR')} />
+            <KV label="Amount" value={money(detail.amount)} />
             <KV label="Entry status" value={detail.status} />
             <KV label="Created" value={dateTime(detail.createdAt)} />
             {detail.chequeStatus === 'BOUNCED' && detail.bounceReason && (
@@ -331,7 +332,7 @@ export default function ChequesRegisterPage() {
         {!editEntry ? null : (
           <form onSubmit={saveEdit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-700 sm:col-span-2">
-              {editEntry.partyName} · {editEntry.paymentType === 'RECEIPT' ? 'Received' : 'Issued'} · {money(editEntry.amount, 'PKR')}
+              {editEntry.partyName} · {editEntry.paymentType === 'RECEIPT' ? 'Received' : 'Issued'} · {money(editEntry.amount)}
               {editEntry.chequeStatus ? ` · ${STATUS_BADGES[editEntry.chequeStatus]?.label ?? editEntry.chequeStatus}` : ''}
             </div>
             <Field label="Cheque number" required>
@@ -410,7 +411,7 @@ export default function ChequesRegisterPage() {
                 onChange={(e) => setEditForm((f) => ({ ...f, paymentDate: e.target.value }))}
               />
             </Field>
-            <Field label="Amount (₨)">
+            <Field label={`Amount (${getCurrencyInfo().symbol})`}>
               <Input
                 type="number" min={0} step="0.01"
                 value={editForm.amount ?? 0}
@@ -462,7 +463,7 @@ export default function ChequesRegisterPage() {
       <ConfirmDialog
         open={!!endorseEntry}
         title="Endorse cheque to another party"
-        message={`This pays the cheque (${endorseEntry?.number ?? ''} · ${endorseEntry?.amount ? money(endorseEntry.amount, 'PKR') : ''}) out of the PDC account — Dr party / Cr PDC account.`}
+        message={`This pays the cheque (${endorseEntry?.number ?? ''} · ${endorseEntry?.amount ? money(endorseEntry.amount) : ''}) out of the PDC account — Dr party / Cr PDC account.`}
         confirmLabel="Endorse cheque"
         loading={endorse.isPending}
         onCancel={() => { setEndorseEntry(null); setEndorsePartyId(''); }}

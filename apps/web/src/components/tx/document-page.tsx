@@ -16,6 +16,7 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { buildWhatsAppUrl, dateTime, isDueSoon, isOverdue, money } from '@/lib/utils';
+import { getCurrencyInfo } from '@/lib/currency';
 import { toast } from 'sonner';
 import { printElement } from '@/lib/report-export';
 import { useAuth } from '@/context/auth-context';
@@ -294,7 +295,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
               const url = r.status === 'posted' && party?.phone
                 ? buildWhatsAppUrl(
                     party.phone,
-                    `Assalam-o-Alaikum ${party?.name ?? ''},\nYour ${partyLabel === 'Supplier' ? 'bill' : 'invoice'} ${r.number ?? ''} of ${money(r.grandTotal ?? 0, 'PKR')}${r.dueDate ? ` is due on ${new Date(String(r.dueDate)).toLocaleDateString('en-GB')}` : ''}.\nThank you!`,
+                    `Assalam-o-Alaikum ${party?.name ?? ''},\nYour ${partyLabel === 'Supplier' ? 'bill' : 'invoice'} ${r.number ?? ''} of ${money(r.grandTotal ?? 0)}${r.dueDate ? ` is due on ${new Date(String(r.dueDate)).toLocaleDateString('en-GB')}` : ''}.\nThank you!`,
                   )
                 : null;
               return url ? (
@@ -311,7 +312,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
                 <span className="text-xs text-slate-300">—</span>
               );
             } }],
-            ...(showAmountPaid ? [{ key: 'amountPaid', header: 'Paid', align: 'right' as const, render: (r: TransactionDoc) => <span className="text-slate-500">{money(r.amountPaid ?? 0, 'PKR')}</span> }] : []),
+            ...(showAmountPaid ? [{ key: 'amountPaid', header: 'Paid', align: 'right' as const, render: (r: TransactionDoc) => <span className="text-slate-500">{money(r.amountPaid ?? 0)}</span> }] : []),
             ...(showDueDate ? [{ key: 'dueDate', header: 'Due', render: (r: TransactionDoc) => dueBadge(r) }] : []),
             { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'createdAt', header: 'Created', render: (r) => <span className="text-xs text-slate-400">{dateTime(r.createdAt)}</span> },
@@ -428,21 +429,21 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
             <div className="min-w-0">
               <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Totals</p>
-                <TotalsRow label="Subtotal" value={money(lineSubtotal, 'PKR')} />
-                {lineDiscount > 0 && <TotalsRow label="Line discounts" value={`- ${money(lineDiscount, 'PKR')}`} />}
-                {lineTax > 0 && <TotalsRow label="Line tax" value={money(lineTax, 'PKR')} />}
+                <TotalsRow label="Subtotal" value={money(lineSubtotal)} />
+                {lineDiscount > 0 && <TotalsRow label="Line discounts" value={`- ${money(lineDiscount)}`} />}
+                {lineTax > 0 && <TotalsRow label="Line tax" value={money(lineTax)} />}
 
                 <div className="grid grid-cols-2 gap-3 border-t border-slate-200 pt-3">
-                  <Field label="Discount (₨)"><Input type="number" min={0} step="0.01" placeholder="Fixed amount" value={String(form.discount ?? 0)} onChange={(e) => setForm((f) => ({ ...f, discount: Number(e.target.value) || 0 }))} /></Field>
-                  <Field label="Tax (₨)"><Input type="number" min={0} step="0.01" placeholder="Fixed amount" value={String(form.tax ?? 0)} onChange={(e) => setForm((f) => ({ ...f, tax: Number(e.target.value) || 0 }))} /></Field>
+                  <Field label={`Discount (${getCurrencyInfo().symbol})`}><Input type="number" min={0} step="0.01" placeholder="Fixed amount" value={String(form.discount ?? 0)} onChange={(e) => setForm((f) => ({ ...f, discount: Number(e.target.value) || 0 }))} /></Field>
+                  <Field label={`Tax (${getCurrencyInfo().symbol})`}><Input type="number" min={0} step="0.01" placeholder="Fixed amount" value={String(form.tax ?? 0)} onChange={(e) => setForm((f) => ({ ...f, tax: Number(e.target.value) || 0 }))} /></Field>
                 </div>
                 <p className="text-[11px] leading-snug text-slate-400">
-                  Whole-bill discount &amp; tax in rupees (₨), not percentages — applied on top of the item lines.
+                  Whole-bill discount &amp; tax in {getCurrencyInfo().main.toLowerCase()} ({getCurrencyInfo().symbol}), not percentages — applied on top of the item lines.
                 </p>
 
                 <div className="flex items-center justify-between border-t-2 border-slate-800 pt-2.5">
                   <span className="text-sm font-semibold text-slate-800">Grand total</span>
-                  <span className="text-lg font-bold tabular-nums text-slate-900">{money(grandTotal, 'PKR')}</span>
+                  <span className="text-lg font-bold tabular-nums text-slate-900">{money(grandTotal)}</span>
                 </div>
 
                 {showAmountPaid && (
@@ -464,7 +465,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
                       </Field>
                       <div className="flex justify-between text-sm text-slate-600">
                         <span>Balance due</span>
-                        <span className="tabular-nums font-semibold text-slate-800">{money(due, 'PKR')}</span>
+                        <span className="tabular-nums font-semibold text-slate-800">{money(due)}</span>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-slate-500">
                         <span className="h-2 w-2 rounded-full" style={{ background: paymentPreview === 'paid' ? '#059669' : paymentPreview === 'partial' ? '#d97706' : '#dc2626' }} />
@@ -602,7 +603,7 @@ function DocumentDetailModal({
   const whatsAppUrl = canPrint && partyPhone
     ? buildWhatsAppUrl(
         partyPhone,
-        `Assalam-o-Alaikum ${party?.name ?? ''},\nYour ${partyLabel === 'Supplier' ? 'bill' : 'invoice'} ${detail?.number ?? ''} of ${money(detail?.grandTotal ?? 0, 'PKR')}${dueText ? ` is due on ${dueText}` : ''}.\nThank you!`,
+        `Assalam-o-Alaikum ${party?.name ?? ''},\nYour ${partyLabel === 'Supplier' ? 'bill' : 'invoice'} ${detail?.number ?? ''} of ${money(detail?.grandTotal ?? 0)}${dueText ? ` is due on ${dueText}` : ''}.\nThank you!`,
       )
     : null;
   const printTitle = partyLabel === 'Supplier' ? 'Purchase Bill' : 'Sales Invoice';
@@ -702,8 +703,8 @@ function DocumentDetailModal({
                     <tr key={it.id ?? it.itemId ?? 'line'} className="border-b border-slate-100">
                       <td className="px-3 py-2 text-slate-800">{it.item?.name ?? it.itemId ?? '—'} <span className="text-xs text-slate-400">({it.item?.code ?? ''})</span></td>
                       <td className="px-3 py-2 text-right text-slate-700">{it.quantity}</td>
-                      <td className="px-3 py-2 text-right text-slate-700">{money(unit, 'PKR')}</td>
-                      <td className="px-3 py-2 text-right font-medium text-slate-800">{money(it.quantity * unit, 'PKR')}</td>
+                      <td className="px-3 py-2 text-right text-slate-700">{money(unit)}</td>
+                      <td className="px-3 py-2 text-right font-medium text-slate-800">{money(it.quantity * unit)}</td>
                     </tr>
                   );
                 })}
@@ -715,12 +716,12 @@ function DocumentDetailModal({
           </div>
 
           <div className="mt-4 space-y-1 rounded-lg bg-slate-50 px-4 py-3 text-sm">
-            <Fact label="Subtotal" value={money(detail.subtotal, 'PKR')} />
-            <Fact label="Discount" value={`- ${money(detail.discount, 'PKR')}`} />
-            <Fact label="Tax" value={money(detail.tax, 'PKR')} />
-            {showAmountPaid && <Fact label="Amount paid" value={money(detail.amountPaid, 'PKR')} />}
+            <Fact label="Subtotal" value={money(detail.subtotal)} />
+            <Fact label="Discount" value={`- ${money(detail.discount)}`} />
+            <Fact label="Tax" value={money(detail.tax)} />
+            {showAmountPaid && <Fact label="Amount paid" value={money(detail.amountPaid)} />}
             <div className="flex justify-between border-t border-slate-200 pt-1.5 font-semibold text-slate-800">
-              <span>Grand total</span><span>{money(detail.grandTotal, 'PKR')}</span>
+              <span>Grand total</span><span>{money(detail.grandTotal)}</span>
             </div>
           </div>
 

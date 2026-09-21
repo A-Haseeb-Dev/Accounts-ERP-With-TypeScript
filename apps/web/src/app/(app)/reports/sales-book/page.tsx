@@ -138,9 +138,9 @@ export default function SalesBookPage() {
                 ))}
                 <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold text-slate-900">
                   <td className="px-4 py-2" colSpan={3}>Total</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{money(totalSales, 'PKR')}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{money(totalPaid, 'PKR')}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{money(totalSales - totalPaid, 'PKR')}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{money(totalSales)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{money(totalPaid)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{money(totalSales - totalPaid)}</td>
                 </tr>
               </tbody>
             </table>
@@ -168,9 +168,9 @@ export default function SalesBookPage() {
                     {cols.isVisible('date') && <td className="px-4 py-2 text-slate-600">{new Date(r.saleDate).toLocaleDateString('en-GB')}</td>}
                     {cols.isVisible('number') && <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.number}</td>}
                     {cols.isVisible('customer') && <td className="px-4 py-2 text-slate-700">{r.customer?.name ?? '-'}</td>}
-                    {cols.isVisible('total') && <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(r.grandTotal, 'PKR')}</td>}
-                    {cols.isVisible('paid') && <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.amountPaid, 'PKR')}</td>}
-                    {cols.isVisible('balance') && <td className={`px-4 py-2 text-right tabular-nums font-medium ${bal > 0.01 ? 'text-red-600' : 'text-teal-600'}`}>{money(bal, 'PKR')}</td>}
+                    {cols.isVisible('total') && <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(r.grandTotal)}</td>}
+                    {cols.isVisible('paid') && <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.amountPaid)}</td>}
+                    {cols.isVisible('balance') && <td className={`px-4 py-2 text-right tabular-nums font-medium ${bal > 0.01 ? 'text-red-600' : 'text-teal-600'}`}>{money(bal)}</td>}
                   </tr>
                 );
               })}
@@ -182,9 +182,9 @@ export default function SalesBookPage() {
               <tfoot>
                 <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-800">
                   <td colSpan={labelSpan} className="px-4 py-2 text-xs font-semibold uppercase text-slate-500">Totals</td>
-                  {cols.isVisible('total') && <td className="px-4 py-2 text-right tabular-nums">{money(totalSales, 'PKR')}</td>}
-                  {cols.isVisible('paid') && <td className="px-4 py-2 text-right tabular-nums">{money(totalPaid, 'PKR')}</td>}
-                  {cols.isVisible('balance') && <td className="px-4 py-2 text-right tabular-nums">{money(totalSales - totalPaid, 'PKR')}</td>}
+                  {cols.isVisible('total') && <td className="px-4 py-2 text-right tabular-nums">{money(totalSales)}</td>}
+                  {cols.isVisible('paid') && <td className="px-4 py-2 text-right tabular-nums">{money(totalPaid)}</td>}
+                  {cols.isVisible('balance') && <td className="px-4 py-2 text-right tabular-nums">{money(totalSales - totalPaid)}</td>}
                 </tr>
               </tfoot>
             )}
@@ -213,18 +213,18 @@ function SalesGroupRows({ group }: { group: { key: string; monthLabel: string; r
             <td className="px-4 py-2 text-slate-600">{new Date(r.saleDate).toLocaleDateString('en-GB')}</td>
             <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.number}</td>
             <td className="px-4 py-2 text-slate-700">{r.customer?.name ?? '-'}</td>
-            <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(Number(r.grandTotal), 'PKR')}</td>
-            <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(Number(r.amountPaid), 'PKR')}</td>
-            <td className={`px-4 py-2 text-right tabular-nums font-medium ${bal > 0.01 ? 'text-red-600' : 'text-teal-600'}`}>{money(bal, 'PKR')}</td>
+            <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(Number(r.grandTotal))}</td>
+            <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(Number(r.amountPaid))}</td>
+            <td className={`px-4 py-2 text-right tabular-nums font-medium ${bal > 0.01 ? 'text-red-600' : 'text-teal-600'}`}>{money(bal)}</td>
           </tr>
         );
       })}
       {group.rows.length >= 1 && (
         <tr className="border-b border-slate-200 bg-slate-50 text-[13px] font-semibold text-slate-700">
           <td className="px-4 py-1.5" colSpan={3}>Sub-total</td>
-          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.total, 'PKR')}</td>
-          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.paid, 'PKR')}</td>
-          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.total - group.paid, 'PKR')}</td>
+          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.total)}</td>
+          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.paid)}</td>
+          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.total - group.paid)}</td>
         </tr>
       )}
     </>

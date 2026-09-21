@@ -281,10 +281,10 @@ export function PrintableDocument({
                                 )}
                               </td>
                               <td style={{ padding: rowPad, textAlign: 'right' }}>{num(l.quantity)}</td>
-                              <td style={{ padding: rowPad, textAlign: 'right' }}>{money(unit(l), 'PKR')}</td>
-                              {fmt.invoiceShowDiscountCol && <td style={{ padding: rowPad, textAlign: 'right' }}>{Number(l.discount ?? 0) ? money(l.discount, 'PKR') : '—'}</td>}
-                              {fmt.invoiceShowTaxCol && <td style={{ padding: rowPad, textAlign: 'right' }}>{Number(l.tax ?? 0) ? money(l.tax, 'PKR') : '—'}</td>}
-                              <td style={{ padding: rowPad, textAlign: 'right', fontWeight: 600 }}>{money(lineAmount(l), 'PKR')}</td>
+                              <td style={{ padding: rowPad, textAlign: 'right' }}>{money(unit(l))}</td>
+                              {fmt.invoiceShowDiscountCol && <td style={{ padding: rowPad, textAlign: 'right' }}>{Number(l.discount ?? 0) ? money(l.discount) : '—'}</td>}
+                              {fmt.invoiceShowTaxCol && <td style={{ padding: rowPad, textAlign: 'right' }}>{Number(l.tax ?? 0) ? money(l.tax) : '—'}</td>}
+                              <td style={{ padding: rowPad, textAlign: 'right', fontWeight: 600 }}>{money(lineAmount(l))}</td>
                             </tr>
                           ))}
                           {items.length === 0 && (
@@ -296,12 +296,12 @@ export function PrintableDocument({
                   case 'totals':
                     return (
                       <div style={{ display: 'inline-block', minWidth: 240, textAlign: 'left' }}>
-                        <TotalsRow label="Subtotal" value={money(sub, 'PKR')} fz={fz} thermal={false} base={bs(cfg)} />
-                        {discount > 0 && <TotalsRow label="Discount" value={`- ${money(discount, 'PKR')}`} fz={fz} thermal={false} base={bs(cfg)} />}
-                        {tax > 0 && <TotalsRow label="Tax" value={money(tax, 'PKR')} fz={fz} thermal={false} base={bs(cfg)} />}
-                        <TotalsRow label="Grand total" value={money(grandTotal, 'PKR')} strong fz={fz} thermal={false} base={bs(cfg)} />
-                        {showAmountPaid && <TotalsRow label="Amount paid" value={money(amountPaid, 'PKR')} fz={fz} thermal={false} base={bs(cfg)} />}
-                        {showAmountPaid && fmt.invoiceShowBalance && <TotalsRow label="Balance due" value={money(balance, 'PKR')} strong fz={fz} thermal={false} base={bs(cfg)} />}
+                        <TotalsRow label="Subtotal" value={money(sub)} fz={fz} thermal={false} base={bs(cfg)} />
+                        {discount > 0 && <TotalsRow label="Discount" value={`- ${money(discount)}`} fz={fz} thermal={false} base={bs(cfg)} />}
+                        {tax > 0 && <TotalsRow label="Tax" value={money(tax)} fz={fz} thermal={false} base={bs(cfg)} />}
+                        <TotalsRow label="Grand total" value={money(grandTotal)} strong fz={fz} thermal={false} base={bs(cfg)} />
+                        {showAmountPaid && <TotalsRow label="Amount paid" value={money(amountPaid)} fz={fz} thermal={false} base={bs(cfg)} />}
+                        {showAmountPaid && fmt.invoiceShowBalance && <TotalsRow label="Balance due" value={money(balance)} strong fz={fz} thermal={false} base={bs(cfg)} />}
                       </div>
                     );
                   case 'amountWords':
@@ -475,10 +475,10 @@ export function PrintableDocument({
                 )}
               </td>
               <td style={{ padding: rowPad, textAlign: 'right' }}>{num(l.quantity)}</td>
-              <td style={{ padding: rowPad, textAlign: 'right' }}>{money(unit(l), 'PKR')}</td>
-              {fmt.invoiceShowDiscountCol && <td style={{ padding: rowPad, textAlign: 'right' }}>{Number(l.discount ?? 0) ? money(l.discount, 'PKR') : '—'}</td>}
-              {fmt.invoiceShowTaxCol && <td style={{ padding: rowPad, textAlign: 'right' }}>{Number(l.tax ?? 0) ? money(l.tax, 'PKR') : '—'}</td>}
-              <td style={{ padding: rowPad, textAlign: 'right', fontWeight: 600 }}>{money(lineAmount(l), 'PKR')}</td>
+              <td style={{ padding: rowPad, textAlign: 'right' }}>{money(unit(l))}</td>
+              {fmt.invoiceShowDiscountCol && <td style={{ padding: rowPad, textAlign: 'right' }}>{Number(l.discount ?? 0) ? money(l.discount) : '—'}</td>}
+              {fmt.invoiceShowTaxCol && <td style={{ padding: rowPad, textAlign: 'right' }}>{Number(l.tax ?? 0) ? money(l.tax) : '—'}</td>}
+              <td style={{ padding: rowPad, textAlign: 'right', fontWeight: 600 }}>{money(lineAmount(l))}</td>
             </tr>
           ))}
           {items.length === 0 && (
@@ -490,12 +490,12 @@ export function PrintableDocument({
       {/* Totals */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: thermal ? 8 : 14, breakInside: 'avoid' }}>
         <div style={{ width: thermal ? '100%' : tight ? 230 : 260 }}>
-          <TotalsRow label="Subtotal" value={money(sub, 'PKR')} fz={fz} thermal={thermal} />
-          {discount > 0 && <TotalsRow label="Discount" value={`- ${money(discount, 'PKR')}`} fz={fz} thermal={thermal} />}
-          {tax > 0 && <TotalsRow label="Tax" value={money(tax, 'PKR')} fz={fz} thermal={thermal} />}
-          <TotalsRow label="Grand total" value={money(grandTotal, 'PKR')} strong fz={fz} thermal={thermal} />
-          {showAmountPaid && <TotalsRow label="Amount paid" value={money(amountPaid, 'PKR')} fz={fz} thermal={thermal} />}
-          {showAmountPaid && fmt.invoiceShowBalance && <TotalsRow label="Balance due" value={money(balance, 'PKR')} strong fz={fz} thermal={thermal} />}
+          <TotalsRow label="Subtotal" value={money(sub)} fz={fz} thermal={thermal} />
+          {discount > 0 && <TotalsRow label="Discount" value={`- ${money(discount)}`} fz={fz} thermal={thermal} />}
+          {tax > 0 && <TotalsRow label="Tax" value={money(tax)} fz={fz} thermal={thermal} />}
+          <TotalsRow label="Grand total" value={money(grandTotal)} strong fz={fz} thermal={thermal} />
+          {showAmountPaid && <TotalsRow label="Amount paid" value={money(amountPaid)} fz={fz} thermal={thermal} />}
+          {showAmountPaid && fmt.invoiceShowBalance && <TotalsRow label="Balance due" value={money(balance)} strong fz={fz} thermal={thermal} />}
         </div>
       </div>
 
@@ -511,7 +511,7 @@ export function PrintableDocument({
       {showAmountPaid && balance > 0 && fmt.invoiceShowBalance && (
         <div style={{ marginTop: 4, fontSize: font(thermal ? 8 : 11), color: '#475569', breakInside: 'avoid' }}>
           Payment status: <b style={{ textTransform: 'uppercase' }}>{paymentStatus ?? 'unpaid'}</b> — balance of{' '}
-          {money(balance, 'PKR')} is due.
+          {money(balance)} is due.
         </div>
       )}
 

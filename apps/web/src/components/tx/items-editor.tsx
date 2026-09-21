@@ -6,6 +6,7 @@ import { Select, Input } from '@/components/ui/field';
 import { Button } from '@/components/ui/button';
 import type { Option } from '@/hooks/use-options';
 import { money } from '@/lib/utils';
+import { getCurrencyInfo } from '@/lib/currency';
 
 export interface LineItem {
   key: string;
@@ -91,8 +92,8 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey, defaultPri
               <th className="px-3 py-2">Item</th>
               <th className="w-20 px-3 py-2 text-right">Qty</th>
               <th className="w-28 px-3 py-2 text-right">{priceKey === 'unitCost' ? 'Unit Cost' : 'Unit Price'}</th>
-              <th className="w-28 px-3 py-2 text-right" title="Per-line discount — fixed amount in rupees, not a percentage">Disc. (₨)</th>
-              <th className="w-28 px-3 py-2 text-right" title="Per-line tax — fixed amount in rupees, not a percentage">Tax (₨)</th>
+              <th className="w-28 px-3 py-2 text-right" title={`Per-line discount — fixed amount in ${getCurrencyInfo().main.toLowerCase()}, not a percentage`}>Disc. ({getCurrencyInfo().symbol})</th>
+              <th className="w-28 px-3 py-2 text-right" title={`Per-line tax — fixed amount in ${getCurrencyInfo().main.toLowerCase()}, not a percentage`}>Tax ({getCurrencyInfo().symbol})</th>
               <th className="w-24 px-3 py-2 text-right">Line Total</th>
               <th className="w-10 px-3 py-2"></th>
             </tr>
@@ -159,7 +160,7 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey, defaultPri
                     />
                   </td>
                   <td className="px-3 py-1.5 text-right font-medium text-slate-700">
-                    {money(lineTotal, 'PKR')}
+                    {money(lineTotal)}
                   </td>
                   <td className="px-3 py-1.5 text-center">
                     <button onClick={() => remove(i.key)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600">
@@ -182,17 +183,17 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey, defaultPri
         <Plus className="h-4 w-4" /> Add line
       </Button>
       <p className="mt-1.5 text-xs text-slate-400">
-        Discount and Tax are fixed amounts in rupees (₨) per line — not percentages.
+        Discount and Tax are fixed amounts in {getCurrencyInfo().main.toLowerCase()} ({getCurrencyInfo().symbol}) per line — not percentages.
         Line total = Qty × Price − Discount + Tax.
       </p>
 
       <div className="mt-3 space-y-1 rounded-lg bg-slate-50 px-4 py-3 text-sm">
-        <SummaryRow label="Subtotal" value={money(subtotal, 'PKR')} />
-        <SummaryRow label="Discount" value={`- ${money(totalDiscount, 'PKR')}`} />
-        <SummaryRow label="Tax" value={money(totalTax, 'PKR')} />
+        <SummaryRow label="Subtotal" value={money(subtotal)} />
+        <SummaryRow label="Discount" value={`- ${money(totalDiscount)}`} />
+        <SummaryRow label="Tax" value={money(totalTax)} />
         <div className="flex justify-between border-t border-slate-200 pt-1.5 font-semibold text-slate-800">
           <span>Grand total</span>
-          <span>{money(grand, 'PKR')}</span>
+          <span>{money(grand)}</span>
         </div>
       </div>
     </div>

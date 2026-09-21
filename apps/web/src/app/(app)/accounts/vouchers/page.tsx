@@ -162,7 +162,7 @@ export default function VouchersPage() {
       return;
     }
     if (!balanced) {
-      setError(`Entries don't balance: debit ${money(totalDebit, 'PKR')} vs credit ${money(totalCredit, 'PKR')}.`);
+      setError(`Entries don't balance: debit ${money(totalDebit)} vs credit ${money(totalCredit)}.`);
       return;
     }
     const payload = {
@@ -354,11 +354,11 @@ export default function VouchersPage() {
                 <tfoot>
                   <tr className="border-t border-slate-200 bg-slate-50 font-medium text-slate-800">
                     <td className="px-3 py-2 text-xs font-semibold uppercase text-slate-500">Totals</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{money(totalDebit, 'PKR')}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{money(totalCredit, 'PKR')}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{money(totalDebit)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{money(totalCredit)}</td>
                     <td className="px-3 py-2 text-right text-xs" colSpan={2}>
                       <span className={balanced ? 'font-medium text-teal-600' : 'font-semibold text-red-600'}>
-                        {balanced ? 'Balanced' : `Off by ${money(Math.abs(totalDebit - totalCredit), 'PKR')}`}
+                        {balanced ? 'Balanced' : `Off by ${money(Math.abs(totalDebit - totalCredit))}`}
                       </span>
                     </td>
                   </tr>
@@ -469,8 +469,8 @@ function VoucherDetailModal({
                 {entries.map((en, i) => (
                   <tr key={i} className="border-b border-slate-100">
                     <td className="px-3 py-2 text-slate-800">{en.mainAccount?.name ?? '-'} <span className="text-xs text-slate-400">({en.mainAccount?.code})</span></td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{en.debit ? money(en.debit, 'PKR') : ''}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{en.credit ? money(en.credit, 'PKR') : ''}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{en.debit ? money(en.debit) : ''}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{en.credit ? money(en.credit) : ''}</td>
                     <td className="px-3 py-2 text-sm text-slate-500">{en.narration ?? ''}</td>
                   </tr>
                 ))}
@@ -478,8 +478,8 @@ function VoucherDetailModal({
               <tfoot>
                 <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-800">
                   <td className="px-3 py-2 text-xs font-semibold uppercase text-slate-500">Totals</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{money(tDebit, 'PKR')}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{money(tCredit, 'PKR')}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{money(tDebit)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{money(tCredit)}</td>
                   <td className="px-3 py-2"></td>
                 </tr>
               </tfoot>

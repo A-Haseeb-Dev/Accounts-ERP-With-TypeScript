@@ -208,7 +208,7 @@ export default function ProductLedgerPage() {
                       {cols.isVisible('qtyIn') && <td className="px-4 py-2 text-right tabular-nums text-teal-600">{r.stockIn ? r.stockIn : ''}</td>}
                       {cols.isVisible('qtyOut') && <td className="px-4 py-2 text-right tabular-nums text-red-600">{r.stockOut ? r.stockOut : ''}</td>}
                       {cols.isVisible('balance') && <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{r.balance ?? 0}</td>}
-                      {cols.isVisible('value') && <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(value, 'PKR')}</td>}
+                      {cols.isVisible('value') && <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(value)}</td>}
                     </tr>
                   );
                 })}
@@ -258,7 +258,7 @@ export default function ProductLedgerPage() {
                   <td className="px-4 py-2 text-right tabular-nums text-teal-700">{summary.totals.stockIn}</td>
                   <td className="px-4 py-2 text-right tabular-nums text-red-700">{summary.totals.stockOut}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{summary.totals.closing}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{money(summary.totals.value, 'PKR')}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{money(summary.totals.value)}</td>
                 </tr>
               </tbody>
             </table>
@@ -287,7 +287,7 @@ function ProductGroupRows({ group }: { group: ProductSummaryGroup }) {
           <td className="px-4 py-2 text-right tabular-nums text-teal-700">{r.stockIn}</td>
           <td className="px-4 py-2 text-right tabular-nums text-red-700">{r.stockOut}</td>
           <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-900">{r.closing}</td>
-          <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.value, 'PKR')}</td>
+          <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.value)}</td>
         </tr>
       ))}
       {group.rows.length > 1 && (
@@ -297,7 +297,7 @@ function ProductGroupRows({ group }: { group: ProductSummaryGroup }) {
           <td className="px-4 py-1.5 text-right tabular-nums text-teal-700">{group.stockIn}</td>
           <td className="px-4 py-1.5 text-right tabular-nums text-red-700">{group.stockOut}</td>
           <td className="px-4 py-1.5 text-right tabular-nums">{group.closing}</td>
-          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.value, 'PKR')}</td>
+          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.value)}</td>
         </tr>
       )}
     </>

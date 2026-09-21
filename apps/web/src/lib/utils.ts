@@ -1,16 +1,18 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { getAppCurrency, getCurrencyInfo } from './currency';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export const money = (value: unknown, currency = 'PKR'): string => {
+export const money = (value: unknown, currency = getAppCurrency()): string => {
   const n = Number(value ?? 0);
   if (Number.isNaN(n)) return '-';
-  return new Intl.NumberFormat('en-PK', {
+  const info = getCurrencyInfo(currency);
+  return new Intl.NumberFormat(info.locale, {
     style: 'currency',
-    currency,
+    currency: info.code,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n);
@@ -19,7 +21,7 @@ export const money = (value: unknown, currency = 'PKR'): string => {
 export const num = (value: unknown): string => {
   const n = Number(value ?? 0);
   if (Number.isNaN(n)) return '-';
-  return new Intl.NumberFormat('en-PK', { maximumFractionDigits: 2 }).format(n);
+  return new Intl.NumberFormat(getCurrencyInfo().locale, { maximumFractionDigits: 2 }).format(n);
 };
 
 export const dateTime = (value: unknown): string => {
@@ -58,7 +60,7 @@ function threeDigits(n: number): string {
   return out || 'Zero';
 }
 
-function integerToWords(n: number): string {
+function integerToWordsIndian(n: number): string {
   if (n === 0) return 'Zero';
   const crore = Math.floor(n / 10000000);
   n %= 10000000;
@@ -74,15 +76,33 @@ function integerToWords(n: number): string {
   return parts.join(' ');
 }
 
-export const amountInWords = (value: unknown): string => {
+function integerToWordsWestern(n: number): string {
+  if (n === 0) return 'Zero';
+  const billion = Math.floor(n / 1000000000);
+  n %= 1000000000;
+  const million = Math.floor(n / 1000000);
+  n %= 1000000;
+  const thousand = Math.floor(n / 1000);
+  n %= 1000;
+  const parts: string[] = [];
+  if (billion) parts.push(threeDigits(billion) + ' Billion');
+  if (million) parts.push(threeDigits(million) + ' Million');
+  if (thousand) parts.push(threeDigits(thousand) + ' Thousand');
+  if (n) parts.push(threeDigits(n));
+  return parts.join(' ');
+}
+
+export const amountInWords = (value: unknown, currency = getAppCurrency()): string => {
   const n = Number(value ?? 0);
   if (Number.isNaN(n)) return '';
+  const info = getCurrencyInfo(currency);
   const negative = n < 0;
   const abs = Math.round(Math.abs(n) * 100) / 100;
-  const rupees = Math.floor(abs);
-  const paise = Math.round((abs - rupees) * 100);
-  let out = 'Rupees ' + integerToWords(rupees);
-  out += paise > 0 ? ' and ' + integerToWords(paise) + ' Paisa Only' : ' Only';
+  const whole = Math.floor(abs);
+  const fraction = Math.round((abs - whole) * 100);
+  const integerToWords = info.scale === 'indian' ? integerToWordsIndian : integerToWordsWestern;
+  let out = info.main + ' ' + integerToWords(whole);
+  out += fraction > 0 ? ' and ' + integerToWords(fraction) + ' ' + info.minor + ' Only' : ' Only';
   return (negative ? 'Minus ' : '') + out;
 };
 

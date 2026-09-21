@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Field, Input, Textarea } from '@/components/ui/field';
 import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/page-header';
+import { money } from '@/lib/utils';
 import type { BrandingSetting } from '@/lib/types';
 
 export default function BrandingPage() {
@@ -136,7 +137,7 @@ export default function BrandingPage() {
                 <div className="h-3 w-5/6 rounded bg-slate-100" />
                 <div className="mt-4 flex justify-between text-[11px] text-slate-500">
                   <span>Invoice total</span>
-                  <span className="font-semibold text-slate-800">PKR 0.00</span>
+                  <span className="font-semibold text-slate-800">{money(0)}</span>
                 </div>
               </div>
             </div>
