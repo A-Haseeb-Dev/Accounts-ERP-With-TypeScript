@@ -6,6 +6,7 @@ import { Menu } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { Sidebar } from '@/components/sidebar';
 import { PageLoader } from '@/components/ui/spinner';
+import { CurrencyProvider } from '@/components/currency-provider';
 import { initials } from '@/lib/utils';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -61,7 +62,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Content */}
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          <div key={pathname}>{children}</div>
+          <CurrencyProvider>
+            <div key={pathname}>{children}</div>
+          </CurrencyProvider>
         </main>
       </div>
     </div>

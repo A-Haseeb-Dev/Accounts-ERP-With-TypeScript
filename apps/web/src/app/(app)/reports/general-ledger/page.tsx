@@ -182,8 +182,8 @@ export default function GeneralLedgerPage() {
               </span>
             </div>
             <div className="flex flex-wrap justify-between gap-2 border-b border-slate-100 px-4 py-2 text-sm">
-              <span className="text-slate-600">Opening balance: <span className="font-semibold text-slate-800">{money(Math.abs(data?.openingBalance ?? 0), 'PKR')} <Badge tone={data?.openingBalanceType === 'CR' ? 'amber' : 'teal'}>{data?.openingBalanceType ?? 'DR'}</Badge></span></span>
-              <span className="text-slate-600">Closing balance: <span className="font-semibold text-slate-800">{money(Math.abs(data?.closingBalance ?? 0), 'PKR')} {data?.closingBalanceType && <Badge tone={data.closingBalanceType === 'CR' ? 'amber' : 'teal'}>{data.closingBalanceType}</Badge>}</span></span>
+              <span className="text-slate-600">Opening balance: <span className="font-semibold text-slate-800">{money(Math.abs(data?.openingBalance ?? 0))} <Badge tone={data?.openingBalanceType === 'CR' ? 'amber' : 'teal'}>{data?.openingBalanceType ?? 'DR'}</Badge></span></span>
+              <span className="text-slate-600">Closing balance: <span className="font-semibold text-slate-800">{money(Math.abs(data?.closingBalance ?? 0))} {data?.closingBalanceType && <Badge tone={data.closingBalanceType === 'CR' ? 'amber' : 'teal'}>{data.closingBalanceType}</Badge>}</span></span>
             </div>
             {isLoading ? (
               <TableSkeleton rows={6} columns={COLUMNS.length} />
@@ -203,9 +203,9 @@ export default function GeneralLedgerPage() {
                     {cols.isVisible('voucher') && <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.voucherNumber ?? ''}</td>}
                     {cols.isVisible('mainCode') && <td className="px-4 py-2 font-mono text-slate-600">{r.mainCode ?? ''}</td>}
                     {cols.isVisible('description') && <td className="max-w-[300px] truncate px-4 py-2 text-slate-600">{r.description ?? ''}</td>}
-                    {cols.isVisible('debit') && <td className="px-4 py-2 text-right tabular-nums text-teal-600">{r.debit ? money(r.debit, 'PKR') : ''}</td>}
-                    {cols.isVisible('credit') && <td className="px-4 py-2 text-right tabular-nums text-red-600">{r.credit ? money(r.credit, 'PKR') : ''}</td>}
-                    {cols.isVisible('balance') && <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(Math.abs(r.balance), 'PKR')}</td>}
+                    {cols.isVisible('debit') && <td className="px-4 py-2 text-right tabular-nums text-teal-600">{r.debit ? money(r.debit) : ''}</td>}
+                    {cols.isVisible('credit') && <td className="px-4 py-2 text-right tabular-nums text-red-600">{r.credit ? money(r.credit) : ''}</td>}
+                    {cols.isVisible('balance') && <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(Math.abs(r.balance))}</td>}
                     {cols.isVisible('balanceType') && <td className="px-4 py-2 text-right"><Badge tone={r.balanceType === 'CR' ? 'amber' : 'teal'}>{r.balanceType ?? ''}</Badge></td>}
                   </tr>
                 ))}
@@ -253,10 +253,10 @@ export default function GeneralLedgerPage() {
                 ))}
                 <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold text-slate-900">
                   <td className="px-4 py-2" colSpan={3}>Total</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{money(summary.totals.opening, 'PKR')}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-teal-700">{money(summary.totals.debit, 'PKR')}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-red-700">{money(summary.totals.credit, 'PKR')}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{money(summary.totals.closing, 'PKR')}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{money(summary.totals.opening)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-teal-700">{money(summary.totals.debit)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-red-700">{money(summary.totals.credit)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{money(summary.totals.closing)}</td>
                   <td className="px-4 py-2 text-right"><Badge tone={summary.totals.closing >= 0 ? 'teal' : 'amber'}>{summary.totals.closing >= 0 ? 'DR' : 'CR'}</Badge></td>
                 </tr>
               </tbody>
@@ -282,20 +282,20 @@ function GroupRows({ group }: { group: LedgerSummaryGroup }) {
           <td className="px-4 py-2 font-mono text-slate-600">{r.code}</td>
           <td className="px-4 py-2 font-medium text-slate-800">{r.name}</td>
           <td className="px-4 py-2"><Badge tone="slate">{r.accountType}</Badge></td>
-          <td className="px-4 py-2 text-right tabular-nums text-slate-600">{money(r.opening, 'PKR')}</td>
-          <td className="px-4 py-2 text-right tabular-nums text-teal-700">{money(r.debit, 'PKR')}</td>
-          <td className="px-4 py-2 text-right tabular-nums text-red-700">{money(r.credit, 'PKR')}</td>
-          <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-900">{money(r.closing, 'PKR')}</td>
+          <td className="px-4 py-2 text-right tabular-nums text-slate-600">{money(r.opening)}</td>
+          <td className="px-4 py-2 text-right tabular-nums text-teal-700">{money(r.debit)}</td>
+          <td className="px-4 py-2 text-right tabular-nums text-red-700">{money(r.credit)}</td>
+          <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-900">{money(r.closing)}</td>
           <td className="px-4 py-2 text-right"><Badge tone={r.balanceType === 'CR' ? 'amber' : 'teal'}>{r.balanceType ?? ''}</Badge></td>
         </tr>
       ))}
       {group.rows.length > 1 && (
         <tr className="border-b border-slate-200 bg-slate-50 text-[13px] font-semibold text-slate-700">
           <td className="px-4 py-1.5" colSpan={3}>Sub-total</td>
-          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.opening, 'PKR')}</td>
-          <td className="px-4 py-1.5 text-right tabular-nums text-teal-700">{money(group.debit, 'PKR')}</td>
-          <td className="px-4 py-1.5 text-right tabular-nums text-red-700">{money(group.credit, 'PKR')}</td>
-          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.closing, 'PKR')}</td>
+          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.opening)}</td>
+          <td className="px-4 py-1.5 text-right tabular-nums text-teal-700">{money(group.debit)}</td>
+          <td className="px-4 py-1.5 text-right tabular-nums text-red-700">{money(group.credit)}</td>
+          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.closing)}</td>
           <td className="px-4 py-1.5 text-right"><Badge tone={group.closing >= 0 ? 'teal' : 'amber'}>{group.closing >= 0 ? 'DR' : 'CR'}</Badge></td>
         </tr>
       )}

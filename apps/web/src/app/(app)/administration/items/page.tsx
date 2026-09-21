@@ -111,8 +111,8 @@ export default function ItemsPage() {
             { key: 'type', header: 'Type', render: (r) => <span className="text-slate-500">{r.itemType?.name ?? '-'}</span> },
             { key: 'brand', header: 'Brand', render: (r) => <span className="text-slate-500">{r.brand?.name ?? '-'}</span> },
             { key: 'unit', header: 'Unit', render: (r) => <span className="text-slate-500">{r.unit || '-'}</span> },
-            { key: 'purchasePrice', header: 'Purchase', align: 'right', render: (r) => <span className="text-slate-600">{money(r.purchasePrice, 'PKR')}</span> },
-            { key: 'salePrice', header: 'Sale', align: 'right', render: (r) => <span className="font-medium text-teal-700">{money(r.salePrice, 'PKR')}</span> },
+            { key: 'purchasePrice', header: 'Purchase', align: 'right', render: (r) => <span className="text-slate-600">{money(r.purchasePrice)}</span> },
+            { key: 'salePrice', header: 'Sale', align: 'right', render: (r) => <span className="font-medium text-teal-700">{money(r.salePrice)}</span> },
             { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'updatedAt', header: 'Updated', render: (r) => <span className="text-xs text-slate-400">{dateTime(r.updatedAt)}</span> },
             {

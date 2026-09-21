@@ -118,10 +118,10 @@ export default function CashBookPage() {
                   <tr key={g.month} className="border-b border-slate-100 last:border-0">
                     <td className="px-4 py-2 font-semibold text-slate-800">{g.monthLabel}</td>
                     <td className="px-4 py-2 text-slate-500">{g.rows.length}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-600">{money(g.opening, 'PKR')}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-teal-600">{money(g.debit, 'PKR')}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-red-600">{money(g.credit, 'PKR')}</td>
-                    <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(g.closing, 'PKR')}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-600">{money(g.opening)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-teal-600">{money(g.debit)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums text-red-600">{money(g.credit)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{money(g.closing)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -129,7 +129,7 @@ export default function CashBookPage() {
             {groups.length > 0 && (
               <div className="flex justify-end border-t border-slate-100 px-4 py-3 text-sm">
                 <span className="text-slate-500">Closing balance: </span>
-                <span className="ml-1.5 font-semibold tabular-nums text-slate-800">{money(groups[groups.length - 1].closing, 'PKR')}</span>
+                <span className="ml-1.5 font-semibold tabular-nums text-slate-800">{money(groups[groups.length - 1].closing)}</span>
               </div>
             )}
           </div>
@@ -143,9 +143,9 @@ export default function CashBookPage() {
             } },
             { key: 'reference', header: 'Reference', render: (r) => <span className="text-slate-600">{r.reference ?? '—'}</span> },
             { key: 'description', header: 'Description', render: (r) => <span className="text-slate-600">{r.description ?? '—'}</span> },
-            { key: 'debit', header: 'Receipts', align: 'right', render: (r) => <span className="tabular-nums text-teal-600">{r.debit ? money(r.debit, 'PKR') : ''}</span> },
-            { key: 'credit', header: 'Payments', align: 'right', render: (r) => <span className="tabular-nums text-red-600">{r.credit ? money(r.credit, 'PKR') : ''}</span> },
-            { key: 'runningBalance', header: 'Balance', align: 'right', render: (r) => <span className="font-medium tabular-nums text-slate-800">{money(r.runningBalance, 'PKR')}</span> },
+            { key: 'debit', header: 'Receipts', align: 'right', render: (r) => <span className="tabular-nums text-teal-600">{r.debit ? money(r.debit) : ''}</span> },
+            { key: 'credit', header: 'Payments', align: 'right', render: (r) => <span className="tabular-nums text-red-600">{r.credit ? money(r.credit) : ''}</span> },
+            { key: 'runningBalance', header: 'Balance', align: 'right', render: (r) => <span className="font-medium tabular-nums text-slate-800">{money(r.runningBalance)}</span> },
             {
               key: 'actions', header: 'Actions',
               render: (r) => (
@@ -166,7 +166,7 @@ export default function CashBookPage() {
 
         <div className="flex justify-end border-t border-slate-100 px-4 py-3 text-sm">
           <span className="text-slate-500">Closing balance: </span>
-          <span className="ml-1.5 font-semibold tabular-nums text-slate-800">{money(data?.totalRunning ?? 0, 'PKR')}</span>
+          <span className="ml-1.5 font-semibold tabular-nums text-slate-800">{money(data?.totalRunning ?? 0)}</span>
         </div>
         </>
         )}
@@ -217,8 +217,8 @@ function VoucherDetailModal({
                 {entries.map((en, i) => (
                   <tr key={i} className="border-b border-slate-100">
                     <td className="px-3 py-2 text-slate-800">{en.mainAccount?.name ?? '-'} <span className="text-xs text-slate-400">({en.mainAccount?.code})</span></td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{en.debit ? money(en.debit, 'PKR') : ''}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{en.credit ? money(en.credit, 'PKR') : ''}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{en.debit ? money(en.debit) : ''}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{en.credit ? money(en.credit) : ''}</td>
                     <td className="px-3 py-2 text-sm text-slate-500">{en.narration ?? ''}</td>
                   </tr>
                 ))}
@@ -226,8 +226,8 @@ function VoucherDetailModal({
               <tfoot>
                 <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-800">
                   <td className="px-3 py-2 text-xs font-semibold uppercase text-slate-500">Totals</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{money(tDebit, 'PKR')}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{money(tCredit, 'PKR')}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{money(tDebit)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{money(tCredit)}</td>
                   <td className="px-3 py-2"></td>
                 </tr>
               </tfoot>

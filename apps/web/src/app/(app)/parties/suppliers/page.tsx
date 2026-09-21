@@ -286,7 +286,7 @@ function SupplierDetail({
             <LabelValue label="Code" value={supplier.code} />
             <LabelValue label="Phone" value={supplier.phone || '-'} />
             <LabelValue label="Town" value={supplier.town?.name ?? '-'} />
-            <LabelValue label="Opening" value={money(supplier.openingBalance, 'PKR')} />
+            <LabelValue label="Opening" value={money(supplier.openingBalance)} />
           </div>
 
           <div className="mb-4 flex gap-1 border-b border-slate-200">

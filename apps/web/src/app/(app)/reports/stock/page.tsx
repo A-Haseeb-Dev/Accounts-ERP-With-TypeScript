@@ -127,7 +127,7 @@ export default function StockReportPage() {
                 <tr className="border-t-2 border-slate-300 bg-slate-100 font-semibold text-slate-900">
                   <td className="px-4 py-2" colSpan={3}>Total</td>
                   <td className="px-4 py-2 text-right tabular-nums">{totalQty}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">{money(totalValue, 'PKR')}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{money(totalValue)}</td>
                 </tr>
               </tbody>
             </table>
@@ -155,7 +155,7 @@ export default function StockReportPage() {
                   {cols.isVisible('type') && <td className="px-4 py-2 text-xs text-slate-500">{r.itemType ?? '-'}</td>}
                   {cols.isVisible('brand') && <td className="px-4 py-2 text-xs text-slate-500">{r.brand ?? '-'}</td>}
                   {cols.isVisible('qty') && <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{r.quantity ?? 0}</td>}
-                  {cols.isVisible('value') && <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.stockValue ?? 0, 'PKR')}</td>}
+                  {cols.isVisible('value') && <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.stockValue ?? 0)}</td>}
                 </tr>
               ))}
               {rows.length === 0 && !isLoading && (
@@ -167,7 +167,7 @@ export default function StockReportPage() {
                 <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-800">
                   <td colSpan={labelSpan} className="px-4 py-2 text-xs font-semibold uppercase text-slate-500">Totals</td>
                   {cols.isVisible('qty') && <td className="px-4 py-2 text-right tabular-nums">{totalQty}</td>}
-                  {cols.isVisible('value') && <td className="px-4 py-2 text-right tabular-nums">{money(totalValue, 'PKR')}</td>}
+                  {cols.isVisible('value') && <td className="px-4 py-2 text-right tabular-nums">{money(totalValue)}</td>}
                 </tr>
               </tfoot>
             )}
@@ -195,14 +195,14 @@ function StockGroupRows({ group }: { group: { key: string; typeName: string; row
           <td className="px-4 py-2 font-medium text-slate-800">{r.itemName}</td>
           <td className="px-4 py-2 text-xs text-slate-500">{r.brand ?? '-'}</td>
           <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{r.quantity ?? 0}</td>
-          <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.stockValue ?? 0, 'PKR')}</td>
+          <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.stockValue ?? 0)}</td>
         </tr>
       ))}
       {group.rows.length >= 1 && (
         <tr className="border-b border-slate-200 bg-slate-50 text-[13px] font-semibold text-slate-700">
           <td className="px-4 py-1.5" colSpan={3}>Sub-total</td>
           <td className="px-4 py-1.5 text-right tabular-nums">{group.qty}</td>
-          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.value, 'PKR')}</td>
+          <td className="px-4 py-1.5 text-right tabular-nums">{money(group.value)}</td>
         </tr>
       )}
     </>

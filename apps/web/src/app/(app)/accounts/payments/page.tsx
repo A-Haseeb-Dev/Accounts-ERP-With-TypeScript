@@ -17,6 +17,7 @@ import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { dateTime, dateOnly, isDueSoon, isOverdue, money } from '@/lib/utils';
+import { getCurrencyInfo } from '@/lib/currency';
 import { useAuth } from '@/context/auth-context';
 import type { Paginated, PaymentEntry, PaymentAllocation, OpenInvoice } from '@/lib/types';
 
@@ -241,7 +242,7 @@ export default function PaymentsPage() {
       return;
     }
     if (allocatedTotal > amt) {
-      setError(`Allocated amount (${money(allocatedTotal, 'PKR')}) exceeds the payment amount.`);
+      setError(`Allocated amount (${money(allocatedTotal)}) exceeds the payment amount.`);
       return;
     }
     create.mutate({
@@ -360,7 +361,7 @@ export default function PaymentsPage() {
               ),
             },
             { key: 'method', header: 'Method', render: (r) => <span className="text-slate-500">{r.method}</span> },
-            { key: 'amount', header: 'Amount', align: 'right', render: (r) => <span className="font-medium text-slate-800">{money(r.amount, 'PKR')}</span> },
+            { key: 'amount', header: 'Amount', align: 'right', render: (r) => <span className="font-medium text-slate-800">{money(r.amount)}</span> },
             { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
             { key: 'createdAt', header: 'Created', render: (r) => <span className="text-xs text-slate-400">{dateTime(r.createdAt)}</span> },
             {
@@ -506,7 +507,7 @@ export default function PaymentsPage() {
             <Field label="Reference">
               <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="optional" />
             </Field>
-            <Field label="Amount (₨)" required>
+            <Field label={`Amount (${getCurrencyInfo().symbol})`} required>
               <Input type="number" min={0} step="0.01" value={amount ? String(amount) : ''} onChange={(e) => { setAmount(Number(e.target.value) || 0); }} placeholder="0" required />
             </Field>
           </div>
@@ -517,8 +518,8 @@ export default function PaymentsPage() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                   Allocate against open {partyType === 'CUSTOMER' ? 'invoices' : 'bills'}
                   <span className="ml-2 font-normal normal-case text-slate-500">
-                    Allocated {money(allocatedTotal, 'PKR')} of {money(Number(amount || 0), 'PKR')}
-                    {unallocated > 0 && ` — unallocated ${money(unallocated, 'PKR')}`}
+                    Allocated {money(allocatedTotal)} of {money(Number(amount || 0))}
+                    {unallocated > 0 && ` — unallocated ${money(unallocated)}`}
                   </span>
                 </p>
                 <div className="flex gap-2">
@@ -556,9 +557,9 @@ export default function PaymentsPage() {
                           </td>
                           <td className="px-3 py-2 font-mono text-xs font-semibold text-slate-700">{inv.number}</td>
                           <td className="px-3 py-2">{renderDueDate(inv.dueDate)}</td>
-                          <td className="px-3 py-2 text-right text-slate-600">{money(inv.total, 'PKR')}</td>
-                          <td className="px-3 py-2 text-right text-slate-500">{money(inv.paid, 'PKR')}</td>
-                          <td className="px-3 py-2 text-right font-medium text-slate-800">{money(inv.outstanding, 'PKR')}</td>
+                          <td className="px-3 py-2 text-right text-slate-600">{money(inv.total)}</td>
+                          <td className="px-3 py-2 text-right text-slate-500">{money(inv.paid)}</td>
+                          <td className="px-3 py-2 text-right font-medium text-slate-800">{money(inv.outstanding)}</td>
                           <td className="px-3 py-2 text-right">
                             <Input
                               type="number" min={0} step="0.01"
@@ -633,7 +634,7 @@ export default function PaymentsPage() {
       <ConfirmDialog
         open={!!endorseEntry}
         title="Endorse cheque to another party"
-        message={`This pays the cheque (${endorseEntry?.number ?? ''} · ${endorseEntry?.amount ? money(endorseEntry.amount, 'PKR') : ''}) out of the PDC account — Dr party / Cr PDC account.`}
+        message={`This pays the cheque (${endorseEntry?.number ?? ''} · ${endorseEntry?.amount ? money(endorseEntry.amount) : ''}) out of the PDC account — Dr party / Cr PDC account.`}
         confirmLabel="Endorse cheque"
         loading={endorse.isPending}
         onCancel={() => { setEndorseEntry(null); setEndorsePartyId(''); }}
@@ -690,7 +691,7 @@ function PaymentDetailModal({
 
           <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
             <span className="text-sm font-semibold text-slate-700">Amount</span>
-            <span className="text-lg font-bold tabular-nums text-slate-900">{money(detail.amount, 'PKR')}</span>
+            <span className="text-lg font-bold tabular-nums text-slate-900">{money(detail.amount)}</span>
           </div>
 
           {allocations.length > 0 && (
@@ -706,7 +707,7 @@ function PaymentDetailModal({
                   {allocations.map((a, i) => (
                     <tr key={i} className="border-b border-slate-100 last:border-0">
                       <td className="px-3 py-2 text-slate-700">{a.documentType} — {a.documentId}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-700">{money(a.allocatedAmount, 'PKR')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-700">{money(a.allocatedAmount)}</td>
                     </tr>
                   ))}
                 </tbody>
