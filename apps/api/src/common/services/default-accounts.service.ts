@@ -37,6 +37,7 @@ const MAIN_ACCOUNTS: { code: string; name: string; subHead: string; type: string
   { code: '02-03', name: 'Salaries Payable', subHead: 'Current Liabilities', type: 'LIABILITY', settingKey: 'accounting.salaries_payable_account' },
   { code: '02-04', name: 'Payroll Deductions Payable', subHead: 'Current Liabilities', type: 'LIABILITY', settingKey: 'accounting.payroll_deductions_account' },
   { code: '02-05', name: 'Cheques Issued', subHead: 'Current Liabilities', type: 'LIABILITY', settingKey: 'accounting.cheque_issued_account' },
+  { code: '02-06', name: 'Commission Payable', subHead: 'Current Liabilities', type: 'LIABILITY', settingKey: 'accounting.commission_payable_account' },
   { code: '03-01', name: 'Opening Equity', subHead: 'Capital', type: 'EQUITY', settingKey: 'accounting.opening_equity_account' },
   { code: '03-02', name: 'Owner Capital', subHead: 'Capital', type: 'EQUITY' },
   { code: '04-01', name: 'Sales Revenue', subHead: 'Direct Revenue', type: 'REVENUE', settingKey: 'accounting.revenue_account' },
@@ -44,6 +45,7 @@ const MAIN_ACCOUNTS: { code: string; name: string; subHead: string; type: string
   { code: '05-01', name: 'Purchases', subHead: 'Cost of Sales', type: 'EXPENSE' },
   { code: '05-02', name: 'Purchase Returns', subHead: 'Cost of Sales', type: 'EXPENSE', settingKey: 'accounting.purchase_return_account' },
   { code: '05-03', name: 'Salary Expense', subHead: 'Operating Expenses', type: 'EXPENSE', settingKey: 'accounting.salary_expense_account' },
+  { code: '05-04', name: 'Commission Expense', subHead: 'Operating Expenses', type: 'EXPENSE', settingKey: 'accounting.commission_expense_account' },
 ];
 
 @Injectable()

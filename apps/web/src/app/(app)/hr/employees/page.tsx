@@ -74,6 +74,7 @@ export default function EmployeesPage() {
           ] },
           { name: 'bankName', label: 'Bank Name' },
           { name: 'bankAccount', label: 'Bank Account' },
+          { name: 'mainAccountId', label: 'Main Account', type: 'select', optionsResource: 'main-accounts' },
           { name: 'exitDate', label: 'Exit Date', type: 'date' },
           { name: 'exitReason', label: 'Exit Reason', type: 'textarea' },
           { name: 'status', label: 'Status', type: 'status' },

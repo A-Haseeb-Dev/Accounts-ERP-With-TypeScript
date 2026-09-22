@@ -60,6 +60,7 @@ export class SalesService {
           subtotal: totals.subtotal,
           discount: totals.discount,
           tax: totals.tax,
+          commission: dto.commission ?? 0,
           grandTotal: totals.grandTotal,
           paymentStatus,
           amountPaid,
@@ -177,6 +178,32 @@ export class SalesService {
         );
         if (taxAccountId) {
           entries.push({ mainAccountId: taxAccountId, credit: Number(sale.tax), narration: `Tax ${sale.number}` });
+        }
+      }
+
+      // Commission (if any): Dr Commission Expense, Cr Commission Payable.
+      // The receivable and revenue accounts are untouched — this is an extra
+      // expense the business owes (e.g. to an agent), booked alongside the sale.
+      if (Number(sale.commission) > 0) {
+        const commissionExpenseId = await this.defaultAccounts.resolveAccount(
+          'accounting.commission_expense_account',
+          'Commission Expense',
+        );
+        const commissionPayableId = await this.defaultAccounts.resolveAccount(
+          'accounting.commission_payable_account',
+          'Commission Payable',
+        );
+        if (commissionExpenseId && commissionPayableId) {
+          entries.push({
+            mainAccountId: commissionExpenseId,
+            debit: Number(sale.commission),
+            narration: `Commission ${sale.number}`,
+          });
+          entries.push({
+            mainAccountId: commissionPayableId,
+            credit: Number(sale.commission),
+            narration: `Commission ${sale.number}`,
+          });
         }
       }
 
@@ -340,6 +367,7 @@ export class SalesService {
           subtotal: totals.subtotal,
           discount: totals.discount,
           tax: totals.tax,
+          commission: dto.commission ?? 0,
           grandTotal: totals.grandTotal,
           paymentStatus,
           amountPaid,

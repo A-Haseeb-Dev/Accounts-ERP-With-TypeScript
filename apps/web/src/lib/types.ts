@@ -478,6 +478,7 @@ export interface Employee {
   employmentType?: string;
   bankName?: string;
   bankAccount?: string;
+  mainAccountId?: string;
   exitDate?: string;
   exitReason?: string;
   basicSalary: number;
@@ -803,6 +804,7 @@ export interface TransactionDoc {
   subtotal: number;
   discount: number;
   tax: number;
+  commission?: number;
   grandTotal: number;
   amountPaid?: number;
   customer?: { id: string; name: string; phone?: string; address?: string } | null;
