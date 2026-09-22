@@ -36,6 +36,7 @@ export interface DocumentConfig {
   locationOptions: Option[];
   showAmountPaid?: boolean;
   showDueDate?: boolean;
+  showCommission?: boolean;
   itemLineField: string;
   newLabel?: string;
 }
@@ -43,7 +44,7 @@ export interface DocumentConfig {
 export function DocumentPage({ config }: { config: DocumentConfig }) {
   const {
     resource, title, description, dateField, partyLabel, partyParam,
-    partyOptions, priceKey, locationOptions, showAmountPaid, showDueDate,
+    partyOptions, priceKey, locationOptions, showAmountPaid, showDueDate, showCommission,
   } = config;
 
   const qc = useQueryClient();
@@ -159,6 +160,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
       stockLocationId: form.stockLocationId,
       discount: Number(form.discount ?? 0),
       tax: Number(form.tax ?? 0),
+      ...(showCommission ? { commission: Number(form.commission ?? 0) } : {}),
       ...(showAmountPaid ? { amountPaid: Number(form.amountPaid ?? 0) } : {}),
       items,
     };
@@ -199,6 +201,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
       stockLocationId: record.stockLocationId ?? record.stockLocation?.id ?? '',
       discount: record.discount ?? 0,
       tax: record.tax ?? 0,
+      commission: record.commission ?? 0,
       amountPaid: record.amountPaid ?? 0,
     });
     setLines(lineItems);
@@ -436,6 +439,11 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
                 <div className="grid grid-cols-2 gap-3 border-t border-slate-200 pt-3">
                   <Field label={`Discount (${getCurrencyInfo().symbol})`}><Input type="number" min={0} step="0.01" placeholder="Fixed amount" value={String(form.discount ?? 0)} onChange={(e) => setForm((f) => ({ ...f, discount: Number(e.target.value) || 0 }))} /></Field>
                   <Field label={`Tax (${getCurrencyInfo().symbol})`}><Input type="number" min={0} step="0.01" placeholder="Fixed amount" value={String(form.tax ?? 0)} onChange={(e) => setForm((f) => ({ ...f, tax: Number(e.target.value) || 0 }))} /></Field>
+                  {showCommission && (
+                    <Field label={`Commission (${getCurrencyInfo().symbol})`} hint="Booked as Commission Expense (Dr) and Commission Payable (Cr).">
+                      <Input type="number" min={0} step="0.01" placeholder="Fixed amount" value={String(form.commission ?? 0)} onChange={(e) => setForm((f) => ({ ...f, commission: Number(e.target.value) || 0 }))} />
+                    </Field>
+                  )}
                 </div>
                 <p className="text-[11px] leading-snug text-slate-400">
                   Whole-bill discount &amp; tax in {getCurrencyInfo().main.toLowerCase()} ({getCurrencyInfo().symbol}), not percentages — applied on top of the item lines.
@@ -502,6 +510,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
         partyLabel={partyLabel}
         showAmountPaid={!!showAmountPaid}
         showDueDate={!!showDueDate}
+        showCommission={!!showCommission}
         docType={docType}
         canPrint={canPrint}
         printRequested={printRequested}
@@ -569,6 +578,7 @@ function DocumentDetailModal({
   partyLabel,
   showAmountPaid,
   showDueDate,
+  showCommission,
   docType,
   canPrint,
   printRequested,
@@ -584,6 +594,7 @@ function DocumentDetailModal({
   partyLabel: string;
   showAmountPaid: boolean;
   showDueDate: boolean;
+  showCommission?: boolean;
   docType?: string;
   canPrint: boolean;
   printRequested?: boolean;
@@ -719,6 +730,7 @@ function DocumentDetailModal({
             <Fact label="Subtotal" value={money(detail.subtotal)} />
             <Fact label="Discount" value={`- ${money(detail.discount)}`} />
             <Fact label="Tax" value={money(detail.tax)} />
+            {showCommission && Number(detail.commission ?? 0) > 0 && <Fact label="Commission" value={money(detail.commission)} />}
             {showAmountPaid && <Fact label="Amount paid" value={money(detail.amountPaid)} />}
             <div className="flex justify-between border-t border-slate-200 pt-1.5 font-semibold text-slate-800">
               <span>Grand total</span><span>{money(detail.grandTotal)}</span>

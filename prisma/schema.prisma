@@ -239,6 +239,7 @@ model MainAccount {
   suppliers      Supplier[]
   paymentEntries PaymentEntry[]
   bankAccounts   BankAccount[]
+  employees      Employee[]
   pdcCustomers   Customer[]      @relation("PartyPdcAccount")
   pdcSuppliers   Supplier[]      @relation("PartyPdcAccount")
   pdcPaymentEntries PaymentEntry[] @relation("PaymentPdcAccount")
@@ -487,6 +488,7 @@ model Purchase {
   subtotal        Decimal  @default(0) @db.Decimal(18, 2)
   discount        Decimal  @default(0) @db.Decimal(18, 2)
   tax             Decimal  @default(0) @db.Decimal(18, 2)
+  commission      Decimal  @default(0) @db.Decimal(18, 2)
   grandTotal      Decimal  @default(0) @db.Decimal(18, 2)
   payStatus       String   @default("unpaid") // paid | partial | unpaid
   paidAmount      Decimal  @default(0) @db.Decimal(18, 2)
@@ -601,6 +603,7 @@ model Sale {
   subtotal        Decimal   @default(0) @db.Decimal(18, 2)
   discount        Decimal   @default(0) @db.Decimal(18, 2)
   tax             Decimal   @default(0) @db.Decimal(18, 2)
+  commission      Decimal   @default(0) @db.Decimal(18, 2)
   grandTotal      Decimal   @default(0) @db.Decimal(18, 2)
   paymentStatus   String    @default("unpaid") // paid | partial | unpaid
   amountPaid      Decimal   @default(0) @db.Decimal(18, 2)
@@ -981,6 +984,7 @@ model Employee {
   exitReason     String?
   bankName       String?
   bankAccount    String?
+  mainAccountId  String?
   description    String?
   organizationId String   @default("default-org")
   createdAt      DateTime @default(now())
@@ -995,6 +999,7 @@ model Employee {
   salaryComponents EmployeeSalaryComponent[]
   loans            EmployeeLoan[]
   salaryHistory    EmployeeSalaryRecord[]
+  mainAccount      MainAccount?                @relation(fields: [mainAccountId], references: [id], onDelete: SetNull)
 
   @@unique([code, organizationId])
   @@index([fullName])

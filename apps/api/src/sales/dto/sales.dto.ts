@@ -80,6 +80,11 @@ export class CreateSaleDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
+  commission?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
   amountPaid?: number;
 }
 

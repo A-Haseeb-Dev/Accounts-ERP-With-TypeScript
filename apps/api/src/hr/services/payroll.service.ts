@@ -346,11 +346,27 @@ export class PayrollService {
         narration: `Salary expense${accountsById.get(accountId) ? ` - ${accountsById.get(accountId)}` : ''}`,
       });
     }
-    entries.push({
-      mainAccountId: salariesPayableId,
-      credit: Number(run.totalNet),
-      narration: 'Net salaries payable',
-    });
+    // Net pay is credited to each employee's own bound account when one is set;
+    // employees without an account roll up to the global salaries payable.
+    const unlinkedNet = run.items.reduce(
+      (s, item) => (item.employee.mainAccountId ? s : s + Number(item.netPay)),
+      0,
+    );
+    if (unlinkedNet > 0) {
+      entries.push({
+        mainAccountId: salariesPayableId,
+        credit: Math.round((unlinkedNet + Number.EPSILON) * 100) / 100,
+        narration: 'Net salaries payable',
+      });
+    }
+    for (const item of run.items) {
+      if (!item.employee.mainAccountId) continue;
+      entries.push({
+        mainAccountId: item.employee.mainAccountId,
+        credit: Math.round((Number(item.netPay) + Number.EPSILON) * 100) / 100,
+        narration: `Net pay - ${item.employee.fullName}`,
+      });
+    }
     if (Number(run.totalDeduction) > 0) {
       entries.push({
         mainAccountId: deductionsPayableId!,
@@ -434,6 +450,33 @@ export class PayrollService {
     const netAmount = Number(run.totalNet);
     const paid = await this.prisma.$transaction(async (tx) => {
       const number = await this.numbering.next('voucher_journal', 'JV', tx);
+      const settlementEntries: { mainAccountId: string; debit?: number; credit?: number; narration?: string }[] = [];
+      // Settle each employee's own bound account first; the rest clears the
+      // global salaries payable account.
+      const unlinkedNet = run.items.reduce(
+        (s, item) => (item.employee.mainAccountId ? s : s + Number(item.netPay)),
+        0,
+      );
+      if (unlinkedNet > 0) {
+        settlementEntries.push({
+          mainAccountId: salariesPayableId,
+          debit: Math.round((unlinkedNet + Number.EPSILON) * 100) / 100,
+          narration: 'Salaries settled',
+        });
+      }
+      for (const item of run.items) {
+        if (!item.employee.mainAccountId) continue;
+        settlementEntries.push({
+          mainAccountId: item.employee.mainAccountId,
+          debit: Math.round((Number(item.netPay) + Number.EPSILON) * 100) / 100,
+          narration: `Salary settled - ${item.employee.fullName}`,
+        });
+      }
+      settlementEntries.push({
+        mainAccountId: bankMainAccountId!,
+        credit: netAmount,
+        narration: 'Bank transfer',
+      });
       const voucher = await this.accounting.createVoucher(
         tx,
         {
@@ -441,10 +484,7 @@ export class PayrollService {
           voucherDate: new Date(),
           description: `Salary disbursement - ${run.periodLabel}`,
           reference: `${run.number}-DISB`,
-          entries: [
-            { mainAccountId: salariesPayableId, debit: netAmount, narration: 'Salaries settled' },
-            { mainAccountId: bankMainAccountId!, credit: netAmount, narration: 'Bank transfer' },
-          ],
+          entries: settlementEntries,
           createdById: actorId,
         },
         number,

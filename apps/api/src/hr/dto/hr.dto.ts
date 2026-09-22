@@ -59,6 +59,7 @@ export class CreateEmployeeDto {
   @IsNumber() @IsOptional() allowance?: number;
   @IsString() @IsOptional() bankName?: string;
   @IsString() @IsOptional() bankAccount?: string;
+  @IsString() @IsOptional() mainAccountId?: string;
   @IsString() @IsOptional() @MaxLength(500) description?: string;
   @IsString() @IsOptional() status?: string;
   @IsDateString() @IsOptional() exitDate?: string;
@@ -81,6 +82,7 @@ export class UpdateEmployeeDto {
   @IsNumber() @IsOptional() allowance?: number;
   @IsString() @IsOptional() bankName?: string;
   @IsString() @IsOptional() bankAccount?: string;
+  @IsString() @IsOptional() mainAccountId?: string;
   @IsString() @IsOptional() @MaxLength(500) description?: string;
   @IsString() @IsOptional() status?: string;
   @IsDateString() @IsOptional() exitDate?: string;

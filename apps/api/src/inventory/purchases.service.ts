@@ -50,6 +50,7 @@ export class PurchasesService {
             subtotal: quantities.subtotal,
             discount: quantities.discount,
             tax: quantities.tax,
+            commission: dto.commission ?? 0,
             grandTotal: quantities.grandTotal,
             status: 'draft',
             createdById: actorId,
@@ -162,6 +163,32 @@ export class PurchasesService {
           });
         } else {
           voucherEntries[0].debit = round2(Number(voucherEntries[0].debit) + taxAmount);
+        }
+      }
+
+      // Commission (if any): Dr Commission Expense, Cr Commission Payable.
+      // Inventory, supplier and tax accounts are untouched — it is booked as an
+      // extra expense the business owes (e.g. to an agent) alongside the purchase.
+      if (Number(purchase.commission) > 0) {
+        const commissionExpenseId = await this.defaultAccounts.resolveAccount(
+          'accounting.commission_expense_account',
+          'Commission Expense',
+        );
+        const commissionPayableId = await this.defaultAccounts.resolveAccount(
+          'accounting.commission_payable_account',
+          'Commission Payable',
+        );
+        if (commissionExpenseId && commissionPayableId) {
+          voucherEntries.push({
+            mainAccountId: commissionExpenseId,
+            debit: Number(purchase.commission),
+            narration: `Commission ${purchase.number}`,
+          });
+          voucherEntries.push({
+            mainAccountId: commissionPayableId,
+            credit: Number(purchase.commission),
+            narration: `Commission ${purchase.number}`,
+          });
         }
       }
 
@@ -286,6 +313,7 @@ export class PurchasesService {
           subtotal: quantities.subtotal,
           discount: quantities.discount,
           tax: quantities.tax,
+          commission: dto.commission ?? 0,
           grandTotal: quantities.grandTotal,
           items: {
             create: dto.items.map((item) => ({

@@ -80,6 +80,7 @@ export function PrintableDocument({
   const sub = items.reduce((s, l) => s + lineAmount(l), 0);
   const discount = Number(detail.discount ?? 0);
   const tax = Number(detail.tax ?? 0);
+  const commission = Number(detail.commission ?? 0);
   const grandTotal = Number(detail.grandTotal ?? sub - discount + tax);
   const amountPaid = Number(detail.amountPaid ?? 0);
   const balance = grandTotal - (showAmountPaid ? amountPaid : 0);
@@ -299,6 +300,7 @@ export function PrintableDocument({
                         <TotalsRow label="Subtotal" value={money(sub)} fz={fz} thermal={false} base={bs(cfg)} />
                         {discount > 0 && <TotalsRow label="Discount" value={`- ${money(discount)}`} fz={fz} thermal={false} base={bs(cfg)} />}
                         {tax > 0 && <TotalsRow label="Tax" value={money(tax)} fz={fz} thermal={false} base={bs(cfg)} />}
+                        {commission > 0 && <TotalsRow label="Commission" value={money(commission)} fz={fz} thermal={false} base={bs(cfg)} />}
                         <TotalsRow label="Grand total" value={money(grandTotal)} strong fz={fz} thermal={false} base={bs(cfg)} />
                         {showAmountPaid && <TotalsRow label="Amount paid" value={money(amountPaid)} fz={fz} thermal={false} base={bs(cfg)} />}
                         {showAmountPaid && fmt.invoiceShowBalance && <TotalsRow label="Balance due" value={money(balance)} strong fz={fz} thermal={false} base={bs(cfg)} />}
@@ -493,6 +495,7 @@ export function PrintableDocument({
           <TotalsRow label="Subtotal" value={money(sub)} fz={fz} thermal={thermal} />
           {discount > 0 && <TotalsRow label="Discount" value={`- ${money(discount)}`} fz={fz} thermal={thermal} />}
           {tax > 0 && <TotalsRow label="Tax" value={money(tax)} fz={fz} thermal={thermal} />}
+          {commission > 0 && <TotalsRow label="Commission" value={money(commission)} fz={fz} thermal={thermal} />}
           <TotalsRow label="Grand total" value={money(grandTotal)} strong fz={fz} thermal={thermal} />
           {showAmountPaid && <TotalsRow label="Amount paid" value={money(amountPaid)} fz={fz} thermal={thermal} />}
           {showAmountPaid && fmt.invoiceShowBalance && <TotalsRow label="Balance due" value={money(balance)} strong fz={fz} thermal={thermal} />}

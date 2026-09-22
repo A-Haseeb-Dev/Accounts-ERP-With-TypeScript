@@ -22,6 +22,7 @@ export default function SalesInvoicesPage() {
         locationOptions,
         showAmountPaid: true,
         showDueDate: true,
+        showCommission: true,
         newLabel: 'Sale',
       }}
     />

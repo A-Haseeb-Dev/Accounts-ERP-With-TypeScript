@@ -20,6 +20,7 @@ export default function PurchasesPage() {
         priceKey: 'unitCost',
         itemLineField: 'unitCost',
         locationOptions,
+        showCommission: true,
         newLabel: 'Purchase',
       }}
     />
