@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { CheckCircle2, Eye, Pencil, Plus, Search, Send, ShieldCheck, ShieldX, Trash2, XCircle } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
-import { createVoucher, updateVoucher, deleteVoucher } from '@/lib/accounts-api';
+import { createVoucher, updateVoucher, deleteVoucher, unpostVoucher } from '@/lib/accounts-api';
 import type { VoucherPayload } from '@/lib/accounts-api';
 import { useAccountingAccounts } from '@/hooks/use-options';
 import { useDocumentMutations } from '@/hooks/use-document-mutations';
@@ -60,6 +60,7 @@ export default function VouchersPage() {
   const [rejectTarget, setRejectTarget] = useState<Voucher | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
+  const [unpostTarget, setUnpostTarget] = useState<Voucher | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Voucher | null>(null);
   const [deleteError, setDeleteError] = useState('');
 
@@ -129,6 +130,25 @@ export default function VouchersPage() {
       toast.error(e.message || 'Could not delete voucher');
     },
   });
+
+  const unpost = useMutation({
+    mutationFn: (id: string) => unpostVoucher(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['vouchers'] });
+      qc.invalidateQueries({ queryKey: ['vouchers', 'next-number'] });
+      toast.success('Voucher unposted — effect removed from ledger, now editable');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Could not unpost voucher'),
+  });
+
+  const startEdit = (r: Voucher) => {
+    setDeleteError('');
+    if (r.status === 'posted') {
+      setUnpostTarget(r);
+    } else {
+      openEdit(r);
+    }
+  };
 
   const openEdit = (r: Voucher) => {
     setDeleteError('');
@@ -236,13 +256,13 @@ export default function VouchersPage() {
               render: (r) => (
                 <div className="flex items-center gap-0.5">
                   <button onClick={() => setDetailId(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
+                  {r.status !== 'cancelled' && canUpdate && (
+                    <button onClick={() => startEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title={r.status === 'posted' ? 'Edit (unposts first)' : 'Edit'}><Pencil className="h-4 w-4" /></button>
+                  )}
                   {r.status === 'draft' && (
                     <>
                       {canSubmit && (
                         <button onClick={() => submit.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-indigo-50 hover:text-indigo-700" title="Submit for approval"><Send className="h-4 w-4" /></button>
-                      )}
-                      {canUpdate && (
-                        <button onClick={() => openEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="Edit"><Pencil className="h-4 w-4" /></button>
                       )}
                       {canDelete && (
                         <button onClick={() => { setDeleteTarget(r); setDeleteError(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>
@@ -412,6 +432,17 @@ export default function VouchersPage() {
           </Field>
         </div>
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!unpostTarget}
+        danger
+        title="Edit posted voucher"
+        message={`"${unpostTarget?.number ?? ''}" is posted and its entries are part of the ledger. Editing will unpost it first — its effect is removed from the ledger and reports until you post it again. You can then change anything and re-post. Continue?`}
+        confirmLabel="Unpost & edit"
+        loading={unpost.isPending}
+        onCancel={() => setUnpostTarget(null)}
+        onConfirm={() => unpostTarget && unpost.mutate(unpostTarget.id, { onSuccess: () => openEdit(unpostTarget) })}
+      />
 
       <ConfirmDialog
         open={!!deleteTarget}

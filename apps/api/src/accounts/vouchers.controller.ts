@@ -90,6 +90,13 @@ export class VouchersController {
     return this.service.reject(id, dto.reason, actor?.id);
   }
 
+  @Post(':id/unpost')
+  @Permissions('accounts.vouchers.update')
+  @ApiOperation({ summary: 'Unpost a posted voucher back to draft (effect removed from ledger)' })
+  unpost(@Param('id') id: string, @CurrentUser() actor: any) {
+    return this.service.unpost(id, actor?.id);
+  }
+
   @Patch(':id')
   @Permissions('accounts.vouchers.update')
   @ApiOperation({ summary: 'Update a draft voucher' })
