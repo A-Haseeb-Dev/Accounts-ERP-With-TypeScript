@@ -297,3 +297,76 @@ describe('PaymentsService.updateCheque', () => {
     expect(msg.toLowerCase()).toContain('nothing to update');
   });
 });
+
+describe('PaymentsService.updatePayment', () => {
+  it('edits a pending cash entry without the cheque-only guard', async () => {
+    const { svc, prisma } = buildService();
+    prisma.paymentEntry.findUnique.mockResolvedValue(baseEntry({ method: 'CASH', chequeNumber: null }));
+
+    const result = await svc.updatePayment('cheque-1', { reference: 'Fixed note' } as EditChequeDto, 'actor');
+
+    expect(result.reference).toBe('Fixed note');
+    expect(prisma.paymentEntry.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('corrects the amount of a posted cash entry through reversal and re-post', async () => {
+    const { svc, prisma, accounting } = buildService();
+    prisma.paymentEntry.findUnique.mockResolvedValue(
+      baseEntry({ method: 'CASH', chequeNumber: null, status: 'posted', voucherId: 'voucher-1' }),
+    );
+    prisma.paymentEntry.update.mockImplementationOnce(async (args: { data: Record<string, unknown> }) => ({
+      ...baseEntry({ method: 'CASH', chequeNumber: null, status: 'pending' }),
+      ...(args.data ?? {}),
+      allocations: [],
+    }));
+
+    const result = await svc.updatePayment('cheque-1', {
+      amount: 2500,
+    } as EditChequeDto, 'actor');
+
+    expect(accounting.createVoucher).toHaveBeenCalled();
+    expect(prisma.paymentEntry.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amount: 2500 }) }),
+    );
+    expect(result).toBeDefined();
+  });
+
+  it('rejects a cancelled cash entry', async () => {
+    const { svc, prisma } = buildService();
+    prisma.paymentEntry.findUnique.mockResolvedValue(baseEntry({ method: 'CASH', chequeNumber: null, status: 'cancelled' }));
+
+    const msg = await apiErrorMessage(
+      svc.updatePayment('cheque-1', { narration: 'x' } as EditChequeDto, 'actor'),
+    );
+    expect(msg.toLowerCase()).toContain('cancelled');
+  });
+});
+
+describe('PaymentsService.deposit', () => {
+  it('still requires a bank when the entry has none saved and none is passed', async () => {
+    const { svc, prisma } = buildService();
+    prisma.paymentEntry.findUnique.mockResolvedValue(
+      baseEntry({ status: 'posted', chequeStatus: 'IN_HAND', bankAccountId: null }),
+    );
+
+    const msg = await apiErrorMessage(svc.deposit('cheque-1', undefined, 'actor'));
+    expect(msg.toLowerCase()).toContain('bank account');
+  });
+
+  it('accepts a bank account chosen at clear time and persists it', async () => {
+    const { svc, prisma } = buildService();
+    prisma.paymentEntry.findUnique.mockResolvedValue(
+      baseEntry({ status: 'posted', chequeStatus: 'IN_HAND', bankAccountId: null }),
+    );
+    prisma.bankAccount.findUnique.mockResolvedValue({ id: 'bank-1', name: 'Bank A', mainAccountId: 'bank-gl' });
+
+    const result = await svc.deposit('cheque-1', 'bank-1', 'actor');
+
+    expect(result.bankAccountId).toBe('bank-1');
+    expect(prisma.paymentEntry.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ chequeStatus: 'CLEARED', bankAccountId: 'bank-1' }),
+      }),
+    );
+  });
+});

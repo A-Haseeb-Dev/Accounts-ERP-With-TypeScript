@@ -2,10 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Eye, Landmark, Plus, RefreshCcw, Search, ShieldCheck, ShieldX, XCircle } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Eye, Landmark, Pencil, Plus, RefreshCcw, Search, ShieldCheck, ShieldX, XCircle } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
-import { createPayment, postPayment, cancelPayment, depositCheque, bounceCheque, endorseCheque, fetchOpenInvoices, fetchNextPaymentNumber } from '@/lib/accounts-api';
-import type { PaymentPayload } from '@/lib/accounts-api';
+import { createPayment, postPayment, cancelPayment, depositCheque, bounceCheque, endorseCheque, updatePayment, fetchOpenInvoices, fetchNextPaymentNumber } from '@/lib/accounts-api';
+import type { EditChequePayload, PaymentPayload } from '@/lib/accounts-api';
 import { useFlatOptions } from '@/hooks/use-options';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
@@ -43,6 +43,7 @@ export default function PaymentsPage() {
   const canCreate = can('accounts.payments.create');
   const canPost = can('accounts.payments.post');
   const canCancel = can('accounts.payments.cancel');
+  const canUpdate = can('accounts.payments.update');
   const { options: accountOptions, data: accountsData } = useFlatOptions<FlatAccount>('main-accounts');
   const { options: customerOptions } = useFlatOptions('customers');
   const { options: supplierOptions } = useFlatOptions('suppliers');
@@ -73,6 +74,15 @@ export default function PaymentsPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<PaymentEntry | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+
+  const [editEntry, setEditEntry] = useState<PaymentEntry | null>(null);
+  const [editForm, setEditForm] = useState<EditChequePayload>({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  const [depositTarget, setDepositTarget] = useState<PaymentEntry | null>(null);
+  const [depositBankId, setDepositBankId] = useState('');
+  const [depositError, setDepositError] = useState('');
 
   const { data, isLoading } = useQuery<Paginated<PaymentEntry>>({
     queryKey: ['payments', page, search, status, paymentType],
@@ -174,10 +184,12 @@ export default function PaymentsPage() {
   });
 
   const deposit = useMutation({
-    mutationFn: (id: string) => depositCheque(id),
+    mutationFn: ({ id, bankId }: { id: string; bankId?: string }) => depositCheque(id, bankId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['payments'] });
       qc.invalidateQueries({ queryKey: ['cheques'] });
+      setDepositTarget(null);
+      setDepositBankId('');
       toast.success('Cheque cleared into bank');
     },
     onError: (e: Error) => toast.error(e.message || 'Could not clear cheque'),
@@ -215,6 +227,95 @@ export default function PaymentsPage() {
     },
     onError: (e: Error) => toast.error(e.message || 'Could not mark cheque as bounced'),
   });
+
+  const toDateInput = (value?: string | null) => (value ? new Date(value).toISOString().slice(0, 10) : '');
+
+  const editBankLocked = !!editEntry && (editEntry.chequeStatus === 'DEPOSITED' || editEntry.chequeStatus === 'CLEARED');
+  const editPdcFlipLocked = !!editEntry && editEntry.status !== 'pending';
+  const editIsPdc = editPdcFlipLocked ? !!editEntry?.chequeDate : !!editForm.chequeDate;
+  const editPartyOptions = editForm.partyType ? (editForm.partyType === 'CUSTOMER' ? customerOptions : supplierOptions) : [];
+
+  const openEdit = (r: PaymentEntry) => {
+    setEditForm({
+      chequeNumber: r.chequeNumber ?? '',
+      bankAccountId: r.bankAccountId ?? '',
+      pdcAccountId: r.pdcAccountId ?? '',
+      mainAccountId: r.mainAccountId ?? '',
+      partyType: r.partyType,
+      partyId: r.partyId ?? '',
+      chequeDate: toDateInput(r.chequeDate),
+      paymentDate: toDateInput(r.paymentDate),
+      amount: r.amount,
+      reference: r.reference ?? '',
+      narration: r.narration ?? '',
+    });
+    setEditError('');
+    setEditEntry(r);
+  };
+
+  const saveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editEntry) return;
+    setEditSaving(true);
+    setEditError('');
+    try {
+      const payload: EditChequePayload = {};
+      const originalChequeDate = toDateInput(editEntry.chequeDate);
+      const formChequeDate = editForm.chequeDate ?? '';
+      if (editEntry.method === 'CHEQUE') {
+        if (editForm.chequeNumber?.trim()) payload.chequeNumber = editForm.chequeNumber.trim();
+        if (formChequeDate !== originalChequeDate) payload.chequeDate = formChequeDate || '';
+      } else {
+        if (formChequeDate !== originalChequeDate) payload.chequeDate = formChequeDate || '';
+      }
+      if (!editBankLocked && editForm.bankAccountId) payload.bankAccountId = editForm.bankAccountId;
+      if (editForm.paymentDate) payload.paymentDate = editForm.paymentDate;
+      if (editForm.amount !== undefined) payload.amount = editForm.amount;
+      if (editForm.partyId && editForm.partyType) {
+        if (editForm.partyId !== editEntry.partyId || editForm.partyType !== editEntry.partyType) {
+          payload.partyType = editForm.partyType;
+          payload.partyId = editForm.partyId;
+        }
+      }
+      if (editIsPdc) {
+        if (!editBankLocked && editForm.pdcAccountId) payload.pdcAccountId = editForm.pdcAccountId;
+      } else if (!editBankLocked && editForm.mainAccountId) {
+        payload.mainAccountId = editForm.mainAccountId;
+      }
+      payload.reference = editForm.reference ?? '';
+      payload.narration = editForm.narration ?? '';
+      await updatePayment(editEntry.id, payload);
+      qc.invalidateQueries({ queryKey: ['payments'] });
+      qc.invalidateQueries({ queryKey: ['cheques'] });
+      setEditEntry(null);
+      setEditForm({});
+      toast.success('Entry updated');
+    } catch (err) {
+      setEditError((err as Error).message || 'Could not update entry');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const openDepositBankPicker = (r: PaymentEntry) => {
+    setDepositError('');
+    if (r.bankAccountId) {
+      deposit.mutate({ id: r.id });
+    } else {
+      setDepositBankId('');
+      setDepositTarget(r);
+    }
+  };
+
+  const confirmDeposit = () => {
+    if (!depositTarget) return;
+    if (!depositBankId) {
+      setDepositError('Select the bank account for clearing.');
+      return;
+    }
+    setDepositError('');
+    deposit.mutate({ id: depositTarget.id, bankId: depositBankId });
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -369,6 +470,11 @@ export default function PaymentsPage() {
               render: (r) => (
                 <div className="flex items-center gap-0.5">
                   <button onClick={() => setDetailId(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View"><Eye className="h-4 w-4" /></button>
+                  {canUpdate && r.status !== 'cancelled' && r.chequeStatus !== 'BOUNCED' && r.chequeStatus !== 'ENDORSED' && (
+                    <button onClick={() => openEdit(r)} className="rounded-lg p-1.5 text-amber-600 hover:bg-amber-50 hover:text-amber-700" title="Edit entry">
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  )}
                   {r.status === 'pending' && (
                     <>
                       {canPost && (
@@ -383,7 +489,7 @@ export default function PaymentsPage() {
                   )}
                   {r.status === 'posted' && r.method === 'CHEQUE' && r.chequeStatus === 'IN_HAND' && canPost && (
                     <>
-                      <button onClick={() => deposit.mutate(r.id)} className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 hover:text-blue-700" title="Clear cheque into bank">
+                      <button onClick={() => openDepositBankPicker(r)} className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 hover:text-blue-700" title="Clear cheque into bank">
                         <Landmark className="h-4 w-4" />
                       </button>
                       {r.paymentType === 'RECEIPT' && (
@@ -593,6 +699,160 @@ export default function PaymentsPage() {
             <Button type="submit" loading={create.isPending}>Save for approval</Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal open={!!editEntry} onClose={() => setEditEntry(null)} title={`Edit entry · ${editEntry?.number ?? ''}`} size="lg">
+        {!editEntry ? null : (
+          <form onSubmit={saveEdit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-700 sm:col-span-2">
+              {editEntry.partyName} · {editEntry.paymentType === 'RECEIPT' ? 'Received' : 'Paid'} · {editEntry.method} · {money(editEntry.amount)}
+              {editEntry.chequeStatus ? ` · ${editEntry.chequeStatus}` : ''}
+            </div>
+            <Field label="Party" required>
+              <Select
+                value={editForm.partyType ?? ''}
+                onChange={(e) => setEditForm((f) => ({ ...f, partyType: e.target.value as never, partyId: '' }))}
+                disabled={editBankLocked}
+              >
+                <option value="SUPPLIER">Supplier (paid)</option>
+                <option value="CUSTOMER">Customer (received)</option>
+              </Select>
+            </Field>
+            <Field label={editForm.partyType === 'CUSTOMER' ? 'Customer' : 'Supplier'} required hint={editBankLocked ? 'Cleared into the bank — locked' : (editEntry.allocations?.length ?? 0) > 0 ? 'Allocated to documents — party change locked' : undefined}>
+              <Select
+                value={editForm.partyId ?? ''}
+                onChange={(e) => setEditForm((f) => ({ ...f, partyId: e.target.value || undefined }))}
+                disabled={editBankLocked || (editEntry.allocations?.length ?? 0) > 0}
+                required
+              >
+                <option value="">Select {editForm.partyType === 'CUSTOMER' ? 'customer' : 'supplier'}…</option>
+                {editPartyOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </Select>
+            </Field>
+            {editEntry.method === 'CHEQUE' && (
+              <>
+                <Field label="Cheque number" required>
+                  <Input
+                    value={editForm.chequeNumber ?? ''}
+                    onChange={(e) => setEditForm((f) => ({ ...f, chequeNumber: e.target.value }))}
+                    placeholder="e.g. 00421579"
+                    required
+                  />
+                </Field>
+                <Field label="Cheque date" hint={editPdcFlipLocked ? 'Post-dated or not is locked after posting' : 'Leave empty for a regular cheque'}>
+                  <Input
+                    type="date"
+                    value={editForm.chequeDate ?? ''}
+                    onChange={(e) => setEditForm((f) => ({ ...f, chequeDate: e.target.value || undefined }))}
+                  />
+                </Field>
+                <Field label="Bank account" hint={editBankLocked ? 'Cleared into the bank — locked' : undefined}>
+                  <Select
+                    value={editForm.bankAccountId ?? ''}
+                    disabled={editBankLocked}
+                    onChange={(e) => setEditForm((f) => ({ ...f, bankAccountId: e.target.value || undefined }))}
+                  >
+                    <option value="">Select bank…</option>
+                    {bankOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </Select>
+                </Field>
+                {editIsPdc ? (
+                  <Field label="PDC account" hint={editBankLocked ? 'Cleared into the bank — locked' : 'Post-dated holding account for this party'}>
+                    <Select
+                      value={editForm.pdcAccountId ?? ''}
+                      disabled={editBankLocked}
+                      onChange={(e) => setEditForm((f) => ({ ...f, pdcAccountId: e.target.value || undefined }))}
+                    >
+                      <option value="">Select PDC account…</option>
+                      {pdcOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </Select>
+                  </Field>
+                ) : (
+                  <Field label="Cash / bank (ledger) account" hint={editBankLocked ? 'Cleared into the bank — locked' : 'Where the value is booked for a regular cheque'}>
+                    <Select
+                      value={editForm.mainAccountId ?? ''}
+                      disabled={editBankLocked}
+                      onChange={(e) => setEditForm((f) => ({ ...f, mainAccountId: e.target.value || undefined }))}
+                    >
+                      <option value="">Select account…</option>
+                      {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </Select>
+                  </Field>
+                )}
+              </>
+            )}
+            {editEntry.method !== 'CHEQUE' && (
+              <div className="sm:col-span-2">
+                <Field label="Cash / bank (ledger) account" hint={editBankLocked ? 'Cleared into the bank — locked' : 'Where the value is booked for this entry'}>
+                  <Select
+                    value={editForm.mainAccountId ?? ''}
+                    disabled={editBankLocked}
+                    onChange={(e) => setEditForm((f) => ({ ...f, mainAccountId: e.target.value || undefined }))}
+                  >
+                    <option value="">Select account…</option>
+                    {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </Select>
+                </Field>
+              </div>
+            )}
+            <Field label="Payment date">
+              <Input
+                type="date"
+                value={editForm.paymentDate ?? ''}
+                onChange={(e) => setEditForm((f) => ({ ...f, paymentDate: e.target.value }))}
+              />
+            </Field>
+            <Field label={`Amount (${getCurrencyInfo().symbol})`}>
+              <Input
+                type="number" min={0} step="0.01"
+                value={editForm.amount ?? 0}
+                onChange={(e) => setEditForm((f) => ({ ...f, amount: Number(e.target.value) || 0 }))}
+              />
+            </Field>
+            <Field label="Reference">
+              <Input
+                value={editForm.reference ?? ''}
+                onChange={(e) => setEditForm((f) => ({ ...f, reference: e.target.value }))}
+                placeholder="optional"
+              />
+            </Field>
+            <div className="sm:col-span-2">
+              <Field label="Narration">
+                <Textarea
+                  value={editForm.narration ?? ''}
+                  onChange={(e) => setEditForm((f) => ({ ...f, narration: e.target.value }))}
+                  placeholder="Optional note printed on the voucher…"
+                />
+              </Field>
+            </div>
+            {editError && <div className="sm:col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{editError}</div>}
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-4 sm:col-span-2">
+              <Button type="button" variant="outline" onClick={() => setEditEntry(null)}>Cancel</Button>
+              <Button type="submit" loading={editSaving}>Save changes</Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      <Modal open={!!depositTarget} onClose={() => setDepositTarget(null)} title={`Clear cheque into bank · ${depositTarget?.number ?? ''}`} size="md">
+        {!depositTarget ? null : (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              This cheque was saved without a bank account for clearing. Select the bank account it should be cleared into.
+            </p>
+            <Field label="Bank account" required>
+              <Select value={depositBankId} onChange={(e) => { setDepositBankId(e.target.value); setDepositError(''); }} required>
+                <option value="">Select bank…</option>
+                {bankOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </Select>
+            </Field>
+            {depositError && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{depositError}</div>}
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
+              <Button type="button" variant="outline" onClick={() => setDepositTarget(null)}>Cancel</Button>
+              <Button type="button" onClick={confirmDeposit} loading={deposit.isPending}>Clear cheque</Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <PaymentDetailModal open={!!detailId} loading={detailLoading} detail={detail} onClose={() => setDetailId(null)} />

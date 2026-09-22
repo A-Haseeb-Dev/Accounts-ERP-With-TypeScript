@@ -93,6 +93,12 @@ export class CancelPaymentDto {
   reason: string;
 }
 
+export class DepositChequeDto {
+  @IsString()
+  @IsOptional()
+  bankAccountId?: string;
+}
+
 export class EndorseChequeDto {
   @IsEnum(['CUSTOMER', 'SUPPLIER'], { message: 'partyType must be CUSTOMER or SUPPLIER' })
   partyType: 'CUSTOMER' | 'SUPPLIER';

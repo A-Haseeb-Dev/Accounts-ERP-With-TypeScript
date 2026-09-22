@@ -69,6 +69,10 @@ export default function ChequesRegisterPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
 
+  const [depositTarget, setDepositTarget] = useState<PaymentEntry | null>(null);
+  const [depositBankId, setDepositBankId] = useState('');
+  const [depositError, setDepositError] = useState('');
+
   const { options: customerOptions } = useFlatOptions('customers');
   const { options: supplierOptions } = useFlatOptions('suppliers');
   const { options: bankOptions } = useFlatOptions('banks');
@@ -105,10 +109,12 @@ export default function ChequesRegisterPage() {
   });
 
   const deposit = useMutation({
-    mutationFn: (id: string) => depositCheque(id),
+    mutationFn: ({ id, bankId }: { id: string; bankId?: string }) => depositCheque(id, bankId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cheques'] });
       qc.invalidateQueries({ queryKey: ['payments'] });
+      setDepositTarget(null);
+      setDepositBankId('');
       toast.success('Cheque cleared into bank');
     },
     onError: (e: Error) => toast.error(e.message || 'Could not clear cheque'),
@@ -183,6 +189,26 @@ export default function ChequesRegisterPage() {
     if (!date) return false;
     const today = new Date().toISOString().slice(0, 10);
     return new Date(date).toISOString().slice(0, 10) === today;
+  };
+
+  const openDepositBankPicker = (r: PaymentEntry) => {
+    setDepositError('');
+    if (r.bankAccountId) {
+      deposit.mutate({ id: r.id });
+    } else {
+      setDepositBankId('');
+      setDepositTarget(r);
+    }
+  };
+
+  const confirmDeposit = () => {
+    if (!depositTarget) return;
+    if (!depositBankId) {
+      setDepositError('Select the bank account for clearing.');
+      return;
+    }
+    setDepositError('');
+    deposit.mutate({ id: depositTarget.id, bankId: depositBankId });
   };
 
   const toDateInput = (value?: string | null) => (value ? new Date(value).toISOString().slice(0, 10) : '');
@@ -278,7 +304,7 @@ export default function ChequesRegisterPage() {
                   )}
                   {r.status === 'posted' && r.chequeStatus === 'IN_HAND' && canPost && (
                     <>
-                      <button onClick={() => deposit.mutate(r.id)} className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 hover:text-blue-700" title="Clear cheque into bank">
+                      <button onClick={() => openDepositBankPicker(r)} className="rounded-lg p-1.5 text-blue-600 hover:bg-blue-50 hover:text-blue-700" title="Clear cheque into bank">
                         <Landmark className="h-4 w-4" />
                       </button>
                       {r.paymentType === 'RECEIPT' && (
@@ -324,6 +350,27 @@ export default function ChequesRegisterPage() {
                 <KV label="Bounce reason" value={detail.bounceReason} />
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!depositTarget} onClose={() => setDepositTarget(null)} title={`Clear cheque into bank · ${depositTarget?.number ?? ''}`} size="md">
+        {!depositTarget ? null : (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              This cheque was saved without a bank account for clearing. Select the bank account it should be cleared into.
+            </p>
+            <Field label="Bank account" required>
+              <Select value={depositBankId} onChange={(e) => { setDepositBankId(e.target.value); setDepositError(''); }} required>
+                <option value="">Select bank…</option>
+                {bankOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </Select>
+            </Field>
+            {depositError && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{depositError}</div>}
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
+              <Button type="button" variant="outline" onClick={() => setDepositTarget(null)}>Cancel</Button>
+              <Button type="button" onClick={confirmDeposit} loading={deposit.isPending}>Clear cheque</Button>
+            </div>
           </div>
         )}
       </Modal>
