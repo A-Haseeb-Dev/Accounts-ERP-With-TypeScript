@@ -62,6 +62,7 @@ export default function SettingsPage() {
         'numbering.padding': form['numbering.padding'] || undefined,
         'audit.retention_days': form['audit.retention_days'] || undefined,
         'mfa.issuer': form.mfaIssuer || undefined,
+        'security.idleTimeoutMinutes': form['security.idleTimeoutMinutes'] || undefined,
       },
     });
   };
@@ -277,16 +278,30 @@ export default function SettingsPage() {
 
             <div>
               <p className="mb-3 text-sm font-semibold text-slate-700">Security</p>
-              <Field
-                label="MFA Issuer"
-                hint="Shown as the account provider in your authenticator app (e.g. Google Authenticator). Applies the next time 2FA is set up."
-              >
-                <Input
-                  value={String(form.mfaIssuer ?? merged['mfa.issuer'] ?? '')}
-                  onChange={(e) => set('mfaIssuer', e.target.value)}
-                  placeholder="HasERP"
-                />
-              </Field>
+              <div className="space-y-4">
+                <Field
+                  label="Idle Timeout (minutes)"
+                  hint="Automatically signs everyone out after this many minutes without activity. Set to 0 to disable."
+                >
+                  <Input
+                    type="number"
+                    min={0}
+                    max={480}
+                    value={String(form['security.idleTimeoutMinutes'] ?? merged['security.idleTimeoutMinutes'] ?? '15')}
+                    onChange={(e) => set('security.idleTimeoutMinutes', e.target.value)}
+                  />
+                </Field>
+                <Field
+                  label="MFA Issuer"
+                  hint="Shown as the account provider in your authenticator app (e.g. Google Authenticator). Applies the next time 2FA is set up."
+                >
+                  <Input
+                    value={String(form.mfaIssuer ?? merged['mfa.issuer'] ?? '')}
+                    onChange={(e) => set('mfaIssuer', e.target.value)}
+                    placeholder="HasERP"
+                  />
+                </Field>
+              </div>
             </div>
 
             <div>

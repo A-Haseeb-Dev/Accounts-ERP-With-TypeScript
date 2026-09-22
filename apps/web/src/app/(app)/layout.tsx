@@ -7,6 +7,7 @@ import { useAuth } from '@/context/auth-context';
 import { Sidebar } from '@/components/sidebar';
 import { PageLoader } from '@/components/ui/spinner';
 import { CurrencyProvider } from '@/components/currency-provider';
+import { IdleLogout } from '@/components/idle-logout';
 import { initials } from '@/lib/utils';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -65,6 +66,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <CurrencyProvider>
             <div key={pathname}>{children}</div>
           </CurrencyProvider>
+          <IdleLogout />
         </main>
       </div>
     </div>
