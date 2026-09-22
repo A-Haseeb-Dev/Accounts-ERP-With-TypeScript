@@ -27,6 +27,9 @@ export const updateVoucher = (id: string, payload: VoucherPayload) =>
 export const deleteVoucher = (id: string) =>
   apiFetch<{ success: boolean }>(`/vouchers/${id}`, { method: 'DELETE' });
 
+export const unpostVoucher = (id: string) =>
+  apiFetch<Voucher>(`/vouchers/${id}/unpost`, { method: 'POST' });
+
 export interface PaymentPayload {
   paymentType: 'RECEIPT' | 'PAYMENT';
   partyType: 'CUSTOMER' | 'SUPPLIER';

@@ -156,6 +156,97 @@ describe('VouchersService.post', () => {
   });
 });
 
+describe('VouchersService.unpost', () => {
+  it('throws NOT_FOUND when the voucher does not exist', async () => {
+    const prisma = { voucher: { findUnique: vi.fn().mockResolvedValue(null) } };
+    const { svc } = buildService({ prisma });
+    const err = await apiErrorStatus(svc.unpost('missing'));
+    expect(err).toBe(404);
+  });
+
+  it('rejects a voucher that is not posted', async () => {
+    const prisma = {
+      voucher: { findUnique: vi.fn().mockResolvedValue({ id: 'v1', number: 'JV-1', voucherType: 'JOURNAL', status: 'draft' }) },
+    };
+    const { svc } = buildService({ prisma });
+    const err = await apiErrorStatus(svc.unpost('v1'));
+    expect(err).toBe(422);
+  });
+
+  it('rejects opening balance vouchers (auto-managed)', async () => {
+    const prisma = {
+      voucher: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'v1', number: 'OB-000001', voucherType: 'JOURNAL', status: 'posted', reference: 'OB:abc123',
+        }),
+      },
+    };
+    const { svc } = buildService({ prisma });
+    const msg = await apiErrorMessage(svc.unpost('v1'));
+    expect(msg).toMatch(/Opening balance vouchers cannot be unposted/);
+  });
+
+  it('resets a posted voucher back to draft and records an UNPOST audit entry', async () => {
+    const posted = { id: 'v1', number: 'JV-000001', voucherType: 'JOURNAL', status: 'posted', reference: 'REF-1' };
+    const draft = { ...posted, status: 'draft', postedById: null, postedAt: null };
+    const prisma = {
+      voucher: { findUnique: vi.fn().mockResolvedValue(posted), update: vi.fn().mockResolvedValue(draft) },
+      $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({})),
+      runInTransaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({})),
+    };
+    const audit = { record: vi.fn().mockResolvedValue(undefined) };
+    const { svc } = buildService({ prisma, audit });
+    const result = await svc.unpost('v1', 'u1');
+    expect(result.status).toBe('draft');
+    expect(prisma.voucher.update).toHaveBeenCalledWith({
+      where: { id: 'v1' },
+      data: { status: 'draft', postedById: null, postedAt: null },
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'UNPOST', module: 'VOUCHER', entityId: 'v1', message: 'JOURNAL voucher JV-000001 unposted back to draft' }),
+    );
+  });
+});
+
+describe('VouchersService.update', () => {
+  it('edits a pending voucher and drops it back to draft', async () => {
+    const pending = {
+      id: 'v1', number: 'JV-000001', voucherType: 'JOURNAL', status: 'pending',
+      voucherDate: new Date('2026-09-01T10:00:00Z'), reference: 'REF-1', description: 'Test voucher',
+      totalDebit: 500, totalCredit: 500, entries: [] as { id: string }[],
+    };
+    const tx = {
+      voucher: { findUnique: vi.fn().mockResolvedValue(pending), update: vi.fn().mockImplementation((args: { data: Record<string, unknown> }) => args.data) },
+      voucherEntry: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
+    };
+    const runTx = async (fn: (tx: unknown) => unknown) => fn(tx);
+    const prisma = {
+      voucher: { findUnique: vi.fn().mockResolvedValue(pending), update: vi.fn() },
+      $transaction: vi.fn(runTx),
+      runInTransaction: vi.fn(runTx),
+    };
+    const audit = { record: vi.fn().mockResolvedValue(undefined) };
+    const { svc } = buildService({ prisma, audit });
+
+    const result = await svc.update('v1', dto(), 'u1');
+    expect(result.status).toBe('draft');
+    expect(result.submittedById).toBeNull();
+    expect(result.submittedAt).toBeNull();
+    expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ action: 'UPDATE' }));
+  });
+
+  it('rejects editing a posted voucher until it is unposted', async () => {
+    const posted = {
+      id: 'v1', number: 'JV-000001', voucherType: 'JOURNAL', status: 'posted',
+      voucherDate: new Date('2026-09-01T10:00:00Z'), entries: [] as { id: string }[],
+    };
+    const prisma = { voucher: { findUnique: vi.fn().mockResolvedValue(posted) } };
+    const { svc } = buildService({ prisma });
+    const msg = await apiErrorMessage(svc.update('v1', dto()));
+    expect(msg).toMatch(/unpost it first/);
+  });
+});
+
 describe('VouchersService.cancel', () => {
   it('cancels a voucher with a reason', async () => {
     const draft = { id: 'v1', number: 'JV-000001', voucherType: 'JOURNAL', status: 'draft' };

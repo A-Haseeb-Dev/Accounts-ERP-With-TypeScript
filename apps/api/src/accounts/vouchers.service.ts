@@ -98,6 +98,36 @@ export class VouchersService {
     return posted;
   }
 
+  async unpost(id: string, actorId?: string) {
+    const voucher = await this.prisma.voucher.findUnique({ where: { id } });
+    if (!voucher) throw ApiException.notFound('Voucher');
+    if (voucher.status !== 'posted') {
+      throw ApiException.invalidTransaction(
+        `Only posted vouchers can be unposted. "${voucher.number}" is ${voucher.status}.`,
+      );
+    }
+    if (voucher.reference?.startsWith('OB:')) {
+      throw ApiException.invalidTransaction(
+        'Opening balance vouchers cannot be unposted manually.',
+      );
+    }
+    await this.fiscal.assertOpen(voucher.voucherDate, 'Cannot unpost a voucher');
+
+    const unposted = await this.prisma.voucher.update({
+      where: { id },
+      data: { status: 'draft', postedById: null, postedAt: null },
+    });
+    this.audit.record({
+      userId: actorId,
+      action: 'UNPOST',
+      module: 'VOUCHER',
+      entity: 'Voucher',
+      entityId: id,
+      message: `${voucher.voucherType} voucher ${voucher.number} unposted back to draft`,
+    });
+    return unposted;
+  }
+
   async submit(id: string, actorId?: string) {
     const voucher = await this.prisma.voucher.findUnique({ where: { id } });
     if (!voucher) throw ApiException.notFound('Voucher');
@@ -291,8 +321,10 @@ export class VouchersService {
   async update(id: string, dto: CreateVoucherDto, actorId?: string) {
     const voucher = await this.prisma.voucher.findUnique({ where: { id, entries: { some: {} } }, include: { entries: true } });
     if (!voucher) throw ApiException.notFound('Voucher');
-    if (voucher.status !== 'draft') {
-      throw ApiException.invalidTransaction(`Only draft vouchers can be edited. "${voucher.number}" is ${voucher.status}.`);
+    if (voucher.status === 'posted' || voucher.status === 'cancelled') {
+      throw ApiException.invalidTransaction(
+        `Only draft or pending vouchers can be edited. "${voucher.number}" is ${voucher.status} — unpost it first.`,
+      );
     }
 
     if (!dto.entries.some((e) => Number(e.debit ?? 0) > 0)) {
@@ -307,6 +339,8 @@ export class VouchersService {
     const totalDebit = round2(dto.entries.reduce((s, e) => s + Number(e.debit ?? 0), 0));
     const totalCredit = round2(dto.entries.reduce((s, e) => s + Number(e.credit ?? 0), 0));
 
+    const wasPending = voucher.status === 'pending';
+
     const updated = await this.prisma.runInTransaction(async (tx) => {
       await tx.voucherEntry.deleteMany({ where: { voucherId: id } });
       return tx.voucher.update({
@@ -317,6 +351,14 @@ export class VouchersService {
           reference: dto.reference ?? null,
           totalDebit,
           totalCredit,
+          // Editing a pending voucher (or a rejected one) drops it back to draft
+          // so the user can review, resubmit and get it approved again.
+          status: wasPending ? 'draft' : undefined,
+          submittedById: wasPending ? null : undefined,
+          submittedAt: wasPending ? null : undefined,
+          rejectedById: null,
+          rejectedAt: null,
+          rejectReason: null,
           entries: {
             create: dto.entries.map((e) => ({
               mainAccountId: e.mainAccountId,
