@@ -44,6 +44,7 @@ const SETTING_KEYS = [
   'audit.retention_days',
   'fiscal.locked_until',
   'mfa.issuer',
+  'security.idleTimeoutMinutes',
 ];
 
 // Feature switches are stored in system_settings too, so backups/restores pick
