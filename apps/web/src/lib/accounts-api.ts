@@ -53,8 +53,11 @@ export const createPayment = (payload: PaymentPayload) =>
 export const postPayment = (id: string) =>
   apiFetch<PaymentEntry>(`/payments/${id}/post`, { method: 'POST' });
 
-export const depositCheque = (id: string) =>
-  apiFetch<PaymentEntry>(`/payments/${id}/deposit`, { method: 'POST' });
+export const depositCheque = (id: string, bankAccountId?: string) =>
+  apiFetch<PaymentEntry>(`/payments/${id}/deposit`, {
+    method: 'POST',
+    body: bankAccountId ? JSON.stringify({ bankAccountId }) : undefined,
+  });
 
 export const bounceCheque = (id: string, reason: string) =>
   apiFetch<PaymentEntry>(`/payments/${id}/bounce`, { method: 'POST', body: JSON.stringify({ reason }) });
@@ -78,6 +81,9 @@ export interface EditChequePayload {
 
 export const editCheque = (id: string, payload: EditChequePayload) =>
   apiFetch<PaymentEntry>(`/payments/${id}/cheque`, { method: 'PATCH', body: JSON.stringify(payload) });
+
+export const updatePayment = (id: string, payload: EditChequePayload) =>
+  apiFetch<PaymentEntry>(`/payments/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
 
 export const cancelPayment = (id: string, reason: string) =>
   apiFetch<PaymentEntry>(`/payments/${id}/cancel`, { method: 'DELETE', body: JSON.stringify({ reason }) });

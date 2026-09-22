@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -351,7 +352,7 @@ export class PaymentsService {
     return result;
   }
 
-  async deposit(id: string, actorId?: string) {
+  async deposit(id: string, bankAccountId?: string, actorId?: string) {
     const entry = await this.prisma.paymentEntry.findUnique({ where: { id } });
     if (!entry) throw ApiException.notFound('Payment entry');
     if (entry.method !== 'CHEQUE') {
@@ -364,11 +365,22 @@ export class PaymentsService {
     if (entry.chequeStatus === 'BOUNCED') {
       throw ApiException.invalidTransaction('A bounced cheque cannot be deposited');
     }
-    if (!entry.bankAccountId) {
-      throw ApiException.invalidTransaction('Select the bank account for clearing');
+
+    // A post-dated receipt may have been saved without a bank account
+    // ("for clearing later"). Allow the bank to be chosen at clear time.
+    let clearBankId = entry.bankAccountId;
+    if (!clearBankId) {
+      if (!bankAccountId) {
+        throw ApiException.invalidTransaction('Select the bank account for clearing');
+      }
+      const candidate = await this.prisma.bankAccount.findUnique({
+        where: { id: bankAccountId },
+      });
+      if (!candidate) throw ApiException.notFound('Bank account');
+      clearBankId = candidate.id;
     }
     const bank = await this.prisma.bankAccount.findUnique({
-      where: { id: entry.bankAccountId },
+      where: { id: clearBankId },
       include: { mainAccount: true },
     });
     if (!bank?.mainAccountId) {
@@ -424,6 +436,7 @@ export class PaymentsService {
             chequeStatus: 'CLEARED',
             depositedById: actorId,
             depositedAt: new Date(),
+            ...(clearBankId !== entry.bankAccountId ? { bankAccountId: clearBankId } : {}),
           },
           include: { allocations: true },
         });
@@ -482,6 +495,7 @@ export class PaymentsService {
           chequeStatus: 'DEPOSITED',
           depositedById: actorId,
           depositedAt: new Date(),
+          ...(clearBankId !== entry.bankAccountId ? { bankAccountId: clearBankId } : {}),
         },
         include: { allocations: true },
       });
@@ -789,6 +803,30 @@ export class PaymentsService {
     if (entry.method !== 'CHEQUE') {
       throw ApiException.invalidTransaction('Only cheque entries can be edited this way');
     }
+    return this.applyEdit(entry, dto, actorId);
+  }
+
+  /**
+   * Correct a mistake on any receipt/payment entry (cash, bank or cheque).
+   * Pending entries are updated in place; corrections that change the posting
+   * of an already-posted entry (amount, payment date, party, cash/PDC account,
+   * or flipping post-dated/regular) are applied by posting a reversal voucher
+   * and re-posting, so the ledger stays balanced and auditable.
+   */
+  async updatePayment(id: string, dto: EditChequeDto, actorId?: string) {
+    const entry = await this.prisma.paymentEntry.findUnique({
+      where: { id },
+      include: { allocations: true },
+    });
+    if (!entry) throw ApiException.notFound('Payment entry');
+    return this.applyEdit(entry, dto, actorId);
+  }
+
+  private async applyEdit(
+    entry: Prisma.PaymentEntryGetPayload<{ include: { allocations: true } }>,
+    dto: EditChequeDto,
+    actorId?: string,
+  ) {
     if (entry.status === 'cancelled') {
       throw ApiException.invalidTransaction('A cancelled cheque cannot be edited');
     }
@@ -1003,7 +1041,7 @@ export class PaymentsService {
       );
     } else {
       updated = await this.prisma.paymentEntry.update({
-        where: { id },
+        where: { id: entry.id },
         data,
         include: { allocations: true, mainAccount: true, bankAccount: true, pdcAccount: true },
       });
@@ -1014,8 +1052,8 @@ export class PaymentsService {
       action: 'UPDATE',
       module: 'PAYMENT',
       entity: 'PaymentEntry',
-      entityId: id,
-      message: `Cheque ${entry.number} edited (${entry.partyName})`,
+      entityId: entry.id,
+      message: `Entry ${entry.number} edited (${entry.partyName})`,
     });
 
     return updated;
