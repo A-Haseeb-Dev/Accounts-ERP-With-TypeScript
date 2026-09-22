@@ -153,19 +153,28 @@ export interface NavContext {
 }
 
 /**
- * Filters the navigation tree by the user's permissions, the company's disabled
- * features and a couple of role-specific items. The Developer role sees every
- * entry so it can always reach the feature switches and verify a configuration.
+ * Filters the navigation tree by the user's permissions and the company's
+ * disabled features. Feature switches hide a page for everyone (including the
+ * Developer role) so that switched-off modules disappear from the sidebar for
+ * every user consistently. The Developer role can still navigate to any page
+ * it holds permissions for, and keeps role-specific items like Company Features.
  */
 export const filterNavigation = (items: NavItem[], ctx: NavContext): NavItem[] => {
-  // The developer manages features, so it always sees the full navigation.
-  if (ctx.isDeveloper) return items;
-
   return items
     .map((item) => {
-      if (item.developerOnly) return null;
+      if (item.developerOnly) {
+        if (!ctx.isDeveloper) return null;
+        // The Developer must always be able to reach its own management screens
+        // (e.g. Company Features) even if a related feature is switched off.
+        if (item.children) {
+          const kids = filterNavigation(item.children, ctx);
+          if (kids.length === 0) return null;
+          return { ...item, children: kids };
+        }
+        return item;
+      }
 
-      // A page whose view permission has been switched off is hidden.
+      // A page whose view permission has been switched off is hidden from everyone.
       if (item.permission && ctx.disabledFeatures.has(item.permission)) return null;
 
       if (item.children) {
@@ -173,7 +182,9 @@ export const filterNavigation = (items: NavItem[], ctx: NavContext): NavItem[] =
         if (kids.length === 0) return null;
         return { ...item, children: kids };
       }
-      if (item.permission && !isAllowed(ctx.permissions, item.permission)) return null;
+      // Developers keep the ability to navigate everywhere else; other roles
+      // additionally need the matching permission.
+      if (item.permission && !ctx.isDeveloper && !isAllowed(ctx.permissions, item.permission)) return null;
       return item;
     })
     .filter((x): x is NavItem => x !== null);

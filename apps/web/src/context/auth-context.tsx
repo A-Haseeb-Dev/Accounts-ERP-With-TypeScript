@@ -126,9 +126,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (permission: string) => {
       if (!user) return false;
       const isDeveloper = user.roles?.includes('Developer') ?? false;
-      // Switched-off features are hidden from everyone except the Developer role.
-      if (!isDeveloper && disabledFeatures.has(permission)) return false;
+      // Switched-off features are hidden from everyone, including the Developer
+      // role, so disabled modules stay consistent across all users.
+      if (disabledFeatures.has(permission)) return false;
       if (user.permissions.includes('*')) return true;
+      if (isDeveloper) return true;
       return user.permissions.includes(permission);
     },
     [user, disabledFeatures],
