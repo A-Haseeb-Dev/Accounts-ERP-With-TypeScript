@@ -5,10 +5,11 @@ import { AccountingService } from './services/accounting.service';
 import { DefaultAccountsService } from './services/default-accounts.service';
 import { FiscalPeriodGuard } from './services/fiscal-period.guard';
 import { HealthController } from './health.controller';
+import { PublicTermsController } from './terms.controller';
 
 @Global()
 @Module({
-  controllers: [HealthController],
+  controllers: [HealthController, PublicTermsController],
   providers: [NumberingService, InventoryService, AccountingService, DefaultAccountsService, FiscalPeriodGuard],
   exports: [NumberingService, InventoryService, AccountingService, DefaultAccountsService, FiscalPeriodGuard],
 })
