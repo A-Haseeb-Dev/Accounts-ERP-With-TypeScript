@@ -21,6 +21,7 @@ import {
   ClipboardList,
   UserRound,
   WalletCards,
+  FileText,
 } from 'lucide-react';
 import { isAllowed } from '@/lib/auth-types';
 
@@ -131,6 +132,7 @@ export const NAV_ITEMS: NavItem[] = [
       { label: 'Security', href: '/system/security', icon: ShieldCheck, permission: 'system.settings.manage' },
       { label: 'Print Layout', href: '/system/print-layout', icon: Printer, permission: 'system.settings.manage' },
       { label: 'Branding', href: '/system/branding', icon: Building2, permission: 'system.branding.manage' },
+      { label: 'Terms & Conditions', href: '/system/terms', icon: FileText, permission: 'system.settings.manage' },
       { label: 'Company Features', href: '/system/company-features', icon: Settings, permission: 'system.features.manage', developerOnly: true },
     ],
   },
