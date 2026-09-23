@@ -45,6 +45,8 @@ const SETTING_KEYS = [
   'fiscal.locked_until',
   'mfa.issuer',
   'security.idleTimeoutMinutes',
+  'terms.title',
+  'terms.content',
 ];
 
 // Feature switches are stored in system_settings too, so backups/restores pick
