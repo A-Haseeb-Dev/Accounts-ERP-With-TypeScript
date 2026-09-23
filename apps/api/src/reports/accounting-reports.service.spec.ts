@@ -109,7 +109,7 @@ describe('AccountingReportsService.trialBalance', () => {
     expect(movementsCall).toBeTruthy();
     expect((movementsCall![0] as { where: { voucher?: Record<string, unknown> } }).where.voucher).toMatchObject({
       status: 'posted',
-      voucherDate: { lte: new Date('2026-09-01') },
+      voucherDate: { lte: new Date('2026-09-01T23:59:59.999Z') },
     });
   });
 });
