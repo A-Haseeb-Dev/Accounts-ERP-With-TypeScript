@@ -42,7 +42,7 @@ export class AccountingReportsService {
     if (from || to) {
       voucherWhere.voucherDate = {
         ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: new Date(to) } : {}),
+        ...(to ? { lte: endOfDay(to) } : {}),
       };
     }
 
@@ -127,7 +127,7 @@ export class AccountingReportsService {
     if (from || to) {
       voucherWhere.voucherDate = {
         ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: new Date(to) } : {}),
+        ...(to ? { lte: endOfDay(to) } : {}),
       };
     }
 
@@ -232,7 +232,7 @@ export class AccountingReportsService {
     if (from || to) {
       where.voucherDate = {
         ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: new Date(to) } : {}),
+        ...(to ? { lte: endOfDay(to) } : {}),
       };
     }
 
@@ -285,7 +285,7 @@ export class AccountingReportsService {
 
     for (const acc of accounts) {
       const voucherWhere: any = { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } };
-      if (asOf) voucherWhere.voucherDate = { lte: new Date(asOf) };
+      if (asOf) voucherWhere.voucherDate = { lte: endOfDay(asOf) };
       const agg = await this.prisma.voucherEntry.aggregate({
         where: { mainAccountId: acc.id, voucher: voucherWhere },
         _sum: { debit: true, credit: true },
@@ -342,7 +342,7 @@ export class AccountingReportsService {
     let totalCredit = 0;
     for (const acc of accounts) {
       const voucherWhere: any = { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } };
-      if (asOf) voucherWhere.voucherDate = { lte: new Date(asOf) };
+      if (asOf) voucherWhere.voucherDate = { lte: endOfDay(asOf) };
       const agg = await this.prisma.voucherEntry.aggregate({
         where: { mainAccountId: acc.id, voucher: voucherWhere },
         _sum: { debit: true, credit: true },
@@ -393,7 +393,7 @@ export class AccountingReportsService {
     let totalCredit = 0;
     for (const acc of accounts) {
       const voucherWhere: any = { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } };
-      if (asOf) voucherWhere.voucherDate = { lte: new Date(asOf) };
+      if (asOf) voucherWhere.voucherDate = { lte: endOfDay(asOf) };
       const agg = await this.prisma.voucherEntry.aggregate({
         where: { mainAccountId: acc.id, voucher: voucherWhere },
         _sum: { debit: true, credit: true },
@@ -451,4 +451,9 @@ export class AccountingReportsService {
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+/** End of the given UTC day, so a date-only "to"/"as of" filter stays inclusive of that whole day. */
+function endOfDay(dateStr: string): Date {
+  return new Date(`${dateStr}T23:59:59.999Z`);
 }

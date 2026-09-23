@@ -17,7 +17,7 @@ export class InventoryReportsService {
     if (from || to) {
       where.createdAt = {
         ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: new Date(to) } : {}),
+        ...(to ? { lte: endOfDay(to) } : {}),
       };
     }
 
@@ -404,8 +404,13 @@ export class InventoryReportsService {
 function fromTo(from?: string, to?: string) {
   return {
     ...(from ? { gte: new Date(from) } : {}),
-    ...(to ? { lte: new Date(to) } : {}),
+    ...(to ? { lte: endOfDay(to) } : {}),
   };
+}
+
+/** End of the given UTC day, so a date-only "to" filter stays inclusive of that whole day. */
+function endOfDay(dateStr: string): Date {
+  return new Date(`${dateStr}T23:59:59.999Z`);
 }
 
 function round2(n: number): number {
