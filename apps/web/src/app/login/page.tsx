@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/context/auth-context';
 import { ApiError } from '@/lib/api';
 import { Building2, Loader2, Lock, User } from 'lucide-react';
@@ -95,6 +96,15 @@ export default function LoginPage() {
 
         <p className="mt-6 text-center text-xs text-slate-500">
           Crafted by K&H TECH SOL
+        </p>
+
+        <p className="mt-3 text-center">
+          <Link
+            href="/terms"
+            className="text-[11px] text-slate-500 transition-colors hover:text-slate-300"
+          >
+            Terms &amp; Conditions
+          </Link>
         </p>
       </div>
     </div>
