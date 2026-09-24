@@ -41,6 +41,91 @@ async function seedRolesAndPermissions() {
     { name: 'Super Admin', description: 'Full access to all modules', isSystem: true, protected: true },
   ];
 
+  // Baseline permission sets for the out-of-the-box operational roles. These are
+  // only applied when the role does not exist yet; once a user has tuned a role
+  // in the app, the seed never overwrites their changes.
+  const customRoleTemplates: { name: string; description: string; perms: string[] }[] = [
+    {
+      name: 'Accountant',
+      description: 'Vouchers, receipts & payments and accounting reports',
+      perms: [
+        'dashboard.view',
+        'accounts.cashbook.view',
+        'accounts.vouchers.view', 'accounts.vouchers.create', 'accounts.vouchers.update', 'accounts.vouchers.delete',
+        'accounts.vouchers.submit', 'accounts.vouchers.post', 'accounts.vouchers.reject', 'accounts.vouchers.cancel',
+        'accounts.payments.view', 'accounts.payments.create', 'accounts.payments.update', 'accounts.payments.delete',
+        'accounts.payments.post', 'accounts.payments.cancel', 'accounts.payments.print',
+        'administration.customers.view', 'administration.suppliers.view', 'administration.towns.view',
+        'reports.accounting.view', 'reports.print', 'reports.export',
+      ],
+    },
+    {
+      name: 'Administrator',
+      description: 'Full administration of masters, reports and accounting read-only',
+      perms: [
+        'dashboard.view',
+        'accounts.vouchers.view', 'accounts.payments.view', 'accounts.cashbook.view',
+        'administration.head-accounts.view', 'administration.head-accounts.create', 'administration.head-accounts.update', 'administration.head-accounts.delete',
+        'administration.sub-heads.view', 'administration.sub-heads.create', 'administration.sub-heads.update', 'administration.sub-heads.delete',
+        'administration.main-accounts.view', 'administration.main-accounts.create', 'administration.main-accounts.update', 'administration.main-accounts.delete',
+        'administration.item-types.view', 'administration.item-types.create', 'administration.item-types.update', 'administration.item-types.delete',
+        'administration.brands.view', 'administration.brands.create', 'administration.brands.update', 'administration.brands.delete',
+        'administration.items.view', 'administration.items.create', 'administration.items.update', 'administration.items.delete', 'administration.items.stock',
+        'administration.stock-locations.view', 'administration.stock-locations.create', 'administration.stock-locations.update', 'administration.stock-locations.delete',
+        'administration.customers.view', 'administration.customers.create', 'administration.customers.update', 'administration.customers.delete',
+        'administration.suppliers.view', 'administration.suppliers.create', 'administration.suppliers.update', 'administration.suppliers.delete',
+        'administration.towns.view', 'administration.towns.create', 'administration.towns.update', 'administration.towns.delete',
+        'reports.accounting.view', 'reports.inventory.view', 'reports.sales.view', 'reports.purchase.view', 'reports.print', 'reports.export',
+      ],
+    },
+    {
+      name: 'Inventory Manager',
+      description: 'Full inventory operations with item master visibility',
+      perms: [
+        'dashboard.view',
+        'administration.items.view', 'administration.items.stock',
+        'inventory.purchase.view', 'inventory.purchase.create', 'inventory.purchase.update', 'inventory.purchase.delete',
+        'inventory.purchase.submit', 'inventory.purchase.post', 'inventory.purchase.reject', 'inventory.purchase.cancel', 'inventory.purchase.print',
+        'inventory.purchase-return.view', 'inventory.purchase-return.create', 'inventory.purchase-return.update', 'inventory.purchase-return.delete',
+        'inventory.purchase-return.submit', 'inventory.purchase-return.post', 'inventory.purchase-return.reject', 'inventory.purchase-return.cancel', 'inventory.purchase-return.print',
+        'inventory.transfer.view', 'inventory.transfer.create', 'inventory.transfer.update', 'inventory.transfer.delete',
+        'inventory.transfer.submit', 'inventory.transfer.post', 'inventory.transfer.reject', 'inventory.transfer.cancel', 'inventory.transfer.print',
+        'reports.inventory.view', 'reports.print',
+      ],
+    },
+    {
+      name: 'Sales User',
+      description: 'Full sales operations with customer and item visibility',
+      perms: [
+        'dashboard.view',
+        'administration.customers.view', 'administration.items.view',
+        'sales.invoice.view', 'sales.invoice.create', 'sales.invoice.update', 'sales.invoice.delete',
+        'sales.invoice.submit', 'sales.invoice.post', 'sales.invoice.reject', 'sales.invoice.cancel', 'sales.invoice.print',
+        'sales.return.view', 'sales.return.create', 'sales.return.update', 'sales.return.delete',
+        'sales.return.submit', 'sales.return.post', 'sales.return.reject', 'sales.return.cancel', 'sales.return.print',
+        'reports.sales.view', 'reports.print',
+      ],
+    },
+    {
+      name: 'Viewer',
+      description: 'Read-only access across all modules',
+      perms: [
+        'dashboard.view',
+        'administration.head-accounts.view', 'administration.sub-heads.view', 'administration.main-accounts.view',
+        'administration.item-types.view', 'administration.brands.view', 'administration.items.view', 'administration.stock-locations.view',
+        'administration.customers.view', 'administration.suppliers.view', 'administration.towns.view',
+        'hr.departments.view', 'hr.designations.view', 'hr.employees.view', 'hr.attendance.view', 'hr.leaves.view',
+        'hr.salary-components.view', 'hr.loans.view', 'hr.payroll.view',
+        'inventory.purchase.view', 'inventory.purchase-return.view', 'inventory.transfer.view',
+        'sales.invoice.view', 'sales.return.view',
+        'accounts.vouchers.view', 'accounts.cashbook.view', 'accounts.payments.view',
+        'reports.accounting.view', 'reports.inventory.view', 'reports.sales.view', 'reports.purchase.view', 'reports.hr.view',
+        'system.audit.view',
+        'users.view', 'roles.view', 'permissions.view',
+      ],
+    },
+  ];
+
   for (const [module, action, name] of catalog) {
     await prisma.permission.upsert({
       where: { name },
@@ -49,6 +134,8 @@ async function seedRolesAndPermissions() {
     });
   }
 
+  // Grant Super Admin every catalog permission (kept in sync with the runtime
+  // catalog, which the API also reconciles on boot).
   const superAdminPerms = (await prisma.permission.findMany()).map((p) => p.id);
 
   const roles: Record<string, string> = {};
@@ -63,6 +150,24 @@ async function seedRolesAndPermissions() {
     data: superAdminPerms.map((permissionId) => ({ roleId: roles['Super Admin'], permissionId })),
     skipDuplicates: true,
   });
+
+  // Create the operational roles once (never overwrite a user's later tuning).
+  for (const t of customRoleTemplates) {
+    const existing = await prisma.role.findFirst({ where: { name: t.name } });
+    if (existing) continue;
+    const permRows = await prisma.permission.findMany({
+      where: { name: { in: t.perms } },
+      select: { id: true },
+    });
+    const role = await prisma.role.create({
+      data: { name: t.name, description: t.description, isSystem: false, protected: false },
+    });
+    await prisma.rolePermission.createMany({
+      data: permRows.map((p) => ({ roleId: role.id, permissionId: p.id })),
+      skipDuplicates: true,
+    });
+    console.log(`  Custom role ${t.name} created with ${permRows.length} permissions.`);
+  }
 
   console.log('  Roles and permissions ready.');
 }
