@@ -30,22 +30,34 @@ export class PermissionsService implements OnModuleInit {
 
       if (toCreate.length > 0) {
         await this.prisma.permission.createMany({ data: toCreate, skipDuplicates: true });
-        // Keep "Super Admin" truly full-access: grant any newly added catalog
-        // permissions to it, so existing databases don't lock the admin out.
-        const superAdmin = await this.prisma.role.findFirst({
-          where: { name: 'Super Admin', isSystem: true },
+        this.logger.log(`Synced ${toCreate.length} new permissions`);
+      }
+
+      // Keep "Super Admin" truly full-access: reconcile the whole catalog on
+      // every boot, granting any permission the role is missing. This protects
+      // against both newly added permissions and permissions that were stripped
+      // from the role, so the admin is never accidentally locked out.
+      const superAdmin = await this.prisma.role.findFirst({
+        where: { name: 'Super Admin', isSystem: true },
+      });
+      if (superAdmin) {
+        const owned = await this.prisma.rolePermission.findMany({
+          where: { roleId: superAdmin.id },
+          select: { permissionId: true },
         });
-        if (superAdmin) {
-          const created = await this.prisma.permission.findMany({
-            where: { name: { in: toCreate.map((p) => p.name) } },
-            select: { id: true },
-          });
+        const ownedIds = new Set(owned.map((o) => o.permissionId));
+        const allPerms =
+          toCreate.length > 0
+            ? await this.prisma.permission.findMany({ select: { id: true } })
+            : existing;
+        const toGrant = allPerms.filter((p) => !ownedIds.has(p.id));
+        if (toGrant.length > 0) {
           await this.prisma.rolePermission.createMany({
-            data: created.map((p) => ({ roleId: superAdmin.id, permissionId: p.id })),
+            data: toGrant.map((p) => ({ roleId: superAdmin.id, permissionId: p.id })),
             skipDuplicates: true,
           });
+          this.logger.log(`Granted Super Admin ${toGrant.length} missing permissions`);
         }
-        this.logger.log(`Synced ${toCreate.length} new permissions`);
       }
     } catch (err) {
       this.logger.error(`Permission sync failed: ${(err as Error).message}`);
