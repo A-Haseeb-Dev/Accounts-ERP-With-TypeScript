@@ -85,7 +85,7 @@ export class EmployeesService {
     const [items, total] = await Promise.all([
       this.prisma.employee.findMany({
         where,
-        include: { department: true, designation: true },
+        include: { department: true, designation: true, mainAccount: true },
         orderBy: { code: 'asc' },
         skip: (page - 1) * pageSize,
         take: pageSize,

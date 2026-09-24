@@ -260,6 +260,7 @@ export class AccountingReportsService {
         entries: v.entries.map((e) => ({
           accountCode: e.mainAccount.code,
           accountName: e.mainAccount.name,
+          accountDescription: e.mainAccount.description,
           debit: Number(e.debit),
           credit: Number(e.credit),
           narration: e.narration,

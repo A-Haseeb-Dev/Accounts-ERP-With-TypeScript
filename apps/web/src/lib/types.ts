@@ -87,6 +87,9 @@ export interface VoucherEntry {
   credit: number;
   narration?: string;
   mainAccount?: { id: string; code: string; name: string };
+  accountCode?: string;
+  accountName?: string;
+  accountDescription?: string | null;
 }
 
 export interface Voucher {
@@ -488,6 +491,7 @@ export interface Employee {
   updatedAt: string;
   department?: { id: string; code: string; name: string };
   designation?: { id: string; code: string; name: string };
+  mainAccount?: { id: string; code: string; name: string };
 }
 
 export interface HrLeaveType {
