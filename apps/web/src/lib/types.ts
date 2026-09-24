@@ -89,7 +89,6 @@ export interface VoucherEntry {
   mainAccount?: { id: string; code: string; name: string };
   accountCode?: string;
   accountName?: string;
-  accountDescription?: string | null;
 }
 
 export interface Voucher {

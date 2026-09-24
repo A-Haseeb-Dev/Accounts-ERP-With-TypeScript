@@ -19,7 +19,6 @@ const COLUMNS: ColumnDef[] = [
   { key: 'number', header: 'Number' },
   { key: 'code', header: 'Code' },
   { key: 'account', header: 'Account' },
-  { key: 'description', header: 'Description' },
   { key: 'narration', header: 'Narration' },
   { key: 'debit', header: 'Debit' },
   { key: 'credit', header: 'Credit' },
@@ -84,7 +83,6 @@ export default function GeneralJournalPage() {
                     {j === 0 && cols.isVisible('number') && <td rowSpan={Math.max(voucher.entries.length, 1)} className="px-4 py-2 font-mono font-semibold text-slate-800">{voucher.number}</td>}
                     {cols.isVisible('code') && <td className="font-mono text-xs text-slate-500">{entry.accountCode ?? ''}</td>}
                     {cols.isVisible('account') && <td className="px-4 py-2 text-slate-700">{entry.accountName ?? entry.mainAccount?.name ?? entry.mainAccountId}</td>}
-                    {cols.isVisible('description') && <td className="max-w-[220px] truncate px-4 py-2 text-slate-500">{entry.accountDescription ?? ''}</td>}
                     {cols.isVisible('narration') && <td className="max-w-[250px] truncate px-4 py-2 text-slate-600">{entry.narration ?? voucher.description ?? ''}</td>}
                     {cols.isVisible('debit') && <td className="px-4 py-2 text-right tabular-nums text-teal-600">{entry.debit ? money(entry.debit) : ''}</td>}
                     {cols.isVisible('credit') && <td className="px-4 py-2 text-right tabular-nums text-red-600">{entry.credit ? money(entry.credit) : ''}</td>}
