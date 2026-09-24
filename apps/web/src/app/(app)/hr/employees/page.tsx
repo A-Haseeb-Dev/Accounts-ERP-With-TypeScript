@@ -28,6 +28,11 @@ const columns: Column<Employee>[] = [
     render: (r) => <span className="text-slate-600">{money(Number(r.basicSalary) + Number(r.allowance || 0))}</span>,
   },
   {
+    key: 'mainAccount',
+    header: 'Account',
+    render: (r) => <span className="font-mono text-xs text-slate-500">{r.mainAccount ? `${r.mainAccount.code} · ${r.mainAccount.name}` : '-'}</span>,
+  },
+  {
     key: 'actions',
     header: 'Actions',
     className: 'w-14',
