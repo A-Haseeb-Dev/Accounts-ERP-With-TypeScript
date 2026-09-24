@@ -43,6 +43,8 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Landmark,
     children: [
       { label: 'Chart of Accounts', href: '/administration/chart-of-accounts', icon: Network, permission: 'administration.head-accounts.view' },
+      { label: 'Head Accounts', href: '/administration/head-accounts', icon: Network, permission: 'administration.head-accounts.view' },
+      { label: 'Sub Heads', href: '/administration/sub-heads', icon: Network, permission: 'administration.sub-heads.view' },
       { label: 'Main Accounts', href: '/administration/main-accounts', icon: Landmark, permission: 'administration.main-accounts.view' },
       { label: 'Bank Accounts', href: '/administration/banks', icon: Landmark, permission: 'administration.main-accounts.view' },
       { label: 'Item Types', href: '/administration/item-types', icon: Boxes, permission: 'administration.item-types.view' },
@@ -88,6 +90,7 @@ export const NAV_ITEMS: NavItem[] = [
       { label: 'Employees', href: '/hr/employees', icon: UserRound, permission: 'hr.employees.view' },
       { label: 'Attendance', href: '/hr/attendance', icon: CalendarCheck2, permission: 'hr.attendance.view' },
       { label: 'Leaves', href: '/hr/leaves', icon: ClipboardList, permission: 'hr.leaves.view' },
+      { label: 'Leave Types', href: '/hr/leave-types', icon: ClipboardList, permission: 'hr.leaves.view' },
       { label: 'Departments', href: '/hr/departments', icon: Briefcase, permission: 'hr.departments.view' },
       { label: 'Designations', href: '/hr/designations', icon: Briefcase, permission: 'hr.designations.view' },
       { label: 'Salary Components', href: '/hr/salary-components', icon: WalletCards, permission: 'hr.salary-components.view' },

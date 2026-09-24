@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { PERMISSION_CATALOG } from '../apps/api/src/permissions/permission-catalog';
 const prisma = new PrismaClient();
 
 // Minimal bootstrap seed. Intentionally creates ONLY the data needed for the
@@ -33,34 +34,7 @@ async function seedOrganization() {
 }
 
 async function seedRolesAndPermissions() {
-  const catalog = [
-    ['dashboard', 'view', 'dashboard.view'],
-    ['Administration', 'view', 'administration.head-accounts.view'],
-    ['Administration', 'view', 'administration.sub-heads.view'],
-    ['Administration', 'view', 'administration.main-accounts.view'],
-    ['Administration', 'view', 'administration.item-types.view'],
-    ['Administration', 'view', 'administration.brands.view'],
-    ['Administration', 'view', 'administration.items.view'],
-    ['Administration', 'view', 'administration.stock-locations.view'],
-    ['Administration', 'view', 'administration.customers.view'],
-    ['Administration', 'view', 'administration.suppliers.view'],
-    ['Administration', 'view', 'administration.towns.view'],
-    ['users', 'view', 'users.view'],
-    ['roles', 'view', 'roles.view'],
-    ['permissions', 'view', 'permissions.view'],
-    ['accounts', 'view', 'accounts.vouchers.view'],
-    ['accounts', 'view', 'accounts.cashbook.view'],
-    ['inventory', 'view', 'inventory.purchase.view'],
-    ['inventory', 'view', 'inventory.purchase-return.view'],
-    ['inventory', 'view', 'inventory.transfer.view'],
-    ['sales', 'view', 'sales.invoice.view'],
-    ['sales', 'view', 'sales.return.view'],
-    ['reports', 'view', 'reports.accounting.view'],
-    ['reports', 'view', 'reports.inventory.view'],
-    ['reports', 'view', 'reports.sales.view'],
-    ['reports', 'view', 'reports.purchase.view'],
-    ['system', 'view', 'system.audit.view'],
-  ] as [string, string, string][];
+  const catalog = PERMISSION_CATALOG.map((p) => [p.module, p.action, p.name] as [string, string, string]);
 
   const roleDefs: { name: string; description: string; isSystem: boolean; protected: boolean }[] = [
     { name: 'Developer', description: 'Full system access with server-side bypass', isSystem: true, protected: true },
