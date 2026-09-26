@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiException } from '../common/exceptions/api.exception';
+import { dateRange, endOfDay } from '../common/utils/date-filter';
 
 @Injectable()
 export class AccountingReportsService {
@@ -40,10 +41,7 @@ export class AccountingReportsService {
 
     const voucherWhere: any = { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } };
     if (from || to) {
-      voucherWhere.voucherDate = {
-        ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: endOfDay(to) } : {}),
-      };
+      voucherWhere.voucherDate = dateRange(from, to);
     }
 
     const entries = await this.prisma.voucherEntry.findMany({
@@ -125,10 +123,7 @@ export class AccountingReportsService {
 
     const voucherWhere: any = { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } };
     if (from || to) {
-      voucherWhere.voucherDate = {
-        ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: endOfDay(to) } : {}),
-      };
+      voucherWhere.voucherDate = dateRange(from, to);
     }
 
     const rows: any[] = [];
@@ -230,10 +225,7 @@ export class AccountingReportsService {
     const { from, to, page = 1, pageSize = 100 } = query;
     const where: any = { status: 'posted' };
     if (from || to) {
-      where.voucherDate = {
-        ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: endOfDay(to) } : {}),
-      };
+      where.voucherDate = dateRange(from, to);
     }
 
     const total = await this.prisma.voucher.count({ where });
@@ -447,13 +439,151 @@ export class AccountingReportsService {
     });
     return heads;
   }
+
+  /**
+   * Cash book (or bank book) — the voucher entries of a single cash / bank
+   * account with a running balance. Defaults to the account configured as
+   * "Cash Account" in Settings; any main account can be passed to get the
+   * equivalent bank book.
+   *
+   * The opening balance accounts for the account's own opening plus every
+   * posted entry dated before `from`, so the running balance is correct even
+   * when the report is filtered to a period. Opening-balance vouchers
+   * (`OB:` references) are excluded from the movement rows — they are already
+   * reflected in the opening figure.
+   */
+  async cashBook(query: { accountId?: string; from?: string; to?: string; page?: number; pageSize?: number }) {
+    const { from, to, page = 1, pageSize = 200 } = query;
+
+    const account = await this.resolveCashAccount(query.accountId);
+
+    const entries = await this.prisma.voucherEntry.findMany({
+      where: {
+        mainAccountId: account.id,
+        voucher: {
+          status: 'posted',
+          NOT: { reference: { startsWith: 'OB:' } },
+          ...(from || to ? { voucherDate: dateRange(from, to) } : {}),
+        },
+      },
+      include: { voucher: { include: { createdBy: { select: { id: true, fullName: true } } } } },
+      orderBy: [{ voucher: { voucherDate: 'asc' } }, { id: 'asc' }],
+    });
+
+    let openingBalance = await this.accountOpening(account);
+    if (from) {
+      const before = await this.prisma.voucherEntry.aggregate({
+        where: {
+          mainAccountId: account.id,
+          voucher: {
+            status: 'posted',
+            voucherDate: { lt: new Date(`${from}T00:00:00.000Z`) },
+            NOT: { reference: { startsWith: 'OB:' } },
+          },
+        },
+        _sum: { debit: true, credit: true },
+      });
+      openingBalance += Number(before._sum.debit ?? 0) - Number(before._sum.credit ?? 0);
+    }
+    openingBalance = round2(openingBalance);
+
+    let running = openingBalance;
+    const totalDebit = entries.reduce((s, e) => s + Number(e.debit), 0);
+    const totalCredit = entries.reduce((s, e) => s + Number(e.credit), 0);
+    const rows = entries.map((e) => {
+      running = round2(running + Number(e.debit) - Number(e.credit));
+      return {
+        id: e.id,
+        date: e.voucher.voucherDate,
+        voucherId: e.voucher.id,
+        voucherNumber: e.voucher.number,
+        voucherType: e.voucher.voucherType,
+        reference: e.voucher.reference,
+        description: e.voucher.description,
+        narration: e.narration,
+        accountCode: account.code,
+        accountName: account.name,
+        debit: Number(e.debit),
+        credit: Number(e.credit),
+        runningBalance: running,
+        balanceType: running > 0 ? 'DR' : running < 0 ? 'CR' : null,
+      };
+    });
+
+    const total = rows.length;
+    const closingBalance = round2(openingBalance + totalDebit - totalCredit);
+
+    return {
+      account: {
+        id: account.id,
+        code: account.code,
+        name: account.name,
+        accountType: account.accountType,
+        headName: account.subHead?.headAccount?.name ?? null,
+        subHeadName: account.subHead?.name ?? null,
+      },
+      openingBalance,
+      openingBalanceType: openingBalance > 0 ? 'DR' : openingBalance < 0 ? 'CR' : null,
+      totalDebit: round2(totalDebit),
+      totalCredit: round2(totalCredit),
+      closingBalance,
+      closingBalanceType: closingBalance > 0 ? 'DR' : closingBalance < 0 ? 'CR' : null,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      rows: rows.slice((page - 1) * pageSize, page * pageSize),
+    };
+  }
+
+  /**
+   * Resolves which account a cash book should be printed for: the requested
+   * one when given, otherwise the account flagged as "Cash Account" in
+   * Settings, otherwise the first active asset account. Returns a not-found
+   * error when an explicit id does not resolve.
+   */
+  private async resolveCashAccount(accountId?: string) {
+    const include = { subHead: { include: { headAccount: true } } } as const;
+
+    if (accountId) {
+      const account = await this.prisma.mainAccount.findUnique({ where: { id: accountId }, include });
+      if (!account) throw ApiException.notFound('Account');
+      return account;
+    }
+
+    const setting = await this.prisma.systemSetting.findFirst({ where: { key: 'accounting.cash_account' } });
+    if (setting?.value) {
+      const configured = await this.prisma.mainAccount.findUnique({ where: { id: setting.value }, include });
+      if (configured) return configured;
+    }
+
+    const fallback = await this.prisma.mainAccount.findFirst({
+      where: { status: 'active', accountType: 'ASSET' },
+      include,
+      orderBy: { code: 'asc' },
+    });
+    if (!fallback) throw ApiException.notFound('Cash account — set one in Settings › Accounting');
+    return fallback;
+  }
+
+  /** Accounts that can be used for a cash / bank book. */
+  async cashBookAccounts() {
+    const accounts = await this.prisma.mainAccount.findMany({
+      where: { status: 'active', accountType: { in: ['ASSET', 'LIABILITY'] } },
+      include: { subHead: { include: { headAccount: true } } },
+      orderBy: { code: 'asc' },
+    });
+    return accounts.map((a) => ({
+      id: a.id,
+      code: a.code,
+      name: a.name,
+      accountType: a.accountType,
+      headName: a.subHead?.headAccount?.name ?? null,
+      subHeadName: a.subHead?.name ?? null,
+    }));
+  }
 }
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
-}
-
-/** End of the given UTC day, so a date-only "to"/"as of" filter stays inclusive of that whole day. */
-function endOfDay(dateStr: string): Date {
-  return new Date(`${dateStr}T23:59:59.999Z`);
 }
