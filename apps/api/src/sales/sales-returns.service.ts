@@ -8,6 +8,7 @@ import { DefaultAccountsService } from '../common/services/default-accounts.serv
 import { FiscalPeriodGuard } from '../common/services/fiscal-period.guard';
 import { ApiException } from '../common/exceptions/api.exception';
 import { CreateSalesReturnDto } from './dto/sales.dto';
+import { dateRange } from '../common/utils/date-filter';
 
 @Injectable()
 export class SalesReturnsService {
@@ -63,8 +64,7 @@ export class SalesReturnsService {
       }
     }
 
-    const subtotal = round2(dto.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0));
-    const grandTotal = round2(subtotal);
+    const { subtotal, discount, tax, grandTotal } = computeTotals(dto.items, dto.discount, dto.tax);
 
     const number = await this.numbering.next('sales_return', 'SR');
 
@@ -79,8 +79,8 @@ export class SalesReturnsService {
           customerId: dto.customerId,
           stockLocationId: dto.stockLocationId,
           subtotal,
-          discount: 0,
-          tax: 0,
+          discount,
+          tax,
           grandTotal,
           status: 'draft',
           createdById: actorId,
@@ -89,9 +89,9 @@ export class SalesReturnsService {
               itemId: item.itemId,
               quantity: item.quantity,
               unitPrice: item.unitPrice,
-              discount: 0,
-              tax: 0,
-              lineTotal: round2(item.quantity * item.unitPrice),
+              discount: item.discount ?? 0,
+              tax: item.tax ?? 0,
+              lineTotal: round2(item.quantity * item.unitPrice - (item.discount ?? 0) + (item.tax ?? 0)),
             })),
           },
         },
@@ -246,8 +246,7 @@ export class SalesReturnsService {
     const location = await this.prisma.stockLocation.findUnique({ where: { id: dto.stockLocationId } });
     if (!location) throw ApiException.notFound('Stock location');
 
-    const subtotal = round2(dto.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0));
-    const grandTotal = round2(subtotal);
+    const { subtotal, discount, tax, grandTotal } = computeTotals(dto.items, dto.discount, dto.tax);
 
     const updated = await this.prisma.runInTransaction(async (tx) => {
       await tx.salesReturnItem.deleteMany({ where: { salesReturnId: id } });
@@ -261,17 +260,17 @@ export class SalesReturnsService {
           customerId: dto.customerId,
           stockLocationId: dto.stockLocationId,
           subtotal,
-          discount: 0,
-          tax: 0,
+          discount,
+          tax,
           grandTotal,
           items: {
             create: dto.items.map((item) => ({
               itemId: item.itemId,
               quantity: item.quantity,
               unitPrice: item.unitPrice,
-              discount: 0,
-              tax: 0,
-              lineTotal: round2(item.quantity * item.unitPrice),
+              discount: item.discount ?? 0,
+              tax: item.tax ?? 0,
+              lineTotal: round2(item.quantity * item.unitPrice - (item.discount ?? 0) + (item.tax ?? 0)),
             })),
           },
         },
@@ -350,10 +349,7 @@ export class SalesReturnsService {
     if (status) where.status = status;
     if (customerId) where.customerId = customerId;
     if (from || to) {
-      where.returnDate = {
-        ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: new Date(to) } : {}),
-      };
+      where.returnDate = dateRange(from, to);
     }
 
     const [items, total] = await Promise.all([
@@ -381,4 +377,20 @@ export class SalesReturnsService {
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Header totals for a sales return. The subtotal mirrors the stored
+ * `lineTotal` of each line (net of the line discount, gross of the line tax)
+ * so the document foots; header discount / tax are then applied on top.
+ * Without this the line discount and tax the DTO accepts were silently
+ * dropped and the customer was credited the full gross price.
+ */
+function computeTotals(items: any[], headerDiscount?: number, headerTax?: number) {
+  const subtotal = round2(
+    items.reduce((s, i) => s + i.quantity * i.unitPrice - (i.discount ?? 0) + (i.tax ?? 0), 0),
+  );
+  const discount = round2(headerDiscount ?? 0);
+  const tax = round2(headerTax ?? 0);
+  return { subtotal, discount, tax, grandTotal: round2(subtotal - discount + tax) };
 }

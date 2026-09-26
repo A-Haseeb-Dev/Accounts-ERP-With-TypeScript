@@ -3,9 +3,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NumberingService } from '../common/services/numbering.service';
 import { AccountingService } from '../common/services/accounting.service';
+import { DefaultAccountsService } from '../common/services/default-accounts.service';
 import { FiscalPeriodGuard } from '../common/services/fiscal-period.guard';
 import { ApiException } from '../common/exceptions/api.exception';
 import { CreateVoucherDto } from './dto/vouchers.dto';
+import { dateRange } from '../common/utils/date-filter';
 
 const TYPE_PREFIX: Record<string, string> = {
   JOURNAL: 'JV',
@@ -20,6 +22,7 @@ export class VouchersService {
     private readonly audit: AuditService,
     private readonly numbering: NumberingService,
     private readonly accounting: AccountingService,
+    private readonly defaultAccounts: DefaultAccountsService,
     private readonly fiscal: FiscalPeriodGuard,
   ) {}
 
@@ -211,10 +214,7 @@ export class VouchersService {
     if (status) where.status = status;
     if (voucherType) where.voucherType = voucherType;
     if (from || to) {
-      where.voucherDate = {
-        ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: new Date(to) } : {}),
-      };
+      where.voucherDate = dateRange(from, to);
     }
 
     const [items, total] = await Promise.all([
@@ -231,54 +231,38 @@ export class VouchersService {
     return { items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
   }
 
-  async cashBook(query: { page?: number; pageSize?: number; from?: string; to?: string; search?: string }) {
-    const { page = 1, pageSize = 25, from, to, search } = query;
-    const cashAccount = await this.prisma.systemSetting.findFirst({
-      where: { key: 'accounting.cash_account' },
-    });
+  async cashBook(query: { page?: number; pageSize?: number; accountId?: string; from?: string; to?: string; search?: string }) {
+    const { page = 1, pageSize = 25, accountId, from, to, search } = query;
+    // Never fall through to an unfiltered query: without an account filter this
+    // would list every posted voucher entry in the ledger, not a cash book.
+    const cashAccountId =
+      accountId ?? (await this.defaultAccounts.resolveAccount('accounting.cash_account', 'Cash Account'));
+    if (!cashAccountId) {
+      throw ApiException.notFound('Cash account - set one in Settings > Accounting');
+    }
 
-    const ob = cashAccount?.value
-      ? await this.prisma.voucherEntry.aggregate({
-          where: {
-            mainAccountId: cashAccount.value,
-            voucher: { status: 'posted', reference: { startsWith: 'OB:' } },
-          },
-          _sum: { debit: true, credit: true },
-        })
-      : null;
-    let openingFromPrevious = 0;
-    if (cashAccount?.value) {
-      const fromVoucher = Number(ob?._sum.debit ?? 0) - Number(ob?._sum.credit ?? 0);
-      if (fromVoucher !== 0) {
-        openingFromPrevious = fromVoucher;
-      } else {
-        const account = await this.prisma.mainAccount.findUnique({
-          where: { id: cashAccount.value },
-        });
-        openingFromPrevious =
-          account?.openingBalanceType === 'CR'
-            ? -Number(account?.openingBalance ?? 0)
-            : Number(account?.openingBalance ?? 0);
-      }
+    // The account's own opening (posted OB voucher, else the legacy column)
+    // plus every posted movement dated before `from`, so the running balance
+    // is correct when the book is filtered to a period.
+    const openingFromPrevious = await this.cashOpening(cashAccountId, from);
+
+    const baseVoucherWhere: Record<string, unknown> = {
+      status: 'posted',
+      NOT: { reference: { startsWith: 'OB:' } },
+    };
+    if (from || to) {
+      baseVoucherWhere.voucherDate = dateRange(from, to);
     }
 
     const where: Record<string, unknown> = {
-      voucher: { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } },
+      mainAccountId: cashAccountId,
+      voucher: baseVoucherWhere,
     };
-    if (cashAccount?.value) where.mainAccountId = cashAccount.value;
     if (search) {
       where.OR = [
         { voucher: { number: { contains: search, mode: 'insensitive' } } },
         { voucher: { description: { contains: search, mode: 'insensitive' } } },
       ];
-    }
-    if (from || to) {
-      where.voucher = {
-        status: 'posted',
-        NOT: { reference: { startsWith: 'OB:' } },
-        ...(from ? { voucherDate: { gte: new Date(from) } } : {}),
-        ...(to ? { voucherDate: { lte: new Date(to) } } : {}),
-      };
     }
 
     const entries = await this.prisma.voucherEntry.findMany({
@@ -290,7 +274,7 @@ export class VouchersService {
 
     let running = openingFromPrevious;
     const enriched = entries.map((e) => {
-      running += Number(e.debit) - Number(e.credit);
+      running = round2(running + Number(e.debit) - Number(e.credit));
       return { ...e, runningBalance: running };
     });
 
@@ -303,7 +287,40 @@ export class VouchersService {
       pageSize,
       totalPages: Math.ceil(total / pageSize),
       totalRunning: running,
+      openingBalance: openingFromPrevious,
     };
+  }
+
+  /** Opening position of the cash account, including any pre-`from` movements. */
+  private async cashOpening(mainAccountId: string | null | undefined, from?: string): Promise<number> {
+    if (!mainAccountId) return 0;
+
+    const beforeWhere = {
+      status: 'posted',
+      NOT: { reference: { startsWith: 'OB:' } },
+      ...(from ? { voucherDate: { lt: new Date(`${from}T00:00:00.000Z`) } } : {}),
+    };
+
+    const before = await this.prisma.voucherEntry.aggregate({
+      where: { mainAccountId, voucher: beforeWhere },
+      _sum: { debit: true, credit: true },
+    });
+    const movements = round2(Number(before._sum.debit ?? 0) - Number(before._sum.credit ?? 0));
+
+    const ob = await this.prisma.voucherEntry.aggregate({
+      where: {
+        mainAccountId,
+        voucher: { status: 'posted', reference: { startsWith: 'OB:' } },
+      },
+      _sum: { debit: true, credit: true },
+    });
+    const fromVoucher = round2(Number(ob._sum.debit ?? 0) - Number(ob._sum.credit ?? 0));
+    if (fromVoucher !== 0) return round2(fromVoucher + movements);
+
+    const account = await this.prisma.mainAccount.findUnique({ where: { id: mainAccountId } });
+    const legacy =
+      account?.openingBalanceType === 'CR' ? -Number(account?.openingBalance ?? 0) : Number(account?.openingBalance ?? 0);
+    return round2(legacy + movements);
   }
 
   async findOne(id: string) {

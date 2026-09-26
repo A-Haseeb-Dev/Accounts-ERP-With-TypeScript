@@ -119,4 +119,14 @@ export class CreateSalesReturnDto {
   @Type(() => SaleItemDto)
   @IsNotEmpty({ message: 'At least one item is required' })
   items: SaleItemDto[];
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  discount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  tax?: number;
 }

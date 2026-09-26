@@ -5,6 +5,7 @@ import { AuditCleanupService } from './audit-cleanup.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { ApiException } from '../common/exceptions/api.exception';
+import { dateRange } from '../common/utils/date-filter';
 
 const MAX_PAGE_SIZE = 200;
 
@@ -42,10 +43,7 @@ export class AuditController {
     if (userId) where.userId = userId;
     if (entityId) where.entityId = entityId;
     if (from || to) {
-      where.createdAt = {
-        ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: new Date(to) } : {}),
-      };
+      where.createdAt = dateRange(from, to);
     }
     if (search) {
       where.message = { contains: search, mode: 'insensitive' };

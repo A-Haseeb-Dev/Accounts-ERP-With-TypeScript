@@ -4,6 +4,7 @@ import { AuditService } from '../../audit/audit.service';
 import { ApiException } from '../../common/exceptions/api.exception';
 import { NumberingService } from '../../common/services/numbering.service';
 import { CreateCustomerDto, UpdateCustomerDto } from '../dto/parties.dto';
+import { dateRange } from '../../common/utils/date-filter';
 
 @Injectable()
 export class CustomersService {
@@ -89,17 +90,26 @@ export class CustomersService {
     return { items: enriched, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
   }
 
+  /**
+   * Outstanding balance of a customer.
+   *
+   * When the customer is linked to a main account the posted voucher ledger is
+   * the single source of truth: posting a sale already writes Dr Receivable /
+   * Cr Revenue and Dr Cash / Cr Receivable, so adding the document totals on
+   * top would count the same money twice. Parties without a linked account
+   * fall back to summing the documents directly.
+   */
   private async calculateBalance(customer: any): Promise<number> {
     let balance = Number(customer.openingBalance ?? 0);
     if (customer.mainAccountId) {
       const entries = await this.prisma.voucherEntry.findMany({
-        where: { mainAccountId: customer.mainAccountId },
-        include: { voucher: { select: { status: true } } },
+        where: { mainAccountId: customer.mainAccountId, voucher: { status: 'posted' } },
+        select: { debit: true, credit: true },
       });
       for (const e of entries) {
-        if (e.voucher.status === 'cancelled') continue;
         balance += Number(e.debit) - Number(e.credit);
       }
+      return round2(balance);
     }
     const sales = await this.prisma.sale.aggregate({
       where: { customerId: customer.id, status: { in: ['posted'] } },
@@ -110,7 +120,7 @@ export class CustomersService {
       _sum: { grandTotal: true },
     });
     balance += Number(sales._sum.grandTotal ?? 0) - Number(returns._sum.grandTotal ?? 0) - Number(sales._sum.amountPaid ?? 0);
-    return balance;
+    return round2(balance);
   }
 
   async findAllFlat() {
@@ -188,34 +198,52 @@ export class CustomersService {
 
     const where: Record<string, unknown> = { mainAccountId: customer.mainAccountId, voucher: { status: 'posted' } };
     if (from || to) {
-      where.voucher = {
-        status: 'posted',
-        ...(from ? { voucherDate: { gte: new Date(from) } } : {}),
-        ...(to ? { voucherDate: { lte: new Date(to) } } : {}),
-      };
+      // `dateRange` keeps the two bounds as siblings under one `voucherDate`
+      // key. Spreading `{ voucherDate: ... }` twice instead would let the
+      // second spread overwrite the first and silently drop the "from" bound.
+      where.voucher = { status: 'posted', voucherDate: dateRange(from, to) };
     }
 
-    const entries = await this.prisma.voucherEntry.findMany({
-      where,
-      include: { voucher: true },
-      orderBy: { voucher: { voucherDate: 'asc' } },
-    });
-    const total = entries.length;
-    const filtered = entries.slice((page - 1) * pageSize, page * pageSize);
+    const openingBalance = Number(customer.openingBalance ?? 0);
+    // Seed the running balance with everything already on the ledger before
+    // this page, otherwise page 2+ restarts from the opening balance and every
+    // balance shown from page 2 onwards is wrong.
+    let running = openingBalance;
 
-    let running = Number(customer.openingBalance ?? 0);
-    const withRunning = filtered.map((e) => {
+    const [entries, total, preceding] = await Promise.all([
+      this.prisma.voucherEntry.findMany({
+        where,
+        include: { voucher: true },
+        orderBy: [{ voucher: { voucherDate: 'asc' } }, { id: 'asc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.voucherEntry.count({ where }),
+      page > 1
+        ? this.prisma.voucherEntry.findMany({
+            where,
+            select: { debit: true, credit: true },
+            orderBy: [{ voucher: { voucherDate: 'asc' } }, { id: 'asc' }],
+            take: (page - 1) * pageSize,
+          })
+        : Promise.resolve([]),
+    ]);
+    for (const e of preceding) {
       running += Number(e.debit) - Number(e.credit);
+    }
+
+    const withRunning = entries.map((e) => {
+      running = round2(running + Number(e.debit) - Number(e.credit));
       return { ...e, runningBalance: running };
     });
 
     return {
       customer,
-      openingBalance: Number(customer.openingBalance ?? 0),
+      openingBalance,
       total,
       page,
       pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
       entries: withRunning,
     };
   }

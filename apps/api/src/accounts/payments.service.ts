@@ -8,6 +8,7 @@ import { DefaultAccountsService } from '../common/services/default-accounts.serv
 import { FiscalPeriodGuard } from '../common/services/fiscal-period.guard';
 import { ApiException } from '../common/exceptions/api.exception';
 import { CreatePaymentDto, EditChequeDto } from './dto/payments.dto';
+import { dateRange } from '../common/utils/date-filter';
 
 const DOC_PREFIXES: Record<string, string> = { RECEIPT: 'RN', PAYMENT: 'PN' };
 
@@ -21,6 +22,28 @@ export class PaymentsService {
     private readonly defaultAccounts: DefaultAccountsService,
     private readonly fiscal: FiscalPeriodGuard,
   ) {}
+
+  /**
+   * Payment status of a document, net of its posted returns.
+   *
+   * The amount due is `grandTotal − posted returns`, so a customer who
+   * returned goods and then settled the reduced balance is correctly "paid"
+   * rather than being left flagged "partial" forever.
+   */
+  private async documentPaymentStatus(
+    tx: Prisma.TransactionClient,
+    documentType: string,
+    doc: { id: string; grandTotal: unknown },
+    paid: number,
+  ): Promise<'paid' | 'partial' | 'unpaid'> {
+    const agg =
+      documentType === 'SALE'
+        ? await tx.salesReturn.aggregate({ where: { saleId: doc.id, status: 'posted' }, _sum: { grandTotal: true } })
+        : await tx.purchaseReturn.aggregate({ where: { purchaseId: doc.id, status: 'posted' }, _sum: { grandTotal: true } });
+    const due = round2(Number(doc.grandTotal) - Number(agg._sum.grandTotal ?? 0));
+    if (due <= 0) return 'paid';
+    return paid >= due ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+  }
 
   previewNumber(paymentType?: string) {
     const type = (paymentType ?? 'RECEIPT').toUpperCase();
@@ -301,8 +324,7 @@ export class PaymentsService {
           const sale = await tx.sale.findUnique({ where: { id: a.documentId } });
           if (sale) {
             const paid = round2(Number(sale.amountPaid) + amt);
-            const paymentStatus =
-              paid >= Number(sale.grandTotal) ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+            const paymentStatus = await this.documentPaymentStatus(tx, 'SALE', sale, paid);
             await tx.sale.update({
               where: { id: sale.id },
               data: { amountPaid: paid, paymentStatus },
@@ -312,8 +334,7 @@ export class PaymentsService {
           const purchase = await tx.purchase.findUnique({ where: { id: a.documentId } });
           if (purchase) {
             const paid = round2(Number(purchase.paidAmount) + amt);
-            const payStatus =
-              paid >= Number(purchase.grandTotal) ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+            const payStatus = await this.documentPaymentStatus(tx, 'PURCHASE', purchase, paid);
             await tx.purchase.update({
               where: { id: purchase.id },
               data: { paidAmount: paid, payStatus },
@@ -602,8 +623,7 @@ export class PaymentsService {
           const sale = await tx.sale.findUnique({ where: { id: a.documentId } });
           if (sale) {
             const paid = round2(Math.max(0, Number(sale.amountPaid) - amt));
-            const paymentStatus =
-              paid >= Number(sale.grandTotal) ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+            const paymentStatus = await this.documentPaymentStatus(tx, 'SALE', sale, paid);
             await tx.sale.update({
               where: { id: sale.id },
               data: { amountPaid: paid, paymentStatus },
@@ -613,8 +633,7 @@ export class PaymentsService {
           const purchase = await tx.purchase.findUnique({ where: { id: a.documentId } });
           if (purchase) {
             const paid = round2(Math.max(0, Number(purchase.paidAmount) - amt));
-            const payStatus =
-              paid >= Number(purchase.grandTotal) ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+            const payStatus = await this.documentPaymentStatus(tx, 'PURCHASE', purchase, paid);
             await tx.purchase.update({
               where: { id: purchase.id },
               data: { paidAmount: paid, payStatus },
@@ -1116,8 +1135,7 @@ export class PaymentsService {
           const sale = await tx.sale.findUnique({ where: { id: a.documentId } });
           if (sale) {
             const paid = round2(Math.max(0, Number(sale.amountPaid) - amt));
-            const paymentStatus =
-              paid >= Number(sale.grandTotal) ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+            const paymentStatus = await this.documentPaymentStatus(tx, 'SALE', sale, paid);
             await tx.sale.update({
               where: { id: sale.id },
               data: { amountPaid: paid, paymentStatus },
@@ -1127,8 +1145,7 @@ export class PaymentsService {
           const purchase = await tx.purchase.findUnique({ where: { id: a.documentId } });
           if (purchase) {
             const paid = round2(Math.max(0, Number(purchase.paidAmount) - amt));
-            const payStatus =
-              paid >= Number(purchase.grandTotal) ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+            const payStatus = await this.documentPaymentStatus(tx, 'PURCHASE', purchase, paid);
             await tx.purchase.update({
               where: { id: purchase.id },
               data: { paidAmount: paid, payStatus },
@@ -1182,10 +1199,7 @@ export class PaymentsService {
     if (method) where.method = method;
     if (chequeStatus) where.chequeStatus = chequeStatus;
     if (from || to) {
-      where.paymentDate = {
-        ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: new Date(to) } : {}),
-      };
+      where.paymentDate = dateRange(from, to);
     }
 
     const [items, total] = await Promise.all([

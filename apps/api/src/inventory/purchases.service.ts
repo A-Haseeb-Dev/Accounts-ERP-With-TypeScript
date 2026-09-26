@@ -9,6 +9,7 @@ import { FiscalPeriodGuard } from '../common/services/fiscal-period.guard';
 import { ApiException } from '../common/exceptions/api.exception';
 import { Prisma } from '@prisma/client';
 import { CreatePurchaseDto } from './dto/inventory.dto';
+import { dateRange } from '../common/utils/date-filter';
 
 @Injectable()
 export class PurchasesService {
@@ -450,10 +451,7 @@ export class PurchasesService {
     if (status) where.status = status;
     if (supplierId) where.supplierId = supplierId;
     if (from || to) {
-      where.purchaseDate = {
-        ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: new Date(to) } : {}),
-      };
+      where.purchaseDate = dateRange(from, to);
     }
 
     const [items, total] = await Promise.all([

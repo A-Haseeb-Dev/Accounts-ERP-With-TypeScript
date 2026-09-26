@@ -8,6 +8,8 @@ import { DefaultAccountsService } from '../common/services/default-accounts.serv
 import { FiscalPeriodGuard } from '../common/services/fiscal-period.guard';
 import { ApiException } from '../common/exceptions/api.exception';
 import { CreatePurchaseReturnDto } from './dto/inventory.dto';
+import type { VoucherEntryInput } from '../common/services/accounting.service';
+import { dateRange } from '../common/utils/date-filter';
 
 @Injectable()
 export class PurchaseReturnsService {
@@ -75,10 +77,7 @@ export class PurchaseReturnsService {
       }
     }
 
-    const subtotal = round2(dto.items.reduce((s, i) => s + i.quantity * i.unitCost, 0));
-    const discount = round2(dto.discount ?? 0);
-    const tax = round2(dto.tax ?? 0);
-    const grandTotal = round2(subtotal - discount + tax);
+    const { subtotal, discount, tax, grandTotal } = computeTotals(dto.items, dto.discount, dto.tax);
 
     const number = await this.numbering.next('purchase_return', 'PR');
 
@@ -190,7 +189,32 @@ export class PurchaseReturnsService {
         }
       }
 
-      // 2. Accounting: Dr Supplier/Payable, Cr Inventory.
+      // 2. Accounting: Dr Supplier/Payable, Cr Inventory (+ reverse of any
+      //    purchase tax). Mirrors the purchase posting with the sides flipped:
+      //    the payable is debited the document grand total, inventory is
+      //    credited the gross returned cost, and the difference is the tax /
+    //    discount adjustment that keeps the voucher balanced.
+      const voucherEntries: VoucherEntryInput[] = [
+        { mainAccountId: payableAccountId, debit: Number(pr.grandTotal), narration: `Purchase return ${pr.number}` },
+        { mainAccountId: inventoryAccountId, credit: returnedTotal, narration: `Returned stock ${pr.number}` },
+      ];
+
+      const taxAmount = round2(Number(pr.grandTotal) - returnedTotal);
+      if (taxAmount !== 0) {
+        const taxAccountId = taxAmount < 0
+          ? await this.defaultAccounts.resolveAccount('accounting.tax_account', 'Sales Tax Payable')
+          : null;
+        if (taxAccountId) {
+          voucherEntries.push({
+            mainAccountId: taxAccountId,
+            ...(taxAmount < 0 ? { debit: -taxAmount } : { credit: taxAmount }),
+            narration: `Purchase return tax ${pr.number}`,
+          });
+        } else {
+          voucherEntries[1].credit = round2(Number(voucherEntries[1].credit) + taxAmount);
+        }
+      }
+
       const voucher = await this.accounting.createVoucher(
         tx,
         {
@@ -198,10 +222,7 @@ export class PurchaseReturnsService {
           voucherDate: new Date(pr.returnDate),
           description: `Purchase return ${pr.number} - ${pr.supplier.name}`,
           reference: pr.number,
-          entries: [
-            { mainAccountId: payableAccountId, debit: Number(pr.grandTotal), narration: `Purchase return ${pr.number}` },
-            { mainAccountId: inventoryAccountId, credit: returnedTotal, narration: `Returned stock ${pr.number}` },
-          ],
+          entries: voucherEntries,
           createdById: actorId,
         },
         await this.numbering.next('voucher_purchase_return', 'DV', tx),
@@ -284,10 +305,7 @@ export class PurchaseReturnsService {
     const location = await this.prisma.stockLocation.findUnique({ where: { id: dto.stockLocationId } });
     if (!location) throw ApiException.notFound('Stock location');
 
-    const subtotal = round2(dto.items.reduce((s, i) => s + i.quantity * i.unitCost, 0));
-    const discount = round2(dto.discount ?? 0);
-    const tax = round2(dto.tax ?? 0);
-    const grandTotal = round2(subtotal - discount + tax);
+    const { subtotal, discount, tax, grandTotal } = computeTotals(dto.items, dto.discount, dto.tax);
 
     const updated = await this.prisma.runInTransaction(async (tx) => {
       await tx.purchaseReturnItem.deleteMany({ where: { purchaseReturnId: id } });
@@ -393,10 +411,7 @@ export class PurchaseReturnsService {
     if (status) where.status = status;
     if (supplierId) where.supplierId = supplierId;
     if (from || to) {
-      where.returnDate = {
-        ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: new Date(to) } : {}),
-      };
+      where.returnDate = dateRange(from, to);
     }
 
     const [items, total] = await Promise.all([
@@ -424,4 +439,18 @@ export class PurchaseReturnsService {
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Header totals for a purchase return. The subtotal mirrors the stored
+ * `lineTotal` of each line (net of the line discount, gross of the line tax)
+ * so the document foots; header discount / tax are then applied on top.
+ */
+function computeTotals(items: any[], headerDiscount?: number, headerTax?: number) {
+  const subtotal = round2(
+    items.reduce((s, i) => s + i.quantity * i.unitCost - (i.discount ?? 0) + (i.tax ?? 0), 0),
+  );
+  const discount = round2(headerDiscount ?? 0);
+  const tax = round2(headerTax ?? 0);
+  return { subtotal, discount, tax, grandTotal: round2(subtotal - discount + tax) };
 }

@@ -6,6 +6,7 @@ import { InventoryService } from '../common/services/inventory.service';
 import { FiscalPeriodGuard } from '../common/services/fiscal-period.guard';
 import { ApiException } from '../common/exceptions/api.exception';
 import { CreateStockTransferDto } from './dto/inventory.dto';
+import { dateRange } from '../common/utils/date-filter';
 
 @Injectable()
 export class StockTransfersService {
@@ -289,10 +290,7 @@ export class StockTransfersService {
     }
     if (status) where.status = status;
     if (from || to) {
-      where.transferDate = {
-        ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: new Date(to) } : {}),
-      };
+      where.transferDate = dateRange(from, to);
     }
 
     const [items, total] = await Promise.all([

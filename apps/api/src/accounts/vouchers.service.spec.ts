@@ -40,6 +40,7 @@ function buildService(overrides?: {
   prisma?: Record<string, unknown>;
   audit?: { record: ReturnType<typeof vi.fn> };
   numbering?: { next: ReturnType<typeof vi.fn> };
+  defaultAccounts?: { resolveAccount: ReturnType<typeof vi.fn> };
   fiscal?: { assertOpen: ReturnType<typeof vi.fn> };
 }) {
   const prisma = overrides?.prisma ?? {
@@ -52,9 +53,19 @@ function buildService(overrides?: {
   const audit = overrides?.audit ?? { record: vi.fn().mockResolvedValue(undefined) };
   const numbering = overrides?.numbering ?? { next: vi.fn().mockResolvedValue('JV-000001') };
   const accounting = new AccountingService({} as never, {} as never);
+  const defaultAccounts = overrides?.defaultAccounts ?? {
+    resolveAccount: vi.fn().mockResolvedValue('cash'),
+  };
   const fiscal = overrides?.fiscal ?? { assertOpen: vi.fn().mockResolvedValue(undefined) };
-  const svc = new VouchersService(prisma as never, audit as never, numbering as never, accounting as never, fiscal as never);
-  return { svc, prisma, audit, numbering, accounting, fiscal };
+  const svc = new VouchersService(
+    prisma as never,
+    audit as never,
+    numbering as never,
+    accounting as never,
+    defaultAccounts as never,
+    fiscal as never,
+  );
+  return { svc, prisma, audit, numbering, accounting, defaultAccounts, fiscal };
 }
 
 describe('VouchersService.create validation', () => {
@@ -101,8 +112,16 @@ describe('VouchersService.create', () => {
     const audit = { record: vi.fn().mockResolvedValue(undefined) };
     const numbering = { next: vi.fn().mockResolvedValue('JV-000001') };
     const accounting = new AccountingService({} as never, {} as never);
+    const defaultAccounts = { resolveAccount: vi.fn().mockResolvedValue('cash') };
     const fiscal = { assertOpen: vi.fn().mockResolvedValue(undefined) };
-    const svc = new VouchersService(prisma as never, audit as never, numbering as never, accounting as never, fiscal as never);
+    const svc = new VouchersService(
+      prisma as never,
+      audit as never,
+      numbering as never,
+      accounting as never,
+      defaultAccounts as never,
+      fiscal as never,
+    );
 
     const result = await svc.create(dto(), 'u1');
 
@@ -262,5 +281,81 @@ describe('VouchersService.cancel', () => {
     const result = await svc.cancel('v1', 'Wrote wrong amount', 'u1');
     expect(result.status).toBe('cancelled');
     expect(result.cancelReason).toBe('Wrote wrong amount');
+  });
+});
+
+describe('VouchersService.cashBook', () => {
+  function cashBookPrisma(entries: unknown[] = []) {
+    return {
+      voucher: { findUnique: vi.fn(), findMany: vi.fn() },
+      voucherEntry: {
+        findMany: vi.fn().mockResolvedValue(entries),
+        // opening aggregate: posted movements before `from`
+        aggregate: vi.fn().mockResolvedValue({ _sum: { debit: 0, credit: 0 } }),
+      },
+      mainAccount: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'cash', openingBalance: 0, openingBalanceType: 'DR' }),
+      },
+      systemSetting: { findFirst: vi.fn() },
+      $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({})),
+      runInTransaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn({})),
+    };
+  }
+
+  it('throws NOT_FOUND instead of listing the whole ledger when no cash account is configured', async () => {
+    const prisma = cashBookPrisma();
+    const { svc } = buildService({
+      prisma,
+      defaultAccounts: { resolveAccount: vi.fn().mockResolvedValue(null) },
+    });
+
+    const err = await apiErrorStatus(svc.cashBook({}));
+    expect(err).toBe(404);
+    // The dangerous path is an unfiltered findMany over every voucher entry.
+    expect(prisma.voucherEntry.findMany).not.toHaveBeenCalled();
+  });
+
+  it('always filters entries to the resolved cash account', async () => {
+    const prisma = cashBookPrisma([
+      { id: 'e1', debit: 100, credit: 0, voucher: { number: 'RV-1', voucherDate: new Date('2026-09-01') } },
+    ]);
+    const { svc } = buildService({
+      prisma,
+      defaultAccounts: { resolveAccount: vi.fn().mockResolvedValue('cash') },
+    });
+
+    await svc.cashBook({});
+
+    const call = (prisma.voucherEntry.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.where.mainAccountId).toBe('cash');
+  });
+
+  it('honours an explicit accountId over the configured cash account', async () => {
+    const prisma = cashBookPrisma();
+    const { svc } = buildService({
+      prisma,
+      defaultAccounts: { resolveAccount: vi.fn().mockResolvedValue('cash') },
+    });
+
+    await svc.cashBook({ accountId: 'bank' });
+
+    const call = (prisma.voucherEntry.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.where.mainAccountId).toBe('bank');
+  });
+
+  it('keeps both date bounds in a single inclusive voucherDate filter', async () => {
+    const prisma = cashBookPrisma();
+    const { svc } = buildService({
+      prisma,
+      defaultAccounts: { resolveAccount: vi.fn().mockResolvedValue('cash') },
+    });
+
+    await svc.cashBook({ from: '2026-09-01', to: '2026-09-30' });
+
+    const call = (prisma.voucherEntry.findMany as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.where.voucher.voucherDate).toEqual({
+      gte: new Date('2026-09-01T00:00:00.000Z'),
+      lte: new Date('2026-09-30T23:59:59.999Z'),
+    });
   });
 });
