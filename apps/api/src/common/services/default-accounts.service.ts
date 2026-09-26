@@ -42,8 +42,8 @@ const MAIN_ACCOUNTS: { code: string; name: string; subHead: string; type: string
   { code: '03-02', name: 'Owner Capital', subHead: 'Capital', type: 'EQUITY' },
   { code: '04-01', name: 'Sales Revenue', subHead: 'Direct Revenue', type: 'REVENUE', settingKey: 'accounting.revenue_account' },
   { code: '04-02', name: 'Sales Returns', subHead: 'Direct Revenue', type: 'REVENUE', settingKey: 'accounting.sales_return_account' },
-  { code: '05-01', name: 'Purchases', subHead: 'Cost of Sales', type: 'EXPENSE' },
-  { code: '05-02', name: 'Purchase Returns', subHead: 'Cost of Sales', type: 'EXPENSE', settingKey: 'accounting.purchase_return_account' },
+  { code: '05-01', name: 'Purchases', subHead: 'Current Assets', type: 'ASSET' },
+  { code: '05-02', name: 'Purchase Returns', subHead: 'Current Assets', type: 'ASSET', settingKey: 'accounting.purchase_return_account' },
   { code: '05-03', name: 'Salary Expense', subHead: 'Operating Expenses', type: 'EXPENSE', settingKey: 'accounting.salary_expense_account' },
   { code: '05-04', name: 'Commission Expense', subHead: 'Operating Expenses', type: 'EXPENSE', settingKey: 'accounting.commission_expense_account' },
 ];
@@ -84,10 +84,10 @@ export class DefaultAccountsService implements OnModuleInit {
     }
 
     for (const acc of MAIN_ACCOUNTS) {
+      const subHead = await this.prisma.subHead.findFirst({ where: { name: acc.subHead } });
       const existing = await this.prisma.mainAccount.findFirst({ where: { code: acc.code } });
       let account = existing;
       if (!existing) {
-        const subHead = await this.prisma.subHead.findFirst({ where: { name: acc.subHead } });
         account = await this.prisma.mainAccount.create({
           data: {
             code: acc.code,
@@ -98,6 +98,22 @@ export class DefaultAccountsService implements OnModuleInit {
           },
         });
         this.logger.log(`Created default main account ${acc.name} (${acc.code})`);
+      } else if (subHead && (existing.accountType !== acc.type || existing.subHeadId !== subHead.id)) {
+        // Seed values are only applied on create, so a corrected default type
+        // would never reach an existing database. Repair it, but only while the
+        // account is untouched: once a voucher references it, the classification
+        // is the user's own doing and re-typing it would silently move balances
+        // between the balance sheet and the profit and loss.
+        const inUse = await this.prisma.voucherEntry.count({ where: { mainAccountId: existing.id } });
+        if (inUse === 0) {
+          await this.prisma.mainAccount.update({
+            where: { id: existing.id },
+            data: { accountType: acc.type, subHeadId: subHead.id },
+          });
+          this.logger.log(
+            `Reclassified ${acc.name} (${acc.code}): ${existing.accountType}/${existing.subHeadId ?? '-'} -> ${acc.type}/${acc.subHead}`,
+          );
+        }
       }
       if (acc.settingKey && account) {
         const saved = await this.prisma.systemSetting.findFirst({
