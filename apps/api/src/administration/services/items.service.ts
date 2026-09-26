@@ -4,6 +4,7 @@ import { AuditService } from '../../audit/audit.service';
 import { ApiException } from '../../common/exceptions/api.exception';
 import { NumberingService } from '../../common/services/numbering.service';
 import { CreateItemDto, UpdateItemDto } from '../dto/products.dto';
+import { dateRange } from '../../common/utils/date-filter';
 
 @Injectable()
 export class ItemsService {
@@ -179,10 +180,7 @@ export class ItemsService {
     const { page = 1, pageSize = 25, from, to } = query;
     const where: Record<string, unknown> = { itemId: id };
     if (from || to) {
-      where.createdAt = {
-        ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: new Date(to) } : {}),
-      };
+      where.createdAt = dateRange(from, to);
     }
 
     const transactions = await this.prisma.inventoryTransaction.findMany({

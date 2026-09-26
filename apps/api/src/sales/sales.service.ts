@@ -8,6 +8,7 @@ import { DefaultAccountsService } from '../common/services/default-accounts.serv
 import { FiscalPeriodGuard } from '../common/services/fiscal-period.guard';
 import { ApiException } from '../common/exceptions/api.exception';
 import { CreateSaleDto } from './dto/sales.dto';
+import { dateRange } from '../common/utils/date-filter';
 
 @Injectable()
 export class SalesService {
@@ -503,10 +504,7 @@ export class SalesService {
     if (status) where.status = status;
     if (customerId) where.customerId = customerId;
     if (from || to) {
-      where.saleDate = {
-        ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: new Date(to) } : {}),
-      };
+      where.saleDate = dateRange(from, to);
     }
 
     const [items, total] = await Promise.all([

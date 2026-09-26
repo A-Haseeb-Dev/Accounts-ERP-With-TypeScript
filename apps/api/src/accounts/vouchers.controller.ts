@@ -48,11 +48,12 @@ export class VouchersController {
   cashBook(
     @Query('page') page = '1',
     @Query('pageSize') pageSize = '25',
+    @Query('accountId') accountId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('search') search?: string,
   ) {
-    return this.service.cashBook({ page: Number(page), pageSize: Number(pageSize), from, to, search });
+    return this.service.cashBook({ page: Number(page), pageSize: Number(pageSize), accountId, from, to, search });
   }
 
   @Get('next-number')

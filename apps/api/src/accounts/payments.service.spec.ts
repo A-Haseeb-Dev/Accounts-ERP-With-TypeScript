@@ -370,3 +370,132 @@ describe('PaymentsService.deposit', () => {
     );
   });
 });
+
+describe('PaymentsService document status net of returns', () => {
+  /**
+   * `bounce` reverses each allocation, so it is a direct way to observe the
+   * payment status the service writes back onto the document. A return lowers
+   * the amount actually due, which the old `grandTotal - paid` maths ignored.
+   */
+  function bounceService(opts: {
+    documentType: 'SALE' | 'PURCHASE';
+    grandTotal: number;
+    paidBefore: number;
+    returnedTotal: number;
+  }) {
+    const document = {
+      id: 'doc-1',
+      grandTotal: opts.grandTotal,
+      amountPaid: opts.paidBefore,
+      paidAmount: opts.paidBefore,
+    };
+    const sale = { findUnique: vi.fn().mockResolvedValue(document), update: vi.fn() };
+    const purchase = { findUnique: vi.fn().mockResolvedValue(document), update: vi.fn() };
+    const salesReturn = { aggregate: vi.fn().mockResolvedValue({ _sum: { grandTotal: opts.returnedTotal } }) };
+    const purchaseReturn = { aggregate: vi.fn().mockResolvedValue({ _sum: { grandTotal: opts.returnedTotal } }) };
+    const paymentAllocation = { deleteMany: vi.fn() };
+    const prisma = {
+      paymentEntry: { findUnique: vi.fn(), update: vi.fn().mockResolvedValue({}) },
+      customer: { findUnique: vi.fn().mockResolvedValue({ id: 'c1', name: 'C', mainAccountId: 'ar' }) },
+      supplier: { findUnique: vi.fn().mockResolvedValue({ id: 's1', name: 'S', mainAccountId: 'ap' }) },
+      mainAccount: { findUnique: vi.fn().mockResolvedValue({ id: 'cash', status: 'active' }) },
+      sale,
+      purchase,
+      salesReturn,
+      purchaseReturn,
+      paymentAllocation,
+      runInTransaction: vi.fn((fn: (tx: unknown) => unknown) =>
+        fn({ sale, purchase, salesReturn, purchaseReturn, paymentAllocation, paymentEntry: prisma.paymentEntry }),
+      ),
+    };
+    const accounting = {
+      createVoucher: vi.fn(async () => ({ id: 'rv-1', status: 'draft', entries: [] })),
+      postVoucher: vi.fn(async () => ({ status: 'posted' })),
+    };
+    const svc = new PaymentsService(
+      prisma as never,
+      { record: vi.fn() } as never,
+      { next: vi.fn().mockResolvedValue('PN-000002') } as never,
+      accounting as never,
+      { resolveAccount: vi.fn().mockResolvedValue('cash') } as never,
+      { assertOpen: vi.fn().mockResolvedValue(undefined) } as never,
+    );
+    const entry = baseEntry({
+      partyType: opts.documentType === 'SALE' ? 'CUSTOMER' : 'SUPPLIER',
+      status: 'posted',
+      chequeStatus: 'IN_HAND',
+      allocations: [{ documentType: opts.documentType, documentId: 'doc-1', allocatedAmount: 100 }],
+    });
+    prisma.paymentEntry.findUnique.mockResolvedValue(entry);
+    return { svc, prisma, sale, purchase, salesReturn, purchaseReturn };
+  }
+
+  it('keeps a sale partial while the reduced balance is still outstanding', async () => {
+    // Invoice 1000, 300 returned => 700 due; bouncing 100 leaves 400 paid.
+    const { svc, sale, salesReturn } = bounceService({
+      documentType: 'SALE',
+      grandTotal: 1000,
+      paidBefore: 500,
+      returnedTotal: 300,
+    });
+
+    await svc.bounce('cheque-1', 'Returned by bank', 'actor');
+
+    expect(salesReturn.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { saleId: 'doc-1', status: 'posted' } }),
+    );
+    expect(sale.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ amountPaid: 400, paymentStatus: 'partial' }) }),
+    );
+  });
+
+  it('marks a sale paid when the full net-of-returns balance is still covered', async () => {
+    // Invoice 1000, 300 returned => 700 due; 800 paid still covers it.
+    const { svc, sale } = bounceService({
+      documentType: 'SALE',
+      grandTotal: 1000,
+      paidBefore: 900,
+      returnedTotal: 300,
+    });
+
+    await svc.bounce('cheque-1', 'Returned by bank', 'actor');
+
+    expect(sale.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ paymentStatus: 'paid' }) }),
+    );
+  });
+
+  it('treats a fully returned invoice as settled even with nothing paid', async () => {
+    const { svc, sale } = bounceService({
+      documentType: 'SALE',
+      grandTotal: 1000,
+      paidBefore: 100,
+      returnedTotal: 1000,
+    });
+
+    await svc.bounce('cheque-1', 'Returned by bank', 'actor');
+
+    expect(sale.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ paymentStatus: 'paid' }) }),
+    );
+  });
+
+  it('applies the same net-of-returns rule to purchases', async () => {
+    // Bill 1000, 300 returned => 700 due; 800 paid still covers it.
+    const { svc, purchase, purchaseReturn } = bounceService({
+      documentType: 'PURCHASE',
+      grandTotal: 1000,
+      paidBefore: 900,
+      returnedTotal: 300,
+    });
+
+    await svc.bounce('cheque-1', 'Returned by bank', 'actor');
+
+    expect(purchaseReturn.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { purchaseId: 'doc-1', status: 'posted' } }),
+    );
+    expect(purchase.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ payStatus: 'paid' }) }),
+    );
+  });
+});

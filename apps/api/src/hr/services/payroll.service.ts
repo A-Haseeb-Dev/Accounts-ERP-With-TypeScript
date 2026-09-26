@@ -10,7 +10,7 @@ import {
   GeneratePayrollDto,
   UpdatePayrollItemsDto,
 } from '../dto/hr.dto';
-import { computePayrollLine, daysInMonth } from './payroll-calc';
+import { computePayrollLine, daysInMonth, round2 } from './payroll-calc';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -237,6 +237,20 @@ export class PayrollService {
     return run;
   }
 
+  /**
+   * Header totals derived from the run's items. The items are the source of
+   * truth: a stored `totalGross` / `totalDeduction` / `totalNet` that has
+   * drifted (e.g. an older partial edit) would otherwise produce an unbalanced
+   * voucher, since the debit side is always built from the item lines.
+   */
+  private itemTotals(items: { grossPay: unknown; totalDeduction: unknown; netPay: unknown }[]) {
+    return {
+      gross: round2(items.reduce((s, i) => s + Number(i.grossPay), 0)),
+      deduction: round2(items.reduce((s, i) => s + Number(i.totalDeduction), 0)),
+      net: round2(items.reduce((s, i) => s + Number(i.netPay), 0)),
+    };
+  }
+
   async updateItems(id: string, dto: UpdatePayrollItemsDto, actorId?: string) {
     const run = await this.assertDraft(id);
     const existing = new Map(run.items.map((i) => [i.id, i]));
@@ -271,30 +285,31 @@ export class PayrollService {
       };
     });
 
-    const updatedItems = await this.prisma.$transaction(async (tx) => {
-      const results = [];
+    // The run's header totals cover *every* employee on the run, not just the
+    // rows this request touched — summing `updates` alone would replace a
+    // 50-employee totalGross with the sum of the 3 edited lines.
+    const updatedRun = await this.prisma.$transaction(async (tx) => {
       for (const u of updates) {
-        results.push(await tx.payrollItem.update({ where: { id: u.id }, data: u.data }));
+        await tx.payrollItem.update({ where: { id: u.id }, data: u.data });
       }
-      return results;
-    });
-
-    const gross = updatedItems.reduce((s, i) => s + Number(i.grossPay), 0);
-    const deduction = updatedItems.reduce((s, i) => s + Number(i.totalDeduction), 0);
-    const net = updatedItems.reduce((s, i) => s + Number(i.netPay), 0);
-    const updatedRun = await this.prisma.payrollRun.update({
-      where: { id },
-      data: {
-        totalGross: Math.round((gross + Number.EPSILON) * 100) / 100,
-        totalDeduction: Math.round((deduction + Number.EPSILON) * 100) / 100,
-        totalNet: Math.round((net + Number.EPSILON) * 100) / 100,
-      },
-      include: {
-        items: {
-          include: { employee: { include: { department: true, designation: true } } },
-          orderBy: { employee: { code: 'asc' } },
+      const totals = await tx.payrollItem.aggregate({
+        where: { payrollRunId: id },
+        _sum: { grossPay: true, totalDeduction: true, netPay: true },
+      });
+      return tx.payrollRun.update({
+        where: { id },
+        data: {
+          totalGross: round2(Number(totals._sum.grossPay ?? 0)),
+          totalDeduction: round2(Number(totals._sum.totalDeduction ?? 0)),
+          totalNet: round2(Number(totals._sum.netPay ?? 0)),
         },
-      },
+        include: {
+          items: {
+            include: { employee: { include: { department: true, designation: true } } },
+            orderBy: { employee: { code: 'asc' } },
+          },
+        },
+      });
     });
     this.audit.record({
       userId: actorId, action: 'UPDATE', module: 'HR', entity: 'Payroll',
@@ -309,6 +324,7 @@ export class PayrollService {
       throw ApiException.invalidTransaction(`Only draft payroll runs can be posted (this one is ${run.status})`);
     }
 
+    const totals = this.itemTotals(run.items);
     const salaryExpenseId = await this.defaultAccounts.resolveAccount(
       'accounting.salary_expense_account',
       'Salary Expense',
@@ -321,7 +337,7 @@ export class PayrollService {
       'accounting.payroll_deductions_account',
       'Payroll Deductions Payable',
     );
-    if (!salaryExpenseId || !salariesPayableId || (Number(run.totalDeduction) > 0 && !deductionsPayableId)) {
+    if (!salaryExpenseId || !salariesPayableId || (totals.deduction > 0 && !deductionsPayableId)) {
       throw ApiException.invalidTransaction(
         'Salary expense / salaries payable accounts are not configured. Set them in Chart of Accounts defaults before posting payroll.',
       );
@@ -367,10 +383,10 @@ export class PayrollService {
         narration: `Net pay - ${item.employee.fullName}`,
       });
     }
-    if (Number(run.totalDeduction) > 0) {
+    if (totals.deduction > 0) {
       entries.push({
         mainAccountId: deductionsPayableId!,
-        credit: Number(run.totalDeduction),
+        credit: totals.deduction,
         narration: 'Payroll deductions',
       });
     }
@@ -392,7 +408,17 @@ export class PayrollService {
       await this.accounting.postVoucher(tx, voucher.id, actorId);
       return tx.payrollRun.update({
         where: { id },
-        data: { status: 'posted', voucherId: voucher.id, postedById: actorId ?? null, postedAt: new Date() },
+        data: {
+          status: 'posted',
+          voucherId: voucher.id,
+          postedById: actorId ?? null,
+          postedAt: new Date(),
+          // Repair the header to match the voucher that was just booked, so the
+          // stored totals can never disagree with the posted voucher.
+          totalGross: totals.gross,
+          totalDeduction: totals.deduction,
+          totalNet: totals.net,
+        },
         include: { items: { include: { employee: true } } },
       });
     });
@@ -447,7 +473,9 @@ export class PayrollService {
       );
     }
 
-    const netAmount = Number(run.totalNet);
+    // The disbursement clears exactly what posting credited, so it uses the
+    // same item-derived net rather than a possibly-drifted header total.
+    const netAmount = this.itemTotals(run.items).net;
     const paid = await this.prisma.$transaction(async (tx) => {
       const number = await this.numbering.next('voucher_journal', 'JV', tx);
       const settlementEntries: { mainAccountId: string; debit?: number; credit?: number; narration?: string }[] = [];

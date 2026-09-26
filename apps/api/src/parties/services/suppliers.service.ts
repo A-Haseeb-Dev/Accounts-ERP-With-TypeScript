@@ -4,6 +4,7 @@ import { AuditService } from '../../audit/audit.service';
 import { ApiException } from '../../common/exceptions/api.exception';
 import { NumberingService } from '../../common/services/numbering.service';
 import { CreateSupplierDto, UpdateSupplierDto } from '../dto/parties.dto';
+import { dateRange } from '../../common/utils/date-filter';
 
 @Injectable()
 export class SuppliersService {
@@ -56,17 +57,25 @@ export class SuppliersService {
     return item;
   }
 
+  /**
+   * Outstanding balance of a supplier.
+   *
+   * When the supplier is linked to a main account the posted voucher ledger is
+   * the single source of truth: posting a purchase already writes Dr Inventory /
+   * Cr Payable, so adding the document totals on top would count the same money
+   * twice. Suppliers without a linked account fall back to summing documents.
+   */
   private async calculateBalance(supplier: any): Promise<number> {
     let balance = Number(supplier.openingBalance ?? 0);
     if (supplier.mainAccountId) {
       const entries = await this.prisma.voucherEntry.findMany({
-        where: { mainAccountId: supplier.mainAccountId },
-        include: { voucher: { select: { status: true } } },
+        where: { mainAccountId: supplier.mainAccountId, voucher: { status: 'posted' } },
+        select: { debit: true, credit: true },
       });
       for (const e of entries) {
-        if (e.voucher.status === 'cancelled') continue;
         balance += Number(e.credit) - Number(e.debit);
       }
+      return round2(balance);
     }
     const purchases = await this.prisma.purchase.aggregate({
       where: { supplierId: supplier.id, status: 'posted' },
@@ -77,7 +86,7 @@ export class SuppliersService {
       _sum: { grandTotal: true },
     });
     balance += Number(purchases._sum.grandTotal ?? 0) - Number(returns._sum.grandTotal ?? 0);
-    return balance;
+    return round2(balance);
   }
 
   async findAll(query: { page?: number; pageSize?: number; search?: string; status?: string; townId?: string }) {
@@ -169,34 +178,52 @@ export class SuppliersService {
 
     const where: Record<string, unknown> = { mainAccountId: supplier.mainAccountId, voucher: { status: 'posted' } };
     if (from || to) {
-      where.voucher = {
-        status: 'posted',
-        ...(from ? { voucherDate: { gte: new Date(from) } } : {}),
-        ...(to ? { voucherDate: { lte: new Date(to) } } : {}),
-      };
+      // `dateRange` keeps the two bounds as siblings under one `voucherDate`
+      // key. Spreading `{ voucherDate: ... }` twice instead would let the
+      // second spread overwrite the first and silently drop the "from" bound.
+      where.voucher = { status: 'posted', voucherDate: dateRange(from, to) };
     }
 
-    const entries = await this.prisma.voucherEntry.findMany({
-      where,
-      include: { voucher: true },
-      orderBy: { voucher: { voucherDate: 'asc' } },
-    });
-    const total = entries.length;
-    const filtered = entries.slice((page - 1) * pageSize, page * pageSize);
+    const openingBalance = Number(supplier.openingBalance ?? 0);
+    // Seed the running balance with everything already on the ledger before
+    // this page, otherwise page 2+ restarts from the opening balance and every
+    // balance shown from page 2 onwards is wrong.
+    let running = openingBalance;
 
-    let running = Number(supplier.openingBalance ?? 0);
-    const withRunning = filtered.map((e) => {
+    const [entries, total, preceding] = await Promise.all([
+      this.prisma.voucherEntry.findMany({
+        where,
+        include: { voucher: true },
+        orderBy: [{ voucher: { voucherDate: 'asc' } }, { id: 'asc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.voucherEntry.count({ where }),
+      page > 1
+        ? this.prisma.voucherEntry.findMany({
+            where,
+            select: { debit: true, credit: true },
+            orderBy: [{ voucher: { voucherDate: 'asc' } }, { id: 'asc' }],
+            take: (page - 1) * pageSize,
+          })
+        : Promise.resolve([]),
+    ]);
+    for (const e of preceding) {
       running += Number(e.credit) - Number(e.debit);
+    }
+
+    const withRunning = entries.map((e) => {
+      running = round2(running + Number(e.credit) - Number(e.debit));
       return { ...e, runningBalance: running };
     });
 
     return {
       supplier,
-      openingBalance: Number(supplier.openingBalance ?? 0),
+      openingBalance,
       total,
       page,
       pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
       entries: withRunning,
     };
   }
@@ -235,3 +262,8 @@ export class SuppliersService {
     return { id, deleted: true };
   }
 }
+
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+

@@ -9,6 +9,7 @@ import {
   UpdateLeaveTypeDto,
 } from '../dto/hr.dto';
 import { AttendanceService } from './attendance.service';
+import { dateRange } from '../../common/utils/date-filter';
 
 @Injectable()
 export class LeavesService {
@@ -205,10 +206,7 @@ export class LeavesService {
     if (status) where.status = status;
     if (employeeId) where.employeeId = employeeId;
     if (from || to) {
-      where.fromDate = {
-        ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: new Date(to) } : {}),
-      };
+      where.fromDate = dateRange(from, to);
     }
     const [items, total] = await Promise.all([
       this.prisma.hrLeaveRequest.findMany({
