@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { NumberingService } from '../common/services/numbering.service';
 import { InventoryService } from '../common/services/inventory.service';
 import { AccountingService } from '../common/services/accounting.service';
+import type { VoucherEntryInput } from '../common/services/accounting.service';
 import { DefaultAccountsService } from '../common/services/default-accounts.service';
 import { FiscalPeriodGuard } from '../common/services/fiscal-period.guard';
 import { ApiException } from '../common/exceptions/api.exception';
@@ -135,8 +136,6 @@ export class SalesReturnsService {
       throw ApiException.invalidTransaction('Accounting accounts are not configured');
     }
 
-    const productTotal = Number(sr.grandTotal);
-
     const result = await this.prisma.runInTransaction(async (tx) => {
       // 1. Restore inventory for each line.
       for (const line of sr.items) {
@@ -152,7 +151,33 @@ export class SalesReturnsService {
         });
       }
 
-      // 2. Accounting: Dr Sales Returns, Cr Customer/Receivable.
+      // 2. Accounting: Dr Sales Returns, Dr Sales Tax Payable, Cr Customer.
+      //    The sale credited revenue for `subtotal - discount` and tax
+      //    payable for `tax`, so the return has to reverse exactly that split.
+      //    Debiting Sales Returns for the whole grand total would overstate
+      //    returns by the tax and leave a phantom tax liability behind.
+      const taxAmount = Number(sr.tax);
+      const taxAccountId =
+        taxAmount > 0
+          ? await this.defaultAccounts.resolveAccount('accounting.tax_account', 'Sales Tax Payable')
+          : null;
+      // Without a tax account the tax is folded into the contra-revenue debit,
+      // so the entry always nets to the grand total credited to the customer.
+      const returnsDebit = round2(Number(sr.subtotal) - Number(sr.discount) + (taxAccountId ? 0 : taxAmount));
+
+      const entries: VoucherEntryInput[] = [
+        { mainAccountId: salesReturnAccountId, debit: returnsDebit, narration: `Return ${sr.number}` },
+        { mainAccountId: customerAccountId, credit: Number(sr.grandTotal), narration: `Return ${sr.number}` },
+      ];
+      if (taxAccountId) {
+        // Reverse the tax the original invoice credited as a liability.
+        entries.splice(1, 0, {
+          mainAccountId: taxAccountId,
+          debit: taxAmount,
+          narration: `Tax ${sr.number}`,
+        });
+      }
+
       const voucher = await this.accounting.createVoucher(
         tx,
         {
@@ -160,10 +185,7 @@ export class SalesReturnsService {
           voucherDate: new Date(sr.returnDate),
           description: `Sales return ${sr.number} - ${sr.customer.name}`,
           reference: sr.number,
-          entries: [
-            { mainAccountId: salesReturnAccountId, debit: productTotal, narration: `Return ${sr.number}` },
-            { mainAccountId: customerAccountId, credit: productTotal, narration: `Return ${sr.number}` },
-          ],
+          entries,
           createdById: actorId,
         },
         await this.numbering.next('voucher_sales_return', 'RS', tx),

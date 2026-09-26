@@ -189,11 +189,13 @@ export class PurchaseReturnsService {
         }
       }
 
-      // 2. Accounting: Dr Supplier/Payable, Cr Inventory (+ reverse of any
-      //    purchase tax). Mirrors the purchase posting with the sides flipped:
-      //    the payable is debited the document grand total, inventory is
-      //    credited the gross returned cost, and the difference is the tax /
-    //    discount adjustment that keeps the voucher balanced.
+      // 2. Accounting: Cr Inventory, Dr Supplier/Payable (+ reverse of any
+      //    purchase tax). This is the exact mirror of purchases.service.ts with
+      //    the sides flipped, so a purchase and its matching return net to zero.
+      //    Note the sign test matches the purchase side: only a *tax* resolves
+      //    the tax account, while a net discount folds into the inventory credit.
+      //    Testing for the opposite sign booked discounts to tax payable and
+      //    capitalised tax into inventory, so the pair never cancelled out.
       const voucherEntries: VoucherEntryInput[] = [
         { mainAccountId: payableAccountId, debit: Number(pr.grandTotal), narration: `Purchase return ${pr.number}` },
         { mainAccountId: inventoryAccountId, credit: returnedTotal, narration: `Returned stock ${pr.number}` },
@@ -201,13 +203,13 @@ export class PurchaseReturnsService {
 
       const taxAmount = round2(Number(pr.grandTotal) - returnedTotal);
       if (taxAmount !== 0) {
-        const taxAccountId = taxAmount < 0
+        const taxAccountId = taxAmount > 0
           ? await this.defaultAccounts.resolveAccount('accounting.tax_account', 'Sales Tax Payable')
           : null;
         if (taxAccountId) {
           voucherEntries.push({
             mainAccountId: taxAccountId,
-            ...(taxAmount < 0 ? { debit: -taxAmount } : { credit: taxAmount }),
+            credit: taxAmount,
             narration: `Purchase return tax ${pr.number}`,
           });
         } else {
