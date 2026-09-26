@@ -292,6 +292,10 @@ model Item {
   unit             String   @default("pcs")
   purchasePrice    Decimal  @default(0) @db.Decimal(18, 2)
   salePrice        Decimal  @default(0) @db.Decimal(18, 2)
+  /// Running weighted-average cost of the units on hand, maintained whenever
+  /// stock comes in at a cost. This is what cost of goods sold is valued at;
+  /// `purchasePrice` is only the latest quoted price and is not a cost basis.
+  averageCost      Decimal  @default(0) @db.Decimal(18, 2)
   minStockLevel    Decimal  @default(0) @db.Decimal(18, 2)
   description      String?
   status           String   @default("active")

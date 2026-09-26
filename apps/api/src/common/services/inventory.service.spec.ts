@@ -5,7 +5,7 @@ type MockFn = ReturnType<typeof vi.fn>;
 
 interface MockInventoryPrisma {
   inventoryTransaction: { aggregate?: MockFn; groupBy?: MockFn; create?: MockFn };
-  item?: { findMany?: MockFn };
+  item?: { findMany?: MockFn; findUnique?: MockFn; update?: MockFn };
 }
 
 function buildService(overrides?: { prisma?: Partial<MockInventoryPrisma> }) {
@@ -15,7 +15,13 @@ function buildService(overrides?: { prisma?: Partial<MockInventoryPrisma> }) {
       groupBy: vi.fn(),
       create: vi.fn(),
     },
-    item: { findMany: vi.fn() },
+    item: {
+      findMany: vi.fn(),
+      // Weighted-average maintenance reads and writes the item's average cost
+      // whenever a movement carries a cost.
+      findUnique: vi.fn().mockResolvedValue({ id: 'item-1', averageCost: 0 }),
+      update: vi.fn().mockResolvedValue({}),
+    },
     ...(overrides?.prisma ?? {}),
   } as MockInventoryPrisma;
   const svc = new InventoryService(prisma as never);
