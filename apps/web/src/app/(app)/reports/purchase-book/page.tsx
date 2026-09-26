@@ -93,7 +93,8 @@ export default function PurchaseBookPage() {
           <Field label="Status">
             <Select value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="posted">Posted</option>
-              <option value="">All</option>
+              {/* 'all' — an empty value is dropped by qs() and would silently fall back to "posted" */}
+              <option value="all">All</option>
             </Select>
           </Field>
           {mode === 'byInvoice' && (

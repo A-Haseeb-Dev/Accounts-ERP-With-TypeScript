@@ -117,10 +117,13 @@ export const NAV_ITEMS: NavItem[] = [
       { label: 'Trial Balance', href: '/reports/trial-balance', icon: BarChart3, permission: 'reports.accounting.view' },
       { label: 'General Ledger', href: '/reports/general-ledger', icon: FileSpreadsheet, permission: 'reports.accounting.view' },
       { label: 'General Journal', href: '/reports/general-journal', icon: FileSpreadsheet, permission: 'reports.accounting.view' },
+      { label: 'Cash Book Report', href: '/reports/cash-book', icon: Wallet, permission: 'reports.accounting.view' },
       { label: 'Stock Report', href: '/reports/stock', icon: Package, permission: 'reports.inventory.view' },
       { label: 'Product Ledger', href: '/reports/product-ledger', icon: Package, permission: 'reports.inventory.view' },
       { label: 'Sales Book', href: '/reports/sales-book', icon: ShoppingCart, permission: 'reports.sales.view' },
+      { label: 'Sales Return Report', href: '/reports/sales-return', icon: Receipt, permission: 'reports.sales.view' },
       { label: 'Purchase Book', href: '/reports/purchase-book', icon: Truck, permission: 'reports.purchase.view' },
+      { label: 'Purchase Return Report', href: '/reports/purchase-return', icon: Receipt, permission: 'reports.purchase.view' },
     ],
   },
   {

@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiException } from '../common/exceptions/api.exception';
+import { dateRange } from '../common/utils/date-filter';
+
+/** Sentinel status meaning "do not filter on status" (the "All" filter option). */
+const ALL_STATUS = 'all';
 
 @Injectable()
 export class InventoryReportsService {
@@ -15,10 +19,7 @@ export class InventoryReportsService {
     const where: any = { itemId };
     if (locationId) where.locationId = locationId;
     if (from || to) {
-      where.createdAt = {
-        ...(from ? { gte: new Date(from) } : {}),
-        ...(to ? { lte: endOfDay(to) } : {}),
-      };
+      where.createdAt = dateRange(from, to);
     }
 
     const transactions = await this.prisma.inventoryTransaction.findMany({
@@ -85,7 +86,7 @@ export class InventoryReportsService {
         where: {
           itemId: item.id,
           ...locationWhere,
-          ...(from || to ? { createdAt: fromTo(from, to) } : {}),
+          ...(from || to ? { createdAt: dateRange(from, to) } : {}),
         },
         _sum: { quantityIn: true, quantityOut: true },
       });
@@ -236,15 +237,15 @@ export class InventoryReportsService {
     const whereCustomer: any = { status: 'active' };
     if (customerId) whereCustomer.id = customerId;
     if (townId) whereCustomer.townId = townId;
-    const customers = await this.prisma.customer.findMany({ where: whereCustomer, orderBy: { name: 'asc' } });
+    const customers = await this.prisma.customer.findMany({ where: whereCustomer, include: { town: true }, orderBy: { name: 'asc' } });
 
     const rows = [];
     for (const customer of customers) {
       const saleWhere: any = { customerId: customer.id, status: 'posted' };
       const rtWhere: any = { customerId: customer.id, status: 'posted' };
       if (from || to) {
-        saleWhere.saleDate = fromTo(from, to);
-        rtWhere.returnDate = fromTo(from, to);
+        saleWhere.saleDate = dateRange(from, to);
+        rtWhere.returnDate = dateRange(from, to);
       }
       const sales = await this.prisma.sale.findMany({ where: saleWhere, orderBy: { saleDate: 'desc' } });
       const returnAgg = await this.prisma.salesReturn.aggregate({ where: rtWhere, _sum: { grandTotal: true } });
@@ -252,7 +253,7 @@ export class InventoryReportsService {
       const salesTotal = sales.reduce((s, sl) => s + Number(sl.grandTotal), 0);
       rows.push({
         customer: { id: customer.id, code: customer.code, name: customer.name },
-        town: null,
+        town: customer.town?.name ?? null,
         invoices: sales.map((s) => ({ number: s.number, date: s.saleDate, amount: Number(s.grandTotal) })),
         salesTotal: round2(salesTotal),
         returnTotal: round2(returnTotal),
@@ -292,27 +293,53 @@ export class InventoryReportsService {
   }
 
   /** Sales return report. */
-  async salesReturnReport(query: { from?: string; to?: string; customerId?: string }) {
-    const { from, to, customerId } = query;
-    const where: any = { status: 'posted' };
+  async salesReturnReport(query: { from?: string; to?: string; customerId?: string; status?: string }) {
+    const { from, to, customerId, status = 'posted' } = query;
+    const where: any = status === ALL_STATUS ? {} : { status };
     if (customerId) where.customerId = customerId;
-    if (from || to) where.returnDate = fromTo(from, to);
+    if (from || to) where.returnDate = dateRange(from, to);
 
     const returns = await this.prisma.salesReturn.findMany({
       where,
-      include: { customer: true, items: { include: { item: true } } },
-      orderBy: { returnDate: 'desc' },
+      include: {
+        customer: true,
+        stockLocation: true,
+        sale: { select: { id: true, number: true } },
+        items: { include: { item: true } },
+      },
+      orderBy: [{ returnDate: 'desc' }, { number: 'desc' }],
     });
     const total = returns.reduce((s, r) => s + Number(r.grandTotal), 0);
-    return { rows: returns, total: round2(total) };
+    return { rows: returns, count: returns.length, total: round2(total) };
+  }
+
+  /** Purchase return report. */
+  async purchaseReturnReport(query: { from?: string; to?: string; supplierId?: string; status?: string }) {
+    const { from, to, supplierId, status = 'posted' } = query;
+    const where: any = status === ALL_STATUS ? {} : { status };
+    if (supplierId) where.supplierId = supplierId;
+    if (from || to) where.returnDate = dateRange(from, to);
+
+    const returns = await this.prisma.purchaseReturn.findMany({
+      where,
+      include: {
+        supplier: true,
+        stockLocation: true,
+        purchase: { select: { id: true, number: true } },
+        items: { include: { item: true } },
+      },
+      orderBy: [{ returnDate: 'desc' }, { number: 'desc' }],
+    });
+    const total = returns.reduce((s, r) => s + Number(r.grandTotal), 0);
+    return { rows: returns, count: returns.length, total: round2(total) };
   }
 
   /** Sales book - all sales in range. */
   async salesBook(query: { from?: string; to?: string; customerId?: string; status?: string }) {
     const { from, to, customerId, status = 'posted' } = query;
-    const where: any = { status };
+    const where: any = status === ALL_STATUS ? {} : { status };
     if (customerId) where.customerId = customerId;
-    if (from || to) where.saleDate = fromTo(from, to);
+    if (from || to) where.saleDate = dateRange(from, to);
 
     const sales = await this.prisma.sale.findMany({
       where,
@@ -328,9 +355,9 @@ export class InventoryReportsService {
   /** Purchase book - all purchases in range. */
   async purchaseBook(query: { from?: string; to?: string; supplierId?: string; status?: string }) {
     const { from, to, supplierId, status = 'posted' } = query;
-    const where: any = { status };
+    const where: any = status === ALL_STATUS ? {} : { status };
     if (supplierId) where.supplierId = supplierId;
-    if (from || to) where.purchaseDate = fromTo(from, to);
+    if (from || to) where.purchaseDate = dateRange(from, to);
 
     const purchases = await this.prisma.purchase.findMany({
       where,
@@ -355,8 +382,8 @@ export class InventoryReportsService {
       const purchaseWhere: any = { supplierId: supplier.id, status: 'posted' };
       const returnWhere: any = { supplierId: supplier.id, status: 'posted' };
       if (from || to) {
-        purchaseWhere.purchaseDate = fromTo(from, to);
-        returnWhere.returnDate = fromTo(from, to);
+        purchaseWhere.purchaseDate = dateRange(from, to);
+        returnWhere.returnDate = dateRange(from, to);
       }
       const purchaseAgg = await this.prisma.purchase.aggregate({ where: purchaseWhere, _sum: { grandTotal: true }, _count: true });
       const returnAgg = await this.prisma.purchaseReturn.aggregate({ where: returnWhere, _sum: { grandTotal: true } });
@@ -380,7 +407,7 @@ export class InventoryReportsService {
     for (const supplier of suppliers) {
       const purchases = await this.prisma.purchase.aggregate({
         where: { supplierId: supplier.id, status: 'posted' },
-        _sum: { grandTotal: true },
+        _sum: { grandTotal: true, paidAmount: true },
       });
       const returns = await this.prisma.purchaseReturn.aggregate({
         where: { supplierId: supplier.id, status: 'posted' },
@@ -389,28 +416,18 @@ export class InventoryReportsService {
       const totalPurchases = Number(purchases._sum.grandTotal ?? 0);
       const totalReturns = Number(returns._sum.grandTotal ?? 0);
       const netPurchase = totalPurchases - totalReturns;
+      const paid = Number(purchases._sum.paidAmount ?? 0);
       rows.push({
         supplier: { id: supplier.id, code: supplier.code, name: supplier.name },
         totalPurchases: round2(totalPurchases),
         returns: round2(totalReturns),
-        paid: round2(0),
-        outstanding: round2(netPurchase),
+        netPurchase: round2(netPurchase),
+        paid: round2(paid),
+        outstanding: round2(netPurchase - paid),
       });
     }
     return { rows };
   }
-}
-
-function fromTo(from?: string, to?: string) {
-  return {
-    ...(from ? { gte: new Date(from) } : {}),
-    ...(to ? { lte: endOfDay(to) } : {}),
-  };
-}
-
-/** End of the given UTC day, so a date-only "to" filter stays inclusive of that whole day. */
-function endOfDay(dateStr: string): Date {
-  return new Date(`${dateStr}T23:59:59.999Z`);
 }
 
 function round2(n: number): number {

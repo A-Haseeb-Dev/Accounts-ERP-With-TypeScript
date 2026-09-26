@@ -331,6 +331,7 @@ export interface PurchaseReturn {
   updatedAt: string;
   supplier?: Supplier;
   stockLocation?: StockLocation;
+  purchase?: { id: string; number: string } | null;
   items: { id: string; itemId: string; quantity: number; unitCost: number; discount: number; tax: number; lineTotal: number; item?: Item }[];
 }
 
@@ -388,6 +389,7 @@ export interface SalesReturn {
   updatedAt: string;
   customer?: Customer;
   stockLocation?: StockLocation;
+  sale?: { id: string; number: string } | null;
   items: { id: string; itemId: string; quantity: number; unitPrice: number; discount: number; tax: number; lineTotal: number; item?: Item }[];
 }
 
@@ -795,6 +797,60 @@ export interface CashBookRow {
   debit?: number;
   credit?: number;
   runningBalance: number;
+}
+
+/** One movement line of the reports cash / bank book. */
+export interface CashBookEntry {
+  id: string;
+  date: string;
+  voucherId: string;
+  voucherNumber: string;
+  voucherType: VoucherType;
+  reference?: string | null;
+  description?: string | null;
+  narration?: string | null;
+  accountCode: string;
+  accountName: string;
+  debit: number;
+  credit: number;
+  runningBalance: number;
+  balanceType: 'DR' | 'CR' | null;
+}
+
+export interface CashBookAccount {
+  id: string;
+  code: string;
+  name: string;
+  accountType: string;
+  headName?: string | null;
+  subHeadName?: string | null;
+}
+
+export interface CashBookReport {
+  account: CashBookAccount;
+  openingBalance: number;
+  openingBalanceType: 'DR' | 'CR' | null;
+  totalDebit: number;
+  totalCredit: number;
+  closingBalance: number;
+  closingBalanceType: 'DR' | 'CR' | null;
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  rows: CashBookEntry[];
+}
+
+export interface SalesReturnReport {
+  rows: SalesReturn[];
+  count: number;
+  total: number;
+}
+
+export interface PurchaseReturnReport {
+  rows: PurchaseReturn[];
+  count: number;
+  total: number;
 }
 
 export interface TransactionDoc {

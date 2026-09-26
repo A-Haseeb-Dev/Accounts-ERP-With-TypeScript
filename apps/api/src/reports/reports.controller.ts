@@ -78,6 +78,26 @@ export class ReportsController {
     return this.accounting.accountList();
   }
 
+  @Get('cash-book')
+  @Permissions('reports.accounting.view')
+  @ApiOperation({ summary: 'Cash Book / Bank Book with running balance' })
+  cashBook(
+    @Query('accountId') accountId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('page') page = '1',
+    @Query('pageSize') pageSize = '200',
+  ) {
+    return this.accounting.cashBook({ accountId, from, to, page: Number(page), pageSize: Number(pageSize) });
+  }
+
+  @Get('cash-book-accounts')
+  @Permissions('reports.accounting.view')
+  @ApiOperation({ summary: 'Accounts selectable in the cash / bank book' })
+  cashBookAccounts() {
+    return this.accounting.cashBookAccounts();
+  }
+
   // ---------------- Inventory / Sales / Purchase Reports ----------------
 
   @Get('product-ledger')
@@ -138,8 +158,25 @@ export class ReportsController {
   @Get('sales-return')
   @Permissions('reports.sales.view')
   @ApiOperation({ summary: 'Sales Return Report' })
-  salesReturnReport(@Query('from') from?: string, @Query('to') to?: string, @Query('customerId') customerId?: string) {
-    return this.inventory.salesReturnReport({ from, to, customerId });
+  salesReturnReport(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('customerId') customerId?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.inventory.salesReturnReport({ from, to, customerId, status });
+  }
+
+  @Get('purchase-return')
+  @Permissions('reports.purchase.view')
+  @ApiOperation({ summary: 'Purchase Return Report' })
+  purchaseReturnReport(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('supplierId') supplierId?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.inventory.purchaseReturnReport({ from, to, supplierId, status });
   }
 
   @Get('sales-book')
@@ -187,6 +224,8 @@ export class ReportsController {
     @Query('customerId') customerId?: string,
     @Query('supplierId') supplierId?: string,
     @Query('locationId') locationId?: string,
+    @Query('status') status?: string,
+    @Query('asOf') asOf?: string,
   ) {
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet(report.replace(/[^a-zA-Z0-9]/g, '_') || 'Report');
@@ -207,7 +246,9 @@ export class ReportsController {
         break;
       }
       case 'trial-balance': {
-        data = await this.accounting.trialBalance({ asOf: undefined });
+        // `asOf` is the report's own date filter, so fall back to the end of
+        // the period — exporting must match what is on screen.
+        data = await this.accounting.trialBalance({ asOf: asOf ?? to });
         ws.columns = [
           { header: 'Code', key: 'code', width: 12 }, { header: 'Account', key: 'name', width: 40 },
           { header: 'Type', key: 'accountType', width: 14 }, { header: 'Debit', key: 'debit', width: 14 },
@@ -228,7 +269,7 @@ export class ReportsController {
         break;
       }
       case 'sales-book': {
-        data = await this.inventory.salesBook({ from, to });
+        data = await this.inventory.salesBook({ from, to, customerId, status });
         ws.columns = [
           { header: 'Number', key: 'number', width: 14 }, { header: 'Date', key: 'saleDate', width: 14 },
           { header: 'Customer', key: 'customer', width: 30 }, { header: 'Subtotal', key: 'subtotal', width: 14 },
@@ -238,13 +279,63 @@ export class ReportsController {
         break;
       }
       case 'purchase-book': {
-        data = await this.inventory.purchaseBook({ from, to });
+        data = await this.inventory.purchaseBook({ from, to, supplierId, status });
         ws.columns = [
           { header: 'Number', key: 'number', width: 14 }, { header: 'Date', key: 'purchaseDate', width: 14 },
           { header: 'Supplier', key: 'supplier', width: 30 }, { header: 'Subtotal', key: 'subtotal', width: 14 },
           { header: 'Tax', key: 'tax', width: 14 }, { header: 'Total', key: 'grandTotal', width: 14 },
         ];
         data.rows.forEach((r) => ws.addRow({ ...r, purchaseDate: new Date(r.purchaseDate).toLocaleDateString(), supplier: r.supplier?.name ?? '' }));
+        break;
+      }
+      case 'sales-return': {
+        data = await this.inventory.salesReturnReport({ from, to, customerId, status });
+        ws.columns = [
+          { header: 'Number', key: 'number', width: 14 }, { header: 'Date', key: 'returnDate', width: 14 },
+          { header: 'Customer', key: 'customer', width: 30 }, { header: 'Against', key: 'sale', width: 16 },
+          { header: 'Subtotal', key: 'subtotal', width: 14 }, { header: 'Tax', key: 'tax', width: 14 },
+          { header: 'Total', key: 'grandTotal', width: 14 }, { header: 'Status', key: 'status', width: 12 },
+        ];
+        data.rows.forEach((r) =>
+          ws.addRow({
+            ...r,
+            returnDate: new Date(r.returnDate).toLocaleDateString(),
+            customer: r.customer?.name ?? '',
+            sale: r.sale?.number ?? '',
+            subtotal: Number(r.subtotal), tax: Number(r.tax), grandTotal: Number(r.grandTotal),
+          }),
+        );
+        break;
+      }
+      case 'purchase-return': {
+        data = await this.inventory.purchaseReturnReport({ from, to, supplierId, status });
+        ws.columns = [
+          { header: 'Number', key: 'number', width: 14 }, { header: 'Date', key: 'returnDate', width: 14 },
+          { header: 'Supplier', key: 'supplier', width: 30 }, { header: 'Against', key: 'purchase', width: 16 },
+          { header: 'Subtotal', key: 'subtotal', width: 14 }, { header: 'Tax', key: 'tax', width: 14 },
+          { header: 'Total', key: 'grandTotal', width: 14 }, { header: 'Status', key: 'status', width: 12 },
+        ];
+        data.rows.forEach((r) =>
+          ws.addRow({
+            ...r,
+            returnDate: new Date(r.returnDate).toLocaleDateString(),
+            supplier: r.supplier?.name ?? '',
+            purchase: r.purchase?.number ?? '',
+            subtotal: Number(r.subtotal), tax: Number(r.tax), grandTotal: Number(r.grandTotal),
+          }),
+        );
+        break;
+      }
+      case 'cash-book': {
+        data = await this.accounting.cashBook({ accountId, from, to, page: 1, pageSize: 100000 });
+        ws.columns = [
+          { header: 'Date', key: 'date', width: 14 }, { header: 'Voucher', key: 'voucherNumber', width: 16 },
+          { header: 'Type', key: 'voucherType', width: 12 }, { header: 'Reference', key: 'reference', width: 18 },
+          { header: 'Description', key: 'description', width: 40 },
+          { header: 'Receipts', key: 'debit', width: 14 }, { header: 'Payments', key: 'credit', width: 14 },
+          { header: 'Balance', key: 'runningBalance', width: 14 },
+        ];
+        data.rows.forEach((r) => ws.addRow({ ...r, date: new Date(r.date).toLocaleDateString() }));
         break;
       }
       case 'customer-summary': {
