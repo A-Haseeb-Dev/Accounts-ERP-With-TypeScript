@@ -6,6 +6,8 @@ const TAX = 'acct-tax';
 const REVENUE = 'acct-revenue';
 const RECEIVABLE = 'acct-receivable';
 const SALES_RETURNS = 'acct-sales-returns';
+const INVENTORY = 'acct-inventory';
+const COST_OF_SALES = 'acct-cogs';
 
 async function apiErrorMessage(p: Promise<unknown>): Promise<string> {
   try {
@@ -41,6 +43,8 @@ function buildService(overrides?: {
       if (key === 'accounting.tax_account') return taxAccountId;
       if (key === 'accounting.sales_return_account') return salesReturnAccountId;
       if (key === 'accounting.receivable_account') return receivableAccountId;
+      if (key === 'accounting.inventory_account') return INVENTORY;
+      if (key === 'accounting.cost_of_sales_account') return COST_OF_SALES;
       return null;
     }),
   };
@@ -67,6 +71,9 @@ function buildService(overrides?: {
     },
     runInTransaction: vi.fn(async (fn: (tx: unknown) => unknown) =>
       fn({
+        // Goods come back in at their weighted-average cost, which is what the
+        // cost of sales reversal is valued at.
+        item: { findMany: vi.fn(async () => [{ id: 'i-1', averageCost: 40 }]) },
         salesReturn: { update: vi.fn().mockResolvedValue({}) },
         saleReturnItem: { create: vi.fn().mockResolvedValue({}) },
       }),

@@ -44,6 +44,7 @@ const MAIN_ACCOUNTS: { code: string; name: string; subHead: string; type: string
   { code: '04-02', name: 'Sales Returns', subHead: 'Direct Revenue', type: 'REVENUE', settingKey: 'accounting.sales_return_account' },
   { code: '05-01', name: 'Purchases', subHead: 'Current Assets', type: 'ASSET' },
   { code: '05-02', name: 'Purchase Returns', subHead: 'Current Assets', type: 'ASSET', settingKey: 'accounting.purchase_return_account' },
+  { code: '05-05', name: 'Cost of Sales', subHead: 'Cost of Sales', type: 'EXPENSE', settingKey: 'accounting.cost_of_sales_account' },
   { code: '05-03', name: 'Salary Expense', subHead: 'Operating Expenses', type: 'EXPENSE', settingKey: 'accounting.salary_expense_account' },
   { code: '05-04', name: 'Commission Expense', subHead: 'Operating Expenses', type: 'EXPENSE', settingKey: 'accounting.commission_expense_account' },
 ];

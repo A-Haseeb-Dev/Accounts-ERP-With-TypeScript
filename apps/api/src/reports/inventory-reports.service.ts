@@ -95,7 +95,7 @@ export class InventoryReportsService {
       const stockIn = round2(Number(inRange._sum.quantityIn ?? 0));
       const stockOut = round2(Number(inRange._sum.quantityOut ?? 0));
       const closing = round2(opening + stockIn - stockOut);
-      const value = round2(closing * Number(item.purchasePrice));
+      const value = round2(closing * Number(item.averageCost));
       const typeName = item.itemType?.name ?? 'Uncategorized';
 
       const row = {
@@ -189,7 +189,7 @@ export class InventoryReportsService {
         _sum: { quantityIn: true, quantityOut: true },
       });
       const qty = Number(agg._sum.quantityIn ?? 0) - Number(agg._sum.quantityOut ?? 0);
-      const value = qty * Number(item.purchasePrice);
+      const value = qty * Number(item.averageCost);
       totalQty += qty;
       totalValue += value;
       rows.push({
@@ -200,7 +200,7 @@ export class InventoryReportsService {
         itemType: item.itemType?.name ?? null,
         brand: item.brand?.name ?? null,
         quantity: qty,
-        costPrice: Number(item.purchasePrice),
+        costPrice: Number(item.averageCost),
         salePrice: Number(item.salePrice),
         minStockLevel: Number(item.minStockLevel),
         stockValue: round2(value),
@@ -224,7 +224,7 @@ export class InventoryReportsService {
         });
         const q = Number(agg._sum.quantityIn ?? 0) - Number(agg._sum.quantityOut ?? 0);
         qty += q;
-        value += q * Number(item.purchasePrice);
+        value += q * Number(item.averageCost);
       }
       rows.push({ itemType: type.name, itemCount: type.items.length, quantity: qty, stockValue: round2(value) });
     }

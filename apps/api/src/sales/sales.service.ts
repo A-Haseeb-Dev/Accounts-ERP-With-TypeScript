@@ -122,14 +122,39 @@ export class SalesService {
       );
     }
 
+    const inventoryAccountId =
+      (await this.defaultAccounts.resolveAccount('accounting.inventory_account', 'Inventory')) ??
+      undefined;
+    const costOfSalesAccountId =
+      (await this.defaultAccounts.resolveAccount('accounting.cost_of_sales_account', 'Cost of Sales')) ??
+      undefined;
+
+    if (!inventoryAccountId || !costOfSalesAccountId) {
+      throw ApiException.invalidTransaction(
+        'The inventory or cost of sales account is not configured, so the cost of the goods sold cannot be recorded.',
+      );
+    }
+
     const negativeSetting = await this.prisma.systemSetting.findFirst({
       where: { key: 'inventory.negative_stock' },
     });
     const allowNegative = negativeSetting?.value === 'true';
 
     const result = await this.prisma.runInTransaction(async (tx) => {
-      // 1. Validate and reduce stock for each line.
+      // 1. Validate and reduce stock for each line, relieving it at the item's
+      //    weighted-average cost. The selling price is not a cost basis.
+      const itemIds = sale.items.map((l: any) => l.itemId);
+      const costRows: { id: string; averageCost: unknown }[] = itemIds.length
+        ? await tx.item.findMany({ where: { id: { in: itemIds } }, select: { id: true, averageCost: true } })
+        : [];
+      const costByItem = new Map<string, number>(
+        costRows.map((r) => [r.id, Number(r.averageCost ?? 0)]),
+      );
+
+      let costOfGoodsSold = 0;
       for (const line of sale.items) {
+        const unitCost = costByItem.get(line.itemId) ?? 0;
+        costOfGoodsSold = round2(costOfGoodsSold + Number(line.quantity) * unitCost);
         try {
           await this.inventory.recordOut(
             tx,
@@ -140,7 +165,7 @@ export class SalesService {
               transactionType: 'SALE',
               referenceType: 'Sale',
               referenceId: sale.id,
-              unitCost: Number(line.unitPrice),
+              unitCost,
               createdById: actorId,
             },
             { allowNegative },
@@ -185,6 +210,22 @@ export class SalesService {
           // and fail the post.
           entries[1].credit = round2(Number(entries[1].credit) + Number(sale.tax));
         }
+      }
+
+      // Cost of the goods actually sold, at average cost: without this the
+      // inventory asset never reduces on a sale and the profit and loss shows
+      // revenue with no cost against it.
+      if (costOfGoodsSold !== 0) {
+        entries.push({
+          mainAccountId: costOfSalesAccountId,
+          debit: costOfGoodsSold,
+          narration: `Cost of sales ${sale.number}`,
+        });
+        entries.push({
+          mainAccountId: inventoryAccountId,
+          credit: costOfGoodsSold,
+          narration: `Cost of sales ${sale.number}`,
+        });
       }
 
       // Commission (if any): Dr Commission Expense, Cr Commission Payable.
@@ -445,6 +486,14 @@ export class SalesService {
    * transaction and the linked vouchers are cancelled (preserved for audit).
    */
   private async reversePostedEffects(tx: any, sale: any, actorId?: string, reason = 'adjusted') {
+    const itemIds = sale.items.map((l: any) => l.itemId);
+    const costRows: { id: string; averageCost: unknown }[] = itemIds.length
+      ? await tx.item.findMany({ where: { id: { in: itemIds } }, select: { id: true, averageCost: true } })
+      : [];
+    const costByItem = new Map<string, number>(
+      costRows.map((r) => [r.id, Number(r.averageCost ?? 0)]),
+    );
+
     for (const line of sale.items) {
       await this.inventory.recordIn(tx, {
         itemId: line.itemId,
@@ -453,7 +502,7 @@ export class SalesService {
         transactionType: 'SALE_ADJUST',
         referenceType: 'Sale',
         referenceId: sale.id,
-        unitCost: Number(line.unitPrice),
+        unitCost: costByItem.get(line.itemId) ?? 0,
         createdById: actorId,
       });
     }

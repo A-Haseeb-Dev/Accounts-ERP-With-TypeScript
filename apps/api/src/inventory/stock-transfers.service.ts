@@ -112,17 +112,23 @@ export class StockTransfersService {
         }
       }
 
-      // 2. Increase destination location stock.
+      // 2. Increase destination location stock. A transfer is the same goods
+      //    changing location, so it carries no cost and must not move the
+      //    item's weighted-average cost.
       for (const line of transfer.items) {
-        await this.inventory.recordIn(tx, {
-          itemId: line.itemId,
-          locationId: transfer.toLocationId,
-          quantity: Number(line.quantity),
-          transactionType: 'TRANSFER_IN',
-          referenceType: 'StockTransfer',
-          referenceId: transfer.id,
-          createdById: actorId,
-        });
+        await this.inventory.recordIn(
+          tx,
+          {
+            itemId: line.itemId,
+            locationId: transfer.toLocationId,
+            quantity: Number(line.quantity),
+            transactionType: 'TRANSFER_IN',
+            referenceType: 'StockTransfer',
+            referenceId: transfer.id,
+            createdById: actorId,
+          },
+          { affectsCosting: false },
+        );
       }
 
       const updated = await tx.stockTransfer.update({

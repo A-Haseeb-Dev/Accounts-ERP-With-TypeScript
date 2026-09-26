@@ -137,8 +137,21 @@ export class SalesReturnsService {
     }
 
     const result = await this.prisma.runInTransaction(async (tx) => {
-      // 1. Restore inventory for each line.
+      // 1. Restore inventory for each line, at the item's weighted-average cost.
+      //    The unit price on the return line is what the customer paid, which is
+      //    not what the stock cost, so it must not be used to revalue the item.
+      const itemIds = sr.items.map((l) => l.itemId);
+      const costRows: { id: string; averageCost: unknown }[] = itemIds.length
+        ? await tx.item.findMany({ where: { id: { in: itemIds } }, select: { id: true, averageCost: true } })
+        : [];
+      const costByItem = new Map<string, number>(
+        costRows.map((r) => [r.id, Number(r.averageCost ?? 0)]),
+      );
+
+      let costOfGoodsSold = 0;
       for (const line of sr.items) {
+        const unitCost = costByItem.get(line.itemId) ?? 0;
+        costOfGoodsSold = round2(costOfGoodsSold + Number(line.quantity) * unitCost);
         await this.inventory.recordIn(tx, {
           itemId: line.itemId,
           locationId: sr.stockLocationId,
@@ -146,7 +159,7 @@ export class SalesReturnsService {
           transactionType: 'SALES_RETURN',
           referenceType: 'SalesReturn',
           referenceId: sr.id,
-          unitCost: Number(line.unitPrice),
+          unitCost,
           createdById: actorId,
         });
       }
@@ -175,6 +188,32 @@ export class SalesReturnsService {
           mainAccountId: taxAccountId,
           debit: taxAmount,
           narration: `Tax ${sr.number}`,
+        });
+      }
+
+      // Reverse the cost of sales the original invoice charged, so the goods
+      // going back into stock carry their cost again.
+      if (costOfGoodsSold !== 0) {
+        const inventoryAccountId =
+          (await this.defaultAccounts.resolveAccount('accounting.inventory_account', 'Inventory')) ??
+          undefined;
+        const costOfSalesAccountId =
+          (await this.defaultAccounts.resolveAccount('accounting.cost_of_sales_account', 'Cost of Sales')) ??
+          undefined;
+        if (!inventoryAccountId || !costOfSalesAccountId) {
+          throw ApiException.invalidTransaction(
+            'The inventory or cost of sales account is not configured, so the returned cost cannot be recorded.',
+          );
+        }
+        entries.push({
+          mainAccountId: inventoryAccountId,
+          debit: costOfGoodsSold,
+          narration: `Cost of sales ${sr.number}`,
+        });
+        entries.push({
+          mainAccountId: costOfSalesAccountId,
+          credit: costOfGoodsSold,
+          narration: `Cost of sales ${sr.number}`,
         });
       }
 
