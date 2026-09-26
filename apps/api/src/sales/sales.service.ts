@@ -179,6 +179,11 @@ export class SalesService {
         );
         if (taxAccountId) {
           entries.push({ mainAccountId: taxAccountId, credit: Number(sale.tax), narration: `Tax ${sale.number}` });
+        } else {
+          // No tax account configured: book the tax as part of revenue rather
+          // than dropping the entry, which would leave the voucher unbalanced
+          // and fail the post.
+          entries[1].credit = round2(Number(entries[1].credit) + Number(sale.tax));
         }
       }
 
