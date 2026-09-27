@@ -179,6 +179,30 @@ export class ReportsController {
     return this.inventory.purchaseReturnReport({ from, to, supplierId, status });
   }
 
+  @Get('sales-commission')
+  @Permissions('reports.sales.view')
+  @ApiOperation({ summary: 'Sales Commission Report' })
+  salesCommissionReport(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('customerId') customerId?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.inventory.salesCommissionReport({ from, to, customerId, status });
+  }
+
+  @Get('purchase-commission')
+  @Permissions('reports.purchase.view')
+  @ApiOperation({ summary: 'Purchase Commission Report' })
+  purchaseCommissionReport(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('supplierId') supplierId?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.inventory.purchaseCommissionReport({ from, to, supplierId, status });
+  }
+
   @Get('sales-book')
   @Permissions('reports.sales.view')
   @ApiOperation({ summary: 'Sales Book' })
@@ -324,6 +348,34 @@ export class ReportsController {
             subtotal: Number(r.subtotal), tax: Number(r.tax), grandTotal: Number(r.grandTotal),
           }),
         );
+        break;
+      }
+      case 'sales-commission': {
+        data = await this.inventory.salesCommissionReport({ from, to, customerId, status });
+        ws.columns = [
+          { header: 'Number', key: 'number', width: 14 }, { header: 'Date', key: 'date', width: 14 },
+          { header: 'Customer', key: 'customer', width: 30 },
+          { header: 'Subtotal', key: 'subtotal', width: 14 }, { header: 'Discount', key: 'discount', width: 12 },
+          { header: 'Tax', key: 'tax', width: 12 }, { header: 'Total', key: 'grandTotal', width: 14 },
+          { header: 'Commission', key: 'commission', width: 14 },
+          { header: 'Percent', key: 'commissionPercent', width: 10 },
+          { header: 'Status', key: 'status', width: 12 },
+        ];
+        data.rows.forEach((r) => ws.addRow({ ...r, date: new Date(r.date).toLocaleDateString() }));
+        break;
+      }
+      case 'purchase-commission': {
+        data = await this.inventory.purchaseCommissionReport({ from, to, supplierId, status });
+        ws.columns = [
+          { header: 'Number', key: 'number', width: 14 }, { header: 'Date', key: 'date', width: 14 },
+          { header: 'Supplier', key: 'supplier', width: 30 },
+          { header: 'Subtotal', key: 'subtotal', width: 14 }, { header: 'Discount', key: 'discount', width: 12 },
+          { header: 'Tax', key: 'tax', width: 12 }, { header: 'Total', key: 'grandTotal', width: 14 },
+          { header: 'Commission', key: 'commission', width: 14 },
+          { header: 'Percent', key: 'commissionPercent', width: 10 },
+          { header: 'Status', key: 'status', width: 12 },
+        ];
+        data.rows.forEach((r) => ws.addRow({ ...r, date: new Date(r.date).toLocaleDateString() }));
         break;
       }
       case 'cash-book': {

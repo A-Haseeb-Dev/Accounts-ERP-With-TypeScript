@@ -334,6 +334,129 @@ export class InventoryReportsService {
     return { rows: returns, count: returns.length, total: round2(total) };
   }
 
+  /**
+   * Sales commission report - commission earned per invoice, grouped by the
+   * party the commission is payable to. Only invoices that actually carry a
+   * commission are listed; the totals cover the filtered set.
+   */
+  async salesCommissionReport(query: { from?: string; to?: string; customerId?: string; status?: string }) {
+    const { from, to, customerId, status = 'posted' } = query;
+    const where: any = { commission: { gt: 0 } };
+    // "All" must not fall back to the posted default, so only apply a status
+    // filter when one was actually chosen.
+    if (status !== ALL_STATUS) where.status = status;
+    if (customerId) where.customerId = customerId;
+    if (from || to) where.saleDate = dateRange(from, to);
+
+    const sales = await this.prisma.sale.findMany({
+      where,
+      include: { customer: true },
+      orderBy: [{ saleDate: 'desc' }, { number: 'desc' }],
+    });
+
+    const rows = sales.map((s) => ({
+      id: s.id,
+      number: s.number,
+      date: s.saleDate,
+      status: s.status,
+      customerId: s.customerId,
+      customer: s.customer?.name ?? '',
+      subtotal: round2(Number(s.subtotal)),
+      discount: round2(Number(s.discount)),
+      tax: round2(Number(s.tax)),
+      grandTotal: round2(Number(s.grandTotal)),
+      commission: round2(Number(s.commission)),
+      // What the commission actually costs the business, as a share of the
+      // invoice: a percentage is only meaningful against a base.
+      commissionPercent:
+        Number(s.grandTotal) === 0 ? 0 : round2((Number(s.commission) / Number(s.grandTotal)) * 100),
+    }));
+
+    const byParty = new Map<string, { partyId: string | null; party: string; invoices: number; base: number; commission: number }>();
+    for (const r of rows) {
+      const key = r.customerId ?? r.customer;
+      const entry = byParty.get(key) ?? {
+        partyId: r.customerId,
+        party: r.customer,
+        invoices: 0,
+        base: 0,
+        commission: 0,
+      };
+      entry.invoices += 1;
+      entry.base = round2(entry.base + r.grandTotal);
+      entry.commission = round2(entry.commission + r.commission);
+      byParty.set(key, entry);
+    }
+
+    return {
+      rows,
+      count: rows.length,
+      summary: [...byParty.values()].sort((a, b) => b.commission - a.commission),
+      subtotal: round2(rows.reduce((s, r) => s + r.subtotal, 0)),
+      grandTotal: round2(rows.reduce((s, r) => s + r.grandTotal, 0)),
+      totalCommission: round2(rows.reduce((s, r) => s + r.commission, 0)),
+    };
+  }
+
+  /**
+   * Purchase commission report - commission charged on purchases, grouped by
+   * supplier. Mirrors the sales report so the two can be read side by side.
+   */
+  async purchaseCommissionReport(query: { from?: string; to?: string; supplierId?: string; status?: string }) {
+    const { from, to, supplierId, status = 'posted' } = query;
+    const where: any = { commission: { gt: 0 } };
+    if (status !== ALL_STATUS) where.status = status;
+    if (supplierId) where.supplierId = supplierId;
+    if (from || to) where.purchaseDate = dateRange(from, to);
+
+    const purchases = await this.prisma.purchase.findMany({
+      where,
+      include: { supplier: true },
+      orderBy: [{ purchaseDate: 'desc' }, { number: 'desc' }],
+    });
+
+    const rows = purchases.map((p) => ({
+      id: p.id,
+      number: p.number,
+      date: p.purchaseDate,
+      status: p.status,
+      supplierId: p.supplierId,
+      supplier: p.supplier?.name ?? '',
+      subtotal: round2(Number(p.subtotal)),
+      discount: round2(Number(p.discount)),
+      tax: round2(Number(p.tax)),
+      grandTotal: round2(Number(p.grandTotal)),
+      commission: round2(Number(p.commission)),
+      commissionPercent:
+        Number(p.grandTotal) === 0 ? 0 : round2((Number(p.commission) / Number(p.grandTotal)) * 100),
+    }));
+
+    const byParty = new Map<string, { partyId: string | null; party: string; invoices: number; base: number; commission: number }>();
+    for (const r of rows) {
+      const key = r.supplierId ?? r.supplier;
+      const entry = byParty.get(key) ?? {
+        partyId: r.supplierId,
+        party: r.supplier,
+        invoices: 0,
+        base: 0,
+        commission: 0,
+      };
+      entry.invoices += 1;
+      entry.base = round2(entry.base + r.grandTotal);
+      entry.commission = round2(entry.commission + r.commission);
+      byParty.set(key, entry);
+    }
+
+    return {
+      rows,
+      count: rows.length,
+      summary: [...byParty.values()].sort((a, b) => b.commission - a.commission),
+      subtotal: round2(rows.reduce((s, r) => s + r.subtotal, 0)),
+      grandTotal: round2(rows.reduce((s, r) => s + r.grandTotal, 0)),
+      totalCommission: round2(rows.reduce((s, r) => s + r.commission, 0)),
+    };
+  }
+
   /** Sales book - all sales in range. */
   async salesBook(query: { from?: string; to?: string; customerId?: string; status?: string }) {
     const { from, to, customerId, status = 'posted' } = query;

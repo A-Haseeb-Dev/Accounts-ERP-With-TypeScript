@@ -4,6 +4,7 @@ import {
   Building2,
   FileSpreadsheet,
   Home,
+  Percent,
   Landmark,
   Package,
   Receipt,
@@ -124,6 +125,8 @@ export const NAV_ITEMS: NavItem[] = [
       { label: 'Sales Return Report', href: '/reports/sales-return', icon: Receipt, permission: 'reports.sales.view' },
       { label: 'Purchase Book', href: '/reports/purchase-book', icon: Truck, permission: 'reports.purchase.view' },
       { label: 'Purchase Return Report', href: '/reports/purchase-return', icon: Receipt, permission: 'reports.purchase.view' },
+      { label: 'Sales Commission Report', href: '/reports/sales-commission', icon: Percent, permission: 'reports.sales.view' },
+      { label: 'Purchase Commission Report', href: '/reports/purchase-commission', icon: Percent, permission: 'reports.purchase.view' },
     ],
   },
   {

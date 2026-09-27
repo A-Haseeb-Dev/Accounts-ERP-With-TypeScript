@@ -853,6 +853,40 @@ export interface PurchaseReturnReport {
   total: number;
 }
 
+export interface CommissionRow {
+  id: string;
+  number: string;
+  date: string;
+  status: string;
+  customerId?: string | null;
+  customer?: string;
+  supplierId?: string | null;
+  supplier?: string;
+  subtotal: number;
+  discount: number;
+  tax: number;
+  grandTotal: number;
+  commission: number;
+  commissionPercent: number;
+}
+
+export interface CommissionPartySummary {
+  partyId: string | null;
+  party: string;
+  invoices: number;
+  base: number;
+  commission: number;
+}
+
+export interface CommissionReport {
+  rows: CommissionRow[];
+  count: number;
+  summary: CommissionPartySummary[];
+  subtotal: number;
+  grandTotal: number;
+  totalCommission: number;
+}
+
 export interface TransactionDoc {
   id: string;
   number: string;
