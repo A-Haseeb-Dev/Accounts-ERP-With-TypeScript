@@ -125,11 +125,6 @@ export class CreateQuotationDto {
   @IsNumber()
   @Min(0)
   tax?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  commission?: number;
 }
 
 export class CreateSalesReturnDto {

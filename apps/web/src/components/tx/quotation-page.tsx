@@ -161,7 +161,6 @@ export function QuotationPage({ customerOptions }: { customerOptions: Option[] }
     customerId: form.customerId,
     discount: Number(form.discount ?? 0),
     tax: Number(form.tax ?? 0),
-    commission: Number(form.commission ?? 0),
     items: lines.map((l) => ({
       itemId: l.itemId,
       quantity: l.quantity,
@@ -212,7 +211,6 @@ export function QuotationPage({ customerOptions }: { customerOptions: Option[] }
       customerId: record.customerId ?? record.customer?.id ?? '',
       discount: record.discount ?? 0,
       tax: record.tax ?? 0,
-      commission: record.commission ?? 0,
     });
     setLines(lineItems);
     setEditId(record.id);
@@ -384,12 +382,9 @@ export function QuotationPage({ customerOptions }: { customerOptions: Option[] }
                 {lineDiscount > 0 && <TotalsRow label="Line discounts" value={`- ${money(lineDiscount)}`} />}
                 {lineTax > 0 && <TotalsRow label="Line tax" value={money(lineTax)} />}
 
-                <div className="grid grid-cols-1 gap-3 border-t border-slate-200 pt-3">
+                <div className="grid grid-cols-1 gap-3 border-t border-slate-200 pt-3 sm:grid-cols-2">
                   <Field label={`Discount (${getCurrencyInfo().symbol})`}><Input type="number" min={0} step="0.01" placeholder="Fixed amount" value={String(form.discount ?? 0)} onChange={(e) => setForm((f) => ({ ...f, discount: Number(e.target.value) || 0 }))} /></Field>
                   <Field label={`Tax (${getCurrencyInfo().symbol})`}><Input type="number" min={0} step="0.01" placeholder="Fixed amount" value={String(form.tax ?? 0)} onChange={(e) => setForm((f) => ({ ...f, tax: Number(e.target.value) || 0 }))} /></Field>
-                  <Field label={`Commission (${getCurrencyInfo().symbol})`} hint="Carried over to the invoice when it is converted.">
-                    <Input type="number" min={0} step="0.01" placeholder="Fixed amount" value={String(form.commission ?? 0)} onChange={(e) => setForm((f) => ({ ...f, commission: Number(e.target.value) || 0 }))} />
-                  </Field>
                 </div>
                 <p className="text-[11px] leading-snug text-slate-400">
                   Whole-quotation discount &amp; tax in {getCurrencyInfo().main.toLowerCase()} ({getCurrencyInfo().symbol}), not percentages — applied on top of the item lines.

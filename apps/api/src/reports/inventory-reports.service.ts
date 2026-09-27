@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiException } from '../common/exceptions/api.exception';
 import { dateRange } from '../common/utils/date-filter';
-import { orphanInventoryExclusions } from '../common/utils/orphan-records';
+import { orphanInventoryExclusions, createOrphanMemo, type OrphanMemo } from '../common/utils/orphan-records';
 
 /** Sentinel status meaning "do not filter on status" (the "All" filter option). */
 const ALL_STATUS = 'all';
@@ -15,9 +15,12 @@ export class InventoryReportsService {
    * Appends the "source document still exists" guard to a transaction filter so
    * stock movements left behind by a deleted document drop out of the figures
    * (see `orphan-records`).
+   *
+   * `memo` lets a report that loops over items run the lookup once instead of
+   * once per item.
    */
-  private async withOrphanGuard(where: any): Promise<any> {
-    const exclusions = await orphanInventoryExclusions(this.prisma);
+  private async withOrphanGuard(where: any, memo?: OrphanMemo): Promise<any> {
+    const exclusions = await orphanInventoryExclusions(this.prisma, memo);
     if (exclusions.length === 0) return where;
     return { AND: [where, ...exclusions] };
   }
@@ -34,8 +37,9 @@ export class InventoryReportsService {
       where.createdAt = dateRange(from, to);
     }
 
+    const memo = createOrphanMemo();
     const transactions = await this.prisma.inventoryTransaction.findMany({
-      where: await this.withOrphanGuard(where),
+      where: await this.withOrphanGuard(where, memo),
       include: { location: true },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
@@ -52,7 +56,7 @@ export class InventoryReportsService {
           itemId,
           ...(locationId ? { locationId } : {}),
           createdAt: { lt: new Date(from) },
-        }),
+        }, memo),
         _sum: { quantityIn: true, quantityOut: true },
       });
       for (const o of openings) {
@@ -115,13 +119,14 @@ export class InventoryReportsService {
     type TotalAcc = { opening: number; stockIn: number; stockOut: number; closing: number; value: number };
     const totals: TotalAcc = { opening: 0, stockIn: 0, stockOut: 0, closing: 0, value: 0 };
 
+    const memo = createOrphanMemo();
     for (const item of items) {
       const inBefore = await this.prisma.inventoryTransaction.aggregate({
         where: await this.withOrphanGuard({
           itemId: item.id,
           ...locationWhere,
           ...(from ? { createdAt: { lt: new Date(from) } } : {}),
-        }),
+        }, memo),
         _sum: { quantityIn: true, quantityOut: true },
       });
       const inRange = await this.prisma.inventoryTransaction.aggregate({
@@ -129,7 +134,7 @@ export class InventoryReportsService {
           itemId: item.id,
           ...locationWhere,
           ...(from || to ? { createdAt: dateRange(from, to) } : {}),
-        }),
+        }, memo),
         _sum: { quantityIn: true, quantityOut: true },
       });
 
@@ -223,11 +228,12 @@ export class InventoryReportsService {
     let totalValue = 0;
     let totalQty = 0;
 
+    const memo = createOrphanMemo();
     for (const item of items) {
       const txnWhere: any = { itemId: item.id };
       if (locationId) txnWhere.locationId = locationId;
       const agg = await this.prisma.inventoryTransaction.aggregate({
-        where: await this.withOrphanGuard(txnWhere),
+        where: await this.withOrphanGuard(txnWhere, memo),
         _sum: { quantityIn: true, quantityOut: true },
       });
       const qty = Number(agg._sum.quantityIn ?? 0) - Number(agg._sum.quantityOut ?? 0);
@@ -255,13 +261,14 @@ export class InventoryReportsService {
   /** Category-wise stock (by item type). */
   async categoryWiseStock() {
     const itemTypes = await this.prisma.itemType.findMany({ include: { items: { where: { status: 'active' } } } });
+    const memo = createOrphanMemo();
     const rows = [];
     for (const type of itemTypes) {
       let qty = 0;
       let value = 0;
       for (const item of type.items) {
         const agg = await this.prisma.inventoryTransaction.aggregate({
-          where: await this.withOrphanGuard({ itemId: item.id }),
+          where: await this.withOrphanGuard({ itemId: item.id }, memo),
           _sum: { quantityIn: true, quantityOut: true },
         });
         const q = Number(agg._sum.quantityIn ?? 0) - Number(agg._sum.quantityOut ?? 0);

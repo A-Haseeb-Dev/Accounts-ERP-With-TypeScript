@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiException } from '../common/exceptions/api.exception';
 import { dateRange, endOfDay } from '../common/utils/date-filter';
-import { orphanVoucherExclusions } from '../common/utils/orphan-records';
+import { orphanVoucherExclusions, createOrphanMemo, type OrphanMemo } from '../common/utils/orphan-records';
 
 @Injectable()
 export class AccountingReportsService {
@@ -12,13 +12,25 @@ export class AccountingReportsService {
    * Base filter for every ledger query: posted vouchers, excluding opening
    * balances and any voucher whose source document has since been deleted
    * (see `orphan-records`).
+   *
+   * `memo` lets a report that loops over accounts run the orphan lookup once
+   * instead of once per account.
    */
-  private async postedVoucherFilter(extra: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+  private async postedVoucherFilter(
+    extra: Record<string, unknown> = {},
+    memo?: OrphanMemo,
+  ): Promise<Record<string, unknown>> {
+    const exclusions = await orphanVoucherExclusions(this.prisma, memo);
     return {
       status: 'posted',
-      NOT: [
-        { reference: { startsWith: 'OB:' } },
-        ...(await orphanVoucherExclusions(this.prisma)),
+      // `Voucher.reference` is nullable, and every "not an opening balance"
+      // test is NULL for a NULL reference - so `NOT (reference LIKE 'OB:%')`
+      // evaluates to NULL and silently drops the row. A voucher posted without
+      // a document number (a hand-written journal, for instance) must stay in
+      // the ledger, so the NULL case is allowed explicitly.
+      OR: [
+        { reference: null },
+        { AND: [{ NOT: [{ reference: { startsWith: 'OB:' } }] }, ...exclusions] },
       ],
       ...extra,
     };
@@ -56,8 +68,10 @@ export class AccountingReportsService {
     });
     if (!account) throw ApiException.notFound('Account');
 
+    const memo = createOrphanMemo();
     const voucherWhere: any = await this.postedVoucherFilter(
       from || to ? { voucherDate: dateRange(from, to) } : {},
+      memo,
     );
 
     const entries = await this.prisma.voucherEntry.findMany({
@@ -72,7 +86,7 @@ export class AccountingReportsService {
       const before = await this.prisma.voucherEntry.aggregate({
         where: {
           mainAccountId: accountId,
-          voucher: await this.postedVoucherFilter({ voucherDate: { lt: new Date(from) } }),
+          voucher: await this.postedVoucherFilter({ voucherDate: { lt: new Date(from) } }, memo),
         },
         _sum: { debit: true, credit: true },
       });
@@ -133,8 +147,10 @@ export class AccountingReportsService {
       orderBy: [{ subHead: { code: 'asc' } }, { code: 'asc' }],
     });
 
+    const memo = createOrphanMemo();
     const voucherWhere: any = await this.postedVoucherFilter(
       from || to ? { voucherDate: dateRange(from, to) } : {},
+      memo,
     );
 
     const rows: any[] = [];
@@ -152,7 +168,7 @@ export class AccountingReportsService {
         const before = await this.prisma.voucherEntry.aggregate({
           where: {
             mainAccountId: acc.id,
-            voucher: await this.postedVoucherFilter({ voucherDate: { lt: new Date(from) } }),
+            voucher: await this.postedVoucherFilter({ voucherDate: { lt: new Date(from) } }, memo),
           },
           _sum: { debit: true, credit: true },
         });
@@ -280,6 +296,7 @@ export class AccountingReportsService {
       orderBy: { code: 'asc' },
     });
 
+    const memo = createOrphanMemo();
     const rows = [];
     let totalDebit = 0;
     let totalCredit = 0;
@@ -287,6 +304,7 @@ export class AccountingReportsService {
     for (const acc of accounts) {
       const voucherWhere: any = await this.postedVoucherFilter(
         asOf ? { voucherDate: { lte: endOfDay(asOf) } } : {},
+        memo,
       );
       const agg = await this.prisma.voucherEntry.aggregate({
         where: { mainAccountId: acc.id, voucher: voucherWhere },
@@ -339,12 +357,14 @@ export class AccountingReportsService {
       orderBy: { code: 'asc' },
     });
 
+    const memo = createOrphanMemo();
     const rows = [];
     let totalDebit = 0;
     let totalCredit = 0;
     for (const acc of accounts) {
       const voucherWhere: any = await this.postedVoucherFilter(
         asOf ? { voucherDate: { lte: endOfDay(asOf) } } : {},
+        memo,
       );
       const agg = await this.prisma.voucherEntry.aggregate({
         where: { mainAccountId: acc.id, voucher: voucherWhere },
@@ -391,12 +411,14 @@ export class AccountingReportsService {
       orderBy: { code: 'asc' },
     });
 
+    const memo = createOrphanMemo();
     const rows = [];
     let totalDebit = 0;
     let totalCredit = 0;
     for (const acc of accounts) {
       const voucherWhere: any = await this.postedVoucherFilter(
         asOf ? { voucherDate: { lte: endOfDay(asOf) } } : {},
+        memo,
       );
       const agg = await this.prisma.voucherEntry.aggregate({
         where: { mainAccountId: acc.id, voucher: voucherWhere },
@@ -469,11 +491,13 @@ export class AccountingReportsService {
 
     const account = await this.resolveCashAccount(query.accountId);
 
+    const memo = createOrphanMemo();
     const entries = await this.prisma.voucherEntry.findMany({
       where: {
         mainAccountId: account.id,
         voucher: await this.postedVoucherFilter(
           from || to ? { voucherDate: dateRange(from, to) } : {},
+          memo,
         ),
       },
       include: { voucher: { include: { createdBy: { select: { id: true, fullName: true } } } } },
@@ -485,9 +509,10 @@ export class AccountingReportsService {
       const before = await this.prisma.voucherEntry.aggregate({
         where: {
           mainAccountId: account.id,
-          voucher: await this.postedVoucherFilter({
-            voucherDate: { lt: new Date(`${from}T00:00:00.000Z`) },
-          }),
+          voucher: await this.postedVoucherFilter(
+            { voucherDate: { lt: new Date(`${from}T00:00:00.000Z`) } },
+            memo,
+          ),
         },
         _sum: { debit: true, credit: true },
       });

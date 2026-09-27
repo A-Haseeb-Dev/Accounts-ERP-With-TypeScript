@@ -248,7 +248,6 @@ export class QuotationsService {
           subtotal: quotation.subtotal,
           discount: quotation.discount,
           tax: quotation.tax,
-          commission: 0,
           grandTotal: quotation.grandTotal,
           paymentStatus: 'unpaid',
           amountPaid: 0,

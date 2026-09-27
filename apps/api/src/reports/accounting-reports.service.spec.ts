@@ -8,6 +8,8 @@ function buildService(
 ) {
   const prisma = {
     mainAccount: { findMany: vi.fn().mockResolvedValue(mainAccounts) },
+    // No prefix overrides configured, so the built-in SI/PI/SR/PR apply.
+    systemSetting: { findMany: vi.fn().mockResolvedValue([]) },
     // The orphan guard runs one read-only query; empty means nothing is orphaned.
     $queryRawUnsafe: vi.fn().mockResolvedValue(
       orphanReferences.map((reference) => ({ reference })),
@@ -116,7 +118,7 @@ describe('AccountingReportsService.trialBalance', () => {
     const { svc, prisma } = buildService(accounts, { cash: { _sum: { debit: 10, credit: 0 } } });
     await svc.trialBalance({ asOf: '2026-09-01' });
     const movementsCall = prisma.voucherEntry.aggregate.mock.calls.find(
-      (args: unknown[]) => (args[0] as { where: { voucher?: Record<string, unknown> } }).where.voucher?.NOT,
+      (args: unknown[]) => (args[0] as { where: { voucher?: Record<string, unknown> } }).where.voucher?.OR,
     );
     expect(movementsCall).toBeTruthy();
     expect((movementsCall![0] as { where: { voucher?: Record<string, unknown> } }).where.voucher).toMatchObject({
@@ -141,9 +143,10 @@ describe('AccountingReportsService orphan guard', () => {
     await svc.trialBalance({});
 
     const call = prisma.voucherEntry.aggregate.mock.calls[0][0] as { where: { voucher: any } };
-    const not = call.where.voucher.NOT;
-    expect(not).toEqual(
-      expect.arrayContaining([{ reference: { notIn: ['SR-2026-000001'] } }]),
+    expect(call.where.voucher.OR[1].AND).toEqual(
+      expect.arrayContaining([
+        { OR: [{ reference: null }, { reference: { notIn: ['SR-2026-000001'] } }] },
+      ]),
     );
   });
 
@@ -153,7 +156,37 @@ describe('AccountingReportsService orphan guard', () => {
 
     const call = prisma.voucherEntry.aggregate.mock.calls[0][0] as { where: { voucher: any } };
     // Only the opening-balance exclusion; no `notIn` clause is added.
-    expect(call.where.voucher.NOT).toHaveLength(1);
-    expect(call.where.voucher.NOT[0]).toEqual({ reference: { startsWith: 'OB:' } });
+    expect(call.where.voucher.OR[1].AND).toEqual([
+      { NOT: [{ reference: { startsWith: 'OB:' } }] },
+    ]);
+  });
+
+  it('keeps vouchers that have no reference at all', async () => {
+    // `Voucher.reference` is nullable, and every "not an opening balance" test
+    // is NULL for a NULL reference. A bare `NOT (...)` therefore evaluates to
+    // NULL and drops the row, which would erase every hand-written journal from
+    // the ledger the moment a single orphan exists.
+    const { svc, prisma } = buildService(
+      [account],
+      { cash: { _sum: { debit: 100, credit: 0 } } },
+      ['SR-2026-000001'],
+    );
+    await svc.trialBalance({});
+
+    const call = prisma.voucherEntry.aggregate.mock.calls[0][0] as { where: { voucher: any } };
+    expect(call.where.voucher.OR[0]).toEqual({ reference: null });
+    expect(call.where.voucher.OR).toHaveLength(2);
+  });
+
+  it('resolves the orphan lookup once per report, not once per account', async () => {
+    const { svc, prisma } = buildService(
+      [account, { ...account, id: 'bank', code: '01-02' }],
+      { cash: { _sum: { debit: 10, credit: 0 } }, bank: { _sum: { debit: 20, credit: 0 } } },
+      ['SR-2026-000001'],
+    );
+    await svc.trialBalance({});
+
+    const lookups = prisma.$queryRawUnsafe.mock.calls.length;
+    expect(lookups).toBe(1);
   });
 });
