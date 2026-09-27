@@ -65,6 +65,21 @@ describe('salesCommissionReport', () => {
     expect(result.grandTotal).toBe(3000);
   });
 
+  it('totals every money column so the footer has a figure for each', async () => {
+    const { svc, prisma } = buildService();
+    prisma.sale.findMany.mockResolvedValue([
+      sale({ id: 's1', subtotal: 900, discount: 100, tax: 200, grandTotal: 1000, commission: 100 }),
+      sale({ id: 's2', subtotal: 1900, discount: 100, tax: 400, grandTotal: 2200, commission: 220 }),
+    ]);
+
+    const result = await svc.salesCommissionReport({});
+    expect(result.subtotal).toBe(2800);
+    expect(result.discount).toBe(200);
+    expect(result.tax).toBe(600);
+    expect(result.grandTotal).toBe(3200);
+    expect(result.totalCommission).toBe(320);
+  });
+
   it('expresses the commission as a percentage of the invoice', async () => {
     const { svc, prisma } = buildService();
     prisma.sale.findMany.mockResolvedValue([sale({ grandTotal: 1000, commission: 100 })]);
@@ -152,6 +167,21 @@ describe('purchaseCommissionReport', () => {
     expect(vendor.invoices).toBe(2);
     expect(vendor.base).toBe(3000);
     expect(vendor.commission).toBe(150);
+  });
+
+  it('totals every money column so the footer has a figure for each', async () => {
+    const { svc, prisma } = buildService();
+    prisma.purchase.findMany.mockResolvedValue([
+      purchase({ id: 'p1', subtotal: 950, discount: 50, tax: 100, grandTotal: 1000, commission: 50 }),
+      purchase({ id: 'p2', subtotal: 1900, discount: 100, tax: 200, grandTotal: 2000, commission: 100 }),
+    ]);
+
+    const result = await svc.purchaseCommissionReport({});
+    expect(result.subtotal).toBe(2850);
+    expect(result.discount).toBe(150);
+    expect(result.tax).toBe(300);
+    expect(result.grandTotal).toBe(3000);
+    expect(result.totalCommission).toBe(150);
   });
 
   it('computes the commission percentage of the purchase', async () => {

@@ -883,6 +883,8 @@ export interface CommissionReport {
   count: number;
   summary: CommissionPartySummary[];
   subtotal: number;
+  discount: number;
+  tax: number;
   grandTotal: number;
   totalCommission: number;
 }

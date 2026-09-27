@@ -63,7 +63,23 @@ export default function SalesCommissionReportPage() {
   const overallPercent = totalValue === 0 ? 0 : (totalCommission / totalValue) * 100;
 
   const period = from ? ` (${from}${to ? ` to ${to}` : ''})` : '';
-  const moneyColCount = cols.defsFiltered.filter((c) => MONEY_KEYS.includes(c.key)).length;
+
+  // The footer must line up with the header no matter which columns are
+  // visible, so the label spans every leading column that carries no total and
+  // each remaining visible column then gets exactly one cell.
+  const totalCells: Record<string, string> = {
+    subtotal: money(data?.subtotal ?? 0),
+    discount: money(data?.discount ?? 0),
+    tax: money(data?.tax ?? 0),
+    total: money(totalValue),
+    commission: money(totalCommission),
+    percent: `${overallPercent.toFixed(2)}%`,
+  };
+  const totalValues = Object.keys(totalCells);
+  const firstTotalCol = cols.defsFiltered.findIndex((c) => totalValues.includes(c.key));
+  // Zero would emit an invalid colSpan, so in that case the label is dropped
+  // rather than allowed to add a cell the header does not have.
+  const labelSpan = firstTotalCol <= 0 ? 0 : firstTotalCol;
 
   return (
     <div>
@@ -191,16 +207,19 @@ export default function SalesCommissionReportPage() {
                 {rows.length > 0 && (
                   <tfoot>
                     <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-800">
-                      <td colSpan={cols.defsFiltered.length - moneyColCount} className="px-4 py-2 text-xs font-semibold uppercase text-slate-500">
-                        Totals ({rows.length})
-                      </td>
-                      {cols.isVisible('subtotal') && <td className="px-4 py-2 text-right tabular-nums">{money(data?.subtotal ?? 0)}</td>}
-                      {cols.isVisible('discount') && <td className="px-4 py-2" />}
-                      {cols.isVisible('tax') && <td className="px-4 py-2" />}
-                      {cols.isVisible('total') && <td className="px-4 py-2 text-right tabular-nums">{money(totalValue)}</td>}
-                      {cols.isVisible('commission') && <td className="px-4 py-2 text-right tabular-nums">{money(totalCommission)}</td>}
-                      {cols.isVisible('percent') && <td className="px-4 py-2 text-right tabular-nums">{overallPercent.toFixed(2)}%</td>}
-                      {cols.isVisible('status') && <td className="px-4 py-2" />}
+                      {labelSpan > 0 && (
+                        <td colSpan={labelSpan} className="px-4 py-2 text-xs font-semibold uppercase text-slate-500">
+                          Totals ({rows.length})
+                        </td>
+                      )}
+                      {cols.defsFiltered.slice(labelSpan).map((c) => (
+                        <td
+                          key={c.key}
+                          className={`px-4 py-2 ${totalCells[c.key] ? 'text-right tabular-nums' : ''}`}
+                        >
+                          {totalCells[c.key] ?? ''}
+                        </td>
+                      ))}
                     </tr>
                   </tfoot>
                 )}

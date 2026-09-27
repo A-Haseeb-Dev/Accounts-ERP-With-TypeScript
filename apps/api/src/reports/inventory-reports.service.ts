@@ -393,6 +393,8 @@ export class InventoryReportsService {
       count: rows.length,
       summary: [...byParty.values()].sort((a, b) => b.commission - a.commission),
       subtotal: round2(rows.reduce((s, r) => s + r.subtotal, 0)),
+      discount: round2(rows.reduce((s, r) => s + r.discount, 0)),
+      tax: round2(rows.reduce((s, r) => s + r.tax, 0)),
       grandTotal: round2(rows.reduce((s, r) => s + r.grandTotal, 0)),
       totalCommission: round2(rows.reduce((s, r) => s + r.commission, 0)),
     };
@@ -452,6 +454,8 @@ export class InventoryReportsService {
       count: rows.length,
       summary: [...byParty.values()].sort((a, b) => b.commission - a.commission),
       subtotal: round2(rows.reduce((s, r) => s + r.subtotal, 0)),
+      discount: round2(rows.reduce((s, r) => s + r.discount, 0)),
+      tax: round2(rows.reduce((s, r) => s + r.tax, 0)),
       grandTotal: round2(rows.reduce((s, r) => s + r.grandTotal, 0)),
       totalCommission: round2(rows.reduce((s, r) => s + r.commission, 0)),
     };
