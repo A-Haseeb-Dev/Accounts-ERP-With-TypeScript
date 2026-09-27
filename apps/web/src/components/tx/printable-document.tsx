@@ -41,8 +41,10 @@ export interface PrintableDocumentProps {
   showAmountPaid: boolean;
   /** Render in-flow (for an on-screen preview) instead of parked off-screen. */
   preview?: boolean;
-  /** Document type for per-type footer/terms: 'sale' | 'purchase' | 'salesReturn' | 'purchaseReturn' */
+  /** Document type for per-type footer/terms: 'sale' | 'purchase' | 'salesReturn' | 'purchaseReturn' | 'quotation' */
   docType?: string;
+  /** Extra meta lines under the date (e.g. a quotation's valid-until date). */
+  metaExtra?: { label: string; value: string }[];
   /** Override the saved print settings — used by the Print Layout live preview. */
   fmtOverride?: Partial<PrintSettings>;
 }
@@ -57,6 +59,7 @@ export function PrintableDocument({
   showAmountPaid,
   preview = false,
   docType,
+  metaExtra,
   fmtOverride,
 }: PrintableDocumentProps) {
   const { data: branding } = useQuery<BrandingSetting | null>({
@@ -223,6 +226,11 @@ export function PrintableDocument({
                       <div>
                         <div style={{ fontWeight: 600 }}>#{String(detail.number ?? detail.code ?? '')}</div>
                         {fmt.invoiceShowDate && <div style={{ color: muted }}>{dateTime(detail[dateField] ?? new Date())}</div>}
+                        {metaExtra?.map((m) => (
+                          <div key={m.label} style={{ color: muted }}>
+                            {m.label}: {m.value}
+                          </div>
+                        ))}
                         {location && <div style={{ color: muted }}>{location.name}</div>}
                         {paymentStatus && (
                           <span
@@ -409,6 +417,11 @@ export function PrintableDocument({
           <div style={{ fontSize: font(thermal ? 13 : 18), fontWeight: 800, letterSpacing: 1, textTransform: 'uppercase' }}>{title}</div>
           <div style={{ marginTop: 4, fontSize: font(thermal ? 11 : 13), fontWeight: 600 }}>#{String(detail.number ?? detail.code ?? '')}</div>
           {fmt.invoiceShowDate && <div style={{ color: muted, marginTop: 2 }}>{dateTime(detail[dateField] ?? new Date())}</div>}
+        {metaExtra?.map((m) => (
+          <div key={m.label} style={{ color: muted, marginTop: 2 }}>
+            {m.label}: {m.value}
+          </div>
+        ))}
           {location && (
             <div style={{ color: muted, marginTop: 2 }}>{location.name}</div>
           )}

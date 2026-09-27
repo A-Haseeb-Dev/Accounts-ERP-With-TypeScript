@@ -3,7 +3,7 @@
 // ISO strings. Relations only appear when the API includes them (Prisma `include`).
 
 export type Status = 'active' | 'inactive' | 'suspended';
-export type DocStatus = 'draft' | 'pending' | 'posted' | 'cancelled';
+export type DocStatus = 'draft' | 'pending' | 'posted' | 'cancelled' | 'sent' | 'accepted' | 'rejected';
 export type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 export type OpeningBalanceSide = 'DR' | 'CR';
 export type PaymentMethod = 'CASH' | 'CHEQUE' | 'BANK';
@@ -690,6 +690,8 @@ export interface BrandingSetting {
   salesReturnTerms?: string;
   purchaseReturnFooter?: string;
   purchaseReturnTerms?: string;
+  quotationFooter?: string;
+  quotationTerms?: string;
   updatedAt: string;
 }
 

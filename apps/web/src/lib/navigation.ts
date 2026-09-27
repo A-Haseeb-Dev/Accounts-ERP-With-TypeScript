@@ -70,6 +70,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: ShoppingCart,
     children: [
       { label: 'Sales Invoices', href: '/sales/invoices', icon: ShoppingCart, permission: 'sales.invoice.view' },
+      { label: 'Quotations', href: '/sales/quotations', icon: FileText, permission: 'sales.quotation.view' },
       { label: 'Sales Returns', href: '/sales/returns', icon: Receipt, permission: 'sales.return.view' },
     ],
   },

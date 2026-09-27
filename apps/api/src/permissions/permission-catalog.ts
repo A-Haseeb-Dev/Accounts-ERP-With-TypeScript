@@ -186,6 +186,17 @@ export const PERMISSION_CATALOG: {
   { name: 'sales.return.cancel', module: 'sales', action: 'cancel' },
   { name: 'sales.return.print', module: 'sales', action: 'print', description: 'Print sales return notes' },
 
+  // Quotations (non-posting price offers)
+  { name: 'sales.quotation.view', module: 'sales', action: 'view', description: 'View quotations' },
+  { name: 'sales.quotation.create', module: 'sales', action: 'create' },
+  { name: 'sales.quotation.update', module: 'sales', action: 'update' },
+  { name: 'sales.quotation.delete', module: 'sales', action: 'delete' },
+  { name: 'sales.quotation.send', module: 'sales', action: 'send', description: 'Mark a draft quotation as sent' },
+  { name: 'sales.quotation.accept', module: 'sales', action: 'accept', description: 'Mark a sent quotation as accepted' },
+  { name: 'sales.quotation.reject', module: 'sales', action: 'reject', description: 'Mark a sent quotation as rejected' },
+  { name: 'sales.quotation.convert', module: 'sales', action: 'convert', description: 'Convert an accepted quotation into a sales invoice' },
+  { name: 'sales.quotation.print', module: 'sales', action: 'print', description: 'Print quotations' },
+
   // Reports
   { name: 'reports.accounting.view', module: 'reports', action: 'view', description: 'View accounting reports (trial balance, ledgers, journal)' },
   { name: 'reports.inventory.view', module: 'reports', action: 'view', description: 'View inventory reports (stock, product ledger)' },

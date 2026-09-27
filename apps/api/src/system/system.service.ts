@@ -90,6 +90,8 @@ export class SystemService {
       salesReturnTerms: dto.salesReturnTerms,
       purchaseReturnFooter: dto.purchaseReturnFooter,
       purchaseReturnTerms: dto.purchaseReturnTerms,
+      quotationFooter: dto.quotationFooter,
+      quotationTerms: dto.quotationTerms,
       updatedById: actorId,
     };
 
@@ -267,6 +269,7 @@ export class SystemService {
         'invoiceFooter', 'invoiceTerms', 'reportFooter',
         'saleFooter', 'saleTerms', 'purchaseFooter', 'purchaseTerms',
         'salesReturnFooter', 'salesReturnTerms', 'purchaseReturnFooter', 'purchaseReturnTerms',
+        'quotationFooter', 'quotationTerms',
       ] as const;
       for (const field of fields) {
         const value = source[field];

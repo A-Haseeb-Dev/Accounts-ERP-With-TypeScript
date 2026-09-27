@@ -88,6 +88,50 @@ export class CreateSaleDto {
   amountPaid?: number;
 }
 
+export class CreateQuotationDto {
+  @IsDateString({}, { message: 'Invalid quotation date' })
+  quotationDate: Date;
+
+  @IsOptional()
+  @IsDateString({}, { message: 'Invalid valid-until date' })
+  validUntil?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  reference?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  note?: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Customer is required' })
+  customerId: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SaleItemDto)
+  @IsNotEmpty({ message: 'At least one item is required' })
+  items: SaleItemDto[];
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  discount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  tax?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  commission?: number;
+}
+
 export class CreateSalesReturnDto {
   @IsDateString({}, { message: 'Invalid return date' })
   returnDate: Date;

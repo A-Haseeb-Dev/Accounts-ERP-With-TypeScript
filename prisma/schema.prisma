@@ -42,8 +42,9 @@ model Organization {
   purchases         Purchase[]
   purchaseReturns   PurchaseReturn[]
   stockTransfers    StockTransfer[]
-  sales             Sale[]
-  salesReturns      SalesReturn[]
+  sales        Sale[]
+  salesReturns SalesReturn[]
+  quotations   Quotation[]
   inventoryTransactions InventoryTransaction[]
   paymentEntries  PaymentEntry[]
   bankAccounts    BankAccount[]
@@ -93,6 +94,7 @@ model User {
   createdPurchases  Purchase[]     @relation("CreatedPurchases")
   createdSales      Sale[]         @relation("CreatedSales")
   createdTransfers  StockTransfer[] @relation("CreatedTransfers")
+  createdQuotations Quotation[]    @relation("CreatedQuotations")
 
   @@index([organizationId])
   @@index([status])
@@ -315,6 +317,7 @@ model Item {
   purchaseReturnItems  PurchaseReturnItem[]
   saleItems            SaleItem[]
   salesReturnItems     SalesReturnItem[]
+  quotationItems       QuotationItem[]
   transferItems        StockTransferItem[]
 
   @@index([name])
@@ -391,6 +394,7 @@ model Customer {
   pdcAccount   MainAccount?  @relation("PartyPdcAccount", fields: [pdcAccountId], references: [id], onDelete: SetNull)
   sales        Sale[]
   salesReturns SalesReturn[]
+  quotations   Quotation[]
 
   @@unique([code, organizationId])
   @@index([name])
@@ -632,6 +636,7 @@ model Sale {
   createdBy        User?             @relation("CreatedSales", fields: [createdById], references: [id], onDelete: SetNull)
   items            SaleItem[]
   salesReturns     SalesReturn[]
+  quotation        Quotation?       @relation("QuotationConversion")
 
   @@unique([number, organizationId])
   @@index([saleDate])
@@ -651,6 +656,58 @@ model SaleItem {
 
   sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
   item Item @relation(fields: [itemId], references: [id])
+
+  @@index([itemId])
+}
+
+/// A price offer sent to a customer. It never touches stock or the general
+/// ledger; it only records intent, and can later become a sales invoice.
+model Quotation {
+  id              String   @id @default(cuid())
+  number          String
+  quotationDate   DateTime @default(now())
+  validUntil      DateTime?
+  reference       String?
+  note            String?
+  customerId      String
+  subtotal        Decimal  @default(0) @db.Decimal(18, 2)
+  discount        Decimal  @default(0) @db.Decimal(18, 2)
+  tax             Decimal  @default(0) @db.Decimal(18, 2)
+  grandTotal      Decimal  @default(0) @db.Decimal(18, 2)
+  status          String   @default("draft") // draft | sent | accepted | rejected
+  sentAt          DateTime?
+  decidedAt       DateTime?
+  decideReason    String?
+  convertedSaleId String?  @unique
+  createdById     String?
+  organizationId  String   @default("default-org")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  customer       Customer       @relation(fields: [customerId], references: [id])
+  createdBy      User?          @relation("CreatedQuotations", fields: [createdById], references: [id], onDelete: SetNull)
+  convertedSale  Sale?          @relation("QuotationConversion", fields: [convertedSaleId], references: [id], onDelete: SetNull)
+  items          QuotationItem[]
+
+  @@unique([number, organizationId])
+  @@index([quotationDate])
+  @@index([status])
+  @@index([customerId])
+}
+
+model QuotationItem {
+  id         String   @id @default(cuid())
+  quotationId String
+  itemId     String
+  quantity   Decimal  @default(0) @db.Decimal(18, 2)
+  unitPrice  Decimal  @default(0) @db.Decimal(18, 2)
+  discount   Decimal  @default(0) @db.Decimal(18, 2)
+  tax        Decimal  @default(0) @db.Decimal(18, 2)
+  lineTotal  Decimal  @default(0) @db.Decimal(18, 2)
+
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  item      Item       @relation(fields: [itemId], references: [id])
 
   @@index([itemId])
 }

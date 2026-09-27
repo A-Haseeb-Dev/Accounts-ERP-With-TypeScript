@@ -86,6 +86,14 @@ export class UpdateBrandingDto {
   @IsString()
   @IsOptional()
   purchaseReturnTerms?: string;
+
+  @IsString()
+  @IsOptional()
+  quotationFooter?: string;
+
+  @IsString()
+  @IsOptional()
+  quotationTerms?: string;
 }
 
 export class UpdateSettingsDto {
