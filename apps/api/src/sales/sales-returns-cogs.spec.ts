@@ -4,7 +4,7 @@ import type { VoucherEntryInput } from '../common/services/accounting.service';
 
 const TAX = 'acct-tax';
 const RECEIVABLE = 'acct-receivable';
-const SALES_RETURNS = 'acct-sales-returns';
+const REVENUE = 'acct-revenue';
 const INVENTORY = 'acct-inventory';
 const COST_OF_SALES = 'acct-cogs';
 
@@ -31,7 +31,7 @@ function buildService(overrides?: { taxAccountId?: string | null; cogsConfigured
   const defaultAccounts = {
     resolveAccount: vi.fn(async (key: string) => {
       if (key === 'accounting.tax_account') return taxAccountId;
-      if (key === 'accounting.sales_return_account') return SALES_RETURNS;
+      if (key === 'accounting.revenue_account') return REVENUE;
       if (key === 'accounting.receivable_account') return RECEIVABLE;
       if (key === 'accounting.inventory_account') return cogsConfigured ? INVENTORY : null;
       if (key === 'accounting.cost_of_sales_account') return cogsConfigured ? COST_OF_SALES : null;

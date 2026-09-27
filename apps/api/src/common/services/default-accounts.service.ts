@@ -41,9 +41,10 @@ const MAIN_ACCOUNTS: { code: string; name: string; subHead: string; type: string
   { code: '03-01', name: 'Opening Equity', subHead: 'Capital', type: 'EQUITY', settingKey: 'accounting.opening_equity_account' },
   { code: '03-02', name: 'Owner Capital', subHead: 'Capital', type: 'EQUITY' },
   { code: '04-01', name: 'Sales Revenue', subHead: 'Direct Revenue', type: 'REVENUE', settingKey: 'accounting.revenue_account' },
-  { code: '04-02', name: 'Sales Returns', subHead: 'Direct Revenue', type: 'REVENUE', settingKey: 'accounting.sales_return_account' },
+  // No separate sales return / purchase return account: a return offsets the
+  // original sale or purchase on the very same account, so returns and their
+  // source document net to zero without a contra account to reconcile.
   { code: '05-01', name: 'Purchases', subHead: 'Current Assets', type: 'ASSET' },
-  { code: '05-02', name: 'Purchase Returns', subHead: 'Current Assets', type: 'ASSET', settingKey: 'accounting.purchase_return_account' },
   { code: '05-05', name: 'Cost of Sales', subHead: 'Cost of Sales', type: 'EXPENSE', settingKey: 'accounting.cost_of_sales_account' },
   { code: '05-03', name: 'Salary Expense', subHead: 'Operating Expenses', type: 'EXPENSE', settingKey: 'accounting.salary_expense_account' },
   { code: '05-04', name: 'Commission Expense', subHead: 'Operating Expenses', type: 'EXPENSE', settingKey: 'accounting.commission_expense_account' },

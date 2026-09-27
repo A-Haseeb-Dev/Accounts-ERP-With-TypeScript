@@ -5,7 +5,6 @@ import type { VoucherEntryInput } from '../common/services/accounting.service';
 const TAX = 'acct-tax';
 const REVENUE = 'acct-revenue';
 const RECEIVABLE = 'acct-receivable';
-const SALES_RETURNS = 'acct-sales-returns';
 const INVENTORY = 'acct-inventory';
 const COST_OF_SALES = 'acct-cogs';
 
@@ -29,19 +28,19 @@ interface Built {
 
 function buildService(overrides?: {
   taxAccountId?: string | null;
-  salesReturnAccountId?: string | null;
+  revenueAccountId?: string | null;
   receivableAccountId?: string | null;
 }): Built {
   const taxAccountId = overrides?.taxAccountId === undefined ? TAX : overrides.taxAccountId;
-  const salesReturnAccountId =
-    overrides?.salesReturnAccountId === undefined ? SALES_RETURNS : overrides.salesReturnAccountId;
+  const revenueAccountId =
+    overrides?.revenueAccountId === undefined ? REVENUE : overrides.revenueAccountId;
   const receivableAccountId =
     overrides?.receivableAccountId === undefined ? RECEIVABLE : overrides.receivableAccountId;
 
   const defaultAccounts = {
     resolveAccount: vi.fn(async (key: string) => {
       if (key === 'accounting.tax_account') return taxAccountId;
-      if (key === 'accounting.sales_return_account') return salesReturnAccountId;
+      if (key === 'accounting.revenue_account') return revenueAccountId;
       if (key === 'accounting.receivable_account') return receivableAccountId;
       if (key === 'accounting.inventory_account') return INVENTORY;
       if (key === 'accounting.cost_of_sales_account') return COST_OF_SALES;
@@ -107,18 +106,32 @@ function sum(entries: VoucherEntryInput[], field: 'debit' | 'credit'): number {
 }
 
 describe('SalesReturnsService.post voucher netting', () => {
-  it('debits Sales Returns for the net amount and credits the customer for the grand total', async () => {
+  it('debits sales revenue for the net amount and credits the customer for the grand total', async () => {
     const { svc, createVoucher, header } = buildService();
     Object.assign(header, { subtotal: 1000, discount: 100, tax: 0, grandTotal: 900 });
     await svc.post('sr-1');
 
     const entries = entriesOf(createVoucher);
-    const returns = entries.find((e) => e.mainAccountId === SALES_RETURNS)!;
+    const revenue = entries.find((e) => e.mainAccountId === REVENUE)!;
     const customer = entries.find((e) => e.mainAccountId === RECEIVABLE)!;
     // subtotal - discount, matching the revenue credit on the original invoice.
-    expect(Number(returns.debit)).toBe(900);
+    expect(Number(revenue.debit)).toBe(900);
     expect(Number(customer.credit)).toBe(900);
     expect(sum(entries, 'debit')).toBe(sum(entries, 'credit'));
+  });
+
+  it('debits the same revenue account the invoice credited, with no separate returns account', async () => {
+    const { svc, createVoucher, defaultAccounts, header } = buildService();
+    Object.assign(header, { subtotal: 1000, discount: 0, tax: 0, grandTotal: 1000 });
+    await svc.post('sr-1');
+
+    // The return must unwind the sale on its own account. Resolving a dedicated
+    // returns account here would leave revenue and returns as separate
+    // balances that a reader has to net by hand.
+    const keys = defaultAccounts.resolveAccount.mock.calls.map((c) => c[0]);
+    expect(keys).not.toContain('accounting.sales_return_account');
+    const entries = entriesOf(createVoucher);
+    expect(entries.filter((e) => e.mainAccountId === REVENUE)).toHaveLength(1);
   });
 
   it('debits sales tax payable so the tax on the original invoice is reversed', async () => {
@@ -127,19 +140,19 @@ describe('SalesReturnsService.post voucher netting', () => {
     await svc.post('sr-1');
 
     const entries = entriesOf(createVoucher);
-    const returns = entries.find((e) => e.mainAccountId === SALES_RETURNS)!;
+    const revenue = entries.find((e) => e.mainAccountId === REVENUE)!;
     const tax = entries.find((e) => e.mainAccountId === TAX)!;
     const customer = entries.find((e) => e.mainAccountId === RECEIVABLE)!;
 
-    // The regression: Sales Returns used to absorb the tax (debit 1100), which
-    // overstated returns and left the tax liability credited but never reversed.
-    expect(Number(returns.debit)).toBe(1000);
+    // The regression: the return used to absorb the tax (debit 1100), which
+    // overstated the reversal and left the tax liability credited but never reversed.
+    expect(Number(revenue.debit)).toBe(1000);
     expect(Number(tax.debit)).toBe(100);
     expect(Number(customer.credit)).toBe(1100);
     expect(sum(entries, 'debit')).toBe(sum(entries, 'credit'));
   });
 
-  it('nets a sale and its full return to zero, offsetting revenue against sales returns', async () => {
+  it('nets a sale and its full return to zero on every account', async () => {
     const { svc, createVoucher, header } = buildService();
     Object.assign(header, { subtotal: 1000, discount: 0, tax: 100, grandTotal: 1100 });
     await svc.post('sr-1');
@@ -149,7 +162,7 @@ describe('SalesReturnsService.post voucher netting', () => {
     const invoice: VoucherEntryInput[] = [
       { mainAccountId: RECEIVABLE, debit: 1100, narration: 'sale' },
       { mainAccountId: REVENUE, credit: 1000, narration: 'sale' },
-      { mainAccountId: TAX, credit: 100, narration: 'sale' },
+      { mainAccountId: TAX, credit: 100, narration: 'tax' },
     ];
 
     const net: Record<string, number> = {};
@@ -159,32 +172,27 @@ describe('SalesReturnsService.post voucher netting', () => {
       net[e.mainAccountId] = Math.round(((net[e.mainAccountId] ?? 0) + d - c) * 100) / 100;
     }
 
-    // The customer account and the tax liability cancel out completely. This is
-    // the regression: the old return never debited tax payable, so 100 of
-    // liability stayed on the books.
+    // Because the return debits the very account the invoice credited, every
+    // account cancels on its own - no netting across two revenue accounts.
     expect(net[RECEIVABLE]).toBe(0);
     expect(net[TAX]).toBe(0);
-
-    // Revenue is a credit and Sales Returns is the contra-revenue debit, so they
-    // do not cancel account-for-account - their combined effect on net revenue
-    // must be nil.
-    expect(net[REVENUE] + net[SALES_RETURNS]).toBe(0);
+    expect(net[REVENUE]).toBe(0);
   });
 
-  it('folds the tax into sales returns when no tax account is configured', async () => {
+  it('folds the tax into the revenue reversal when no tax account is configured', async () => {
     const { svc, createVoucher, header } = buildService({ taxAccountId: null });
     Object.assign(header, { subtotal: 1000, discount: 0, tax: 100, grandTotal: 1100 });
     await svc.post('sr-1');
 
     const entries = entriesOf(createVoucher);
-    const returns = entries.find((e) => e.mainAccountId === SALES_RETURNS)!;
-    expect(Number(returns.debit)).toBe(1100);
+    const revenue = entries.find((e) => e.mainAccountId === REVENUE)!;
+    expect(Number(revenue.debit)).toBe(1100);
     expect(entries.find((e) => e.mainAccountId === TAX)).toBeUndefined();
     expect(sum(entries, 'debit')).toBe(sum(entries, 'credit'));
   });
 
-  it('refuses to post when the sales return account is missing', async () => {
-    const { svc } = buildService({ salesReturnAccountId: null });
+  it('refuses to post when the revenue account is missing', async () => {
+    const { svc } = buildService({ revenueAccountId: null });
     expect(await apiErrorMessage(svc.post('sr-1'))).toMatch(/Accounting accounts are not configured/);
   });
 });

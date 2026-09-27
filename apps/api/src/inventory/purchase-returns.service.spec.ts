@@ -20,6 +20,7 @@ async function apiErrorMessage(p: Promise<unknown>): Promise<string> {
 interface Built {
   svc: PurchaseReturnsService;
   createVoucher: ReturnType<typeof vi.fn>;
+  defaultAccounts: { resolveAccount: ReturnType<typeof vi.fn> };
   header: Record<string, unknown>;
 }
 
@@ -81,7 +82,7 @@ function buildService(overrides?: { taxAccountId?: string | null }): Built {
     { assertOpen: vi.fn().mockResolvedValue(undefined) } as never,
   );
 
-  return { svc, createVoucher: accounting.createVoucher, header };
+  return { svc, createVoucher: accounting.createVoucher, defaultAccounts, header };
 }
 
 function entriesOf(createVoucher: ReturnType<typeof vi.fn>): VoucherEntryInput[] {
@@ -102,6 +103,19 @@ describe('PurchaseReturnsService.post voucher netting', () => {
     expect(Number(entries.find((e) => e.mainAccountId === PAYABLE)!.debit)).toBe(1000);
     expect(Number(entries.find((e) => e.mainAccountId === INVENTORY)!.credit)).toBe(1000);
     expect(sum(entries, 'debit')).toBe(sum(entries, 'credit'));
+  });
+
+  it('credits the same inventory account the purchase debited, with no separate returns account', async () => {
+    const { svc, createVoucher, defaultAccounts, header } = buildService();
+    Object.assign(header, { subtotal: 1000, discount: 0, tax: 0, grandTotal: 1000 });
+    await svc.post('pr-1');
+
+    // The return must unwind the purchase on the inventory account itself, so
+    // the two documents cancel instead of leaving a returns balance to net off.
+    const keys = defaultAccounts.resolveAccount.mock.calls.map((c: string[]) => c[0]);
+    expect(keys).not.toContain('accounting.purchase_return_account');
+    const entries = entriesOf(createVoucher);
+    expect(entries.filter((e) => e.mainAccountId === INVENTORY)).toHaveLength(1);
   });
 
   it('credits tax payable for tax, mirroring the purchase side', async () => {

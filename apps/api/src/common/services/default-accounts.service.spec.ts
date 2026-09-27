@@ -95,10 +95,20 @@ describe('DefaultAccountsService.ensureDefaultAccounts', () => {
     const purchases = account(rows, '05-01');
     expect(purchases.accountType).toBe('ASSET');
     expect(purchases.subHeadId).toBe('sub-Current Assets');
+  });
 
-    const purchaseReturns = account(rows, '05-02');
-    expect(purchaseReturns.accountType).toBe('ASSET');
-    expect(purchaseReturns.subHeadId).toBe('sub-Current Assets');
+  it('does not seed separate sales return or purchase return accounts', async () => {
+    // A return offsets its source document on the same account, so a dedicated
+    // returns account would only ever hold a balance someone has to net off by
+    // hand. Nothing should create one.
+    const { prisma, rows } = buildPrisma();
+    await bootstrap(prisma);
+
+    expect(rows.find((r) => r.code === '04-02')).toBeUndefined();
+    expect(rows.find((r) => r.code === '05-02')).toBeUndefined();
+    const names = rows.map((r) => r.name);
+    expect(names).not.toContain('Sales Returns');
+    expect(names).not.toContain('Purchase Returns');
   });
 
   it('keeps the real inventory and revenue accounts on their existing types', async () => {
@@ -107,7 +117,6 @@ describe('DefaultAccountsService.ensureDefaultAccounts', () => {
 
     expect(account(rows, '01-04').accountType).toBe('ASSET');
     expect(account(rows, '04-01').accountType).toBe('REVENUE');
-    expect(account(rows, '04-02').accountType).toBe('REVENUE');
     expect(account(rows, '05-03').accountType).toBe('EXPENSE');
   });
 

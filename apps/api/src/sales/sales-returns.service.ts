@@ -124,15 +124,19 @@ export class SalesReturnsService {
     }
     await this.fiscal.assertOpen(sr.returnDate, 'Cannot post a sales return');
 
-    const salesReturnAccountId =
-      (await this.defaultAccounts.resolveAccount('accounting.sales_return_account', 'Sales Returns')) ??
+    // A return has to unwind the original invoice, so it debits the very
+    // revenue account that the sale credited. Routing it through a separate
+    // "Sales Returns" account would leave the two balances sitting side by side
+    // instead of cancelling, and would need an account that serves no purpose.
+    const revenueAccountId =
+      (await this.defaultAccounts.resolveAccount('accounting.revenue_account', 'Sales Revenue')) ??
       undefined;
     const customerAccountId =
       sr.customer.mainAccountId ??
       ((await this.defaultAccounts.resolveAccount('accounting.receivable_account', 'Accounts Receivable')) ??
         undefined);
 
-    if (!salesReturnAccountId || !customerAccountId) {
+    if (!revenueAccountId || !customerAccountId) {
       throw ApiException.invalidTransaction('Accounting accounts are not configured');
     }
 
@@ -164,22 +168,23 @@ export class SalesReturnsService {
         });
       }
 
-      // 2. Accounting: Dr Sales Returns, Dr Sales Tax Payable, Cr Customer.
+      // 2. Accounting: Dr Sales Revenue, Dr Sales Tax Payable, Cr Customer.
       //    The sale credited revenue for `subtotal - discount` and tax
-      //    payable for `tax`, so the return has to reverse exactly that split.
-      //    Debiting Sales Returns for the whole grand total would overstate
-      //    returns by the tax and leave a phantom tax liability behind.
+      //    payable for `tax`, so the return reverses exactly that split against
+      //    the same accounts, and the pair nets to zero account-for-account.
+      //    Debiting revenue for the whole grand total would overstate the
+      //    reversal by the tax and leave a phantom tax liability behind.
       const taxAmount = Number(sr.tax);
       const taxAccountId =
         taxAmount > 0
           ? await this.defaultAccounts.resolveAccount('accounting.tax_account', 'Sales Tax Payable')
           : null;
-      // Without a tax account the tax is folded into the contra-revenue debit,
-      // so the entry always nets to the grand total credited to the customer.
-      const returnsDebit = round2(Number(sr.subtotal) - Number(sr.discount) + (taxAccountId ? 0 : taxAmount));
+      // Without a tax account the tax is folded into the revenue reversal, so
+      // the entry always nets to the grand total credited to the customer.
+      const revenueDebit = round2(Number(sr.subtotal) - Number(sr.discount) + (taxAccountId ? 0 : taxAmount));
 
       const entries: VoucherEntryInput[] = [
-        { mainAccountId: salesReturnAccountId, debit: returnsDebit, narration: `Return ${sr.number}` },
+        { mainAccountId: revenueAccountId, debit: revenueDebit, narration: `Return ${sr.number}` },
         { mainAccountId: customerAccountId, credit: Number(sr.grandTotal), narration: `Return ${sr.number}` },
       ];
       if (taxAccountId) {
