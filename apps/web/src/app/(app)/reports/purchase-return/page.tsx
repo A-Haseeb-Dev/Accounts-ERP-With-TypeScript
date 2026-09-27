@@ -81,6 +81,8 @@ export default function PurchaseReturnReportPage() {
   const itemTotal = itemLines.reduce((s, l) => s + l.lineTotal, 0);
 
   const period = from ? ` (${from}${to ? ` to ${to}` : ''})` : '';
+  // This table carries an extra trailing action column, so the footer needs one
+  // cell more than the visible report columns.
   const moneyColCount = cols.defsFiltered.filter((c) => MONEY_KEYS.includes(c.key)).length;
 
   return (

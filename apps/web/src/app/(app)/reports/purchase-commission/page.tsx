@@ -204,7 +204,7 @@ export default function PurchaseCommissionReportPage() {
                     <tr><td colSpan={cols.defsFiltered.length} className="px-4 py-8 text-center text-slate-400">No commission recorded in this period.</td></tr>
                   )}
                 </tbody>
-                {rows.length > 0 && (
+                {rows.length > 0 && cols.defsFiltered.some((c) => c.key in totalCells) && (
                   <tfoot>
                     <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-800">
                       {labelSpan > 0 && (

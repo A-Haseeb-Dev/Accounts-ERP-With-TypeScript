@@ -26,8 +26,6 @@ const COLUMNS: ColumnDef[] = [
 export default function PurchaseBookPage() {
   const { options: supplierOptions } = useFlatOptions('suppliers');
   const cols = useReportColumns(COLUMNS, 'purchase-book');
-  const visibleMoney = cols.defsFiltered.filter((c) => c.key === 'total');
-  const labelSpan = cols.defsFiltered.length - visibleMoney.length;
   const [mode, setMode] = useState<'byInvoice' | 'byMonth'>('byInvoice');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -41,6 +39,14 @@ export default function PurchaseBookPage() {
 
   const rows = data?.rows ?? [];
   const totalPurchases = rows.reduce((s, r) => s + Number(r.grandTotal), 0);
+
+  // The footer must line up with the header whatever columns are visible, so the
+  // label spans the leading columns that carry no figure and each remaining
+  // visible column then gets exactly one cell. A zero span is invalid HTML, so
+  // the label is dropped rather than adding a cell the header does not have.
+  const totalCells: Record<string, string> = { total: money(totalPurchases) };
+  const firstTotalCol = cols.defsFiltered.findIndex((c) => c.key in totalCells);
+  const labelSpan = firstTotalCol <= 0 ? 0 : firstTotalCol;
 
   const groups = (() => {
     if (mode !== 'byMonth') return [];
@@ -170,12 +176,20 @@ export default function PurchaseBookPage() {
                 <tr><td colSpan={cols.defsFiltered.length} className="px-4 py-8 text-center text-slate-400">No purchases found.</td></tr>
               )}
             </tbody>
-            {rows.length > 0 && (
+            {rows.length > 0 && cols.isVisible('total') && (
               <tfoot>
                 <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-800">
-                  <td colSpan={labelSpan} className="px-4 py-2 text-xs font-semibold uppercase text-slate-500">Total Purchases</td>
-                  {cols.isVisible('total') && <td className="px-4 py-2 text-right tabular-nums">{money(totalPurchases)}</td>}
-                  {cols.isVisible('status') && <td></td>}
+                  {labelSpan > 0 && (
+                    <td colSpan={labelSpan} className="px-4 py-2 text-xs font-semibold uppercase text-slate-500">Total Purchases</td>
+                  )}
+                  {cols.defsFiltered.slice(labelSpan).map((c) => (
+                    <td
+                      key={c.key}
+                      className={`px-4 py-2 ${totalCells[c.key] ? 'text-right tabular-nums' : ''}`}
+                    >
+                      {totalCells[c.key] ?? ''}
+                    </td>
+                  ))}
                 </tr>
               </tfoot>
             )}
