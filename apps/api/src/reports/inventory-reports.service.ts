@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiException } from '../common/exceptions/api.exception';
 import { dateRange } from '../common/utils/date-filter';
+import { orphanInventoryExclusions } from '../common/utils/orphan-records';
 
 /** Sentinel status meaning "do not filter on status" (the "All" filter option). */
 const ALL_STATUS = 'all';
@@ -9,6 +10,17 @@ const ALL_STATUS = 'all';
 @Injectable()
 export class InventoryReportsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Appends the "source document still exists" guard to a transaction filter so
+   * stock movements left behind by a deleted document drop out of the figures
+   * (see `orphan-records`).
+   */
+  private async withOrphanGuard(where: any): Promise<any> {
+    const exclusions = await orphanInventoryExclusions(this.prisma);
+    if (exclusions.length === 0) return where;
+    return { AND: [where, ...exclusions] };
+  }
 
   /** Product ledger - stock movements with running balance per location. */
   async productLedger(query: { itemId: string; locationId?: string; from?: string; to?: string; page?: number; pageSize?: number }) {
@@ -23,23 +35,53 @@ export class InventoryReportsService {
     }
 
     const transactions = await this.prisma.inventoryTransaction.findMany({
-      where,
+      where: await this.withOrphanGuard(where),
       include: { location: true },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
 
+    // The stored `balance` column is written as each movement is recorded, so it
+    // still counts movements that were later orphaned. Recompute the running
+    // figure from the rows actually being reported, seeded with the opening
+    // balance of the period.
+    const openingByLocation = new Map<string, number>();
+    if (from) {
+      const openings = await this.prisma.inventoryTransaction.groupBy({
+        by: ['locationId'],
+        where: await this.withOrphanGuard({
+          itemId,
+          ...(locationId ? { locationId } : {}),
+          createdAt: { lt: new Date(from) },
+        }),
+        _sum: { quantityIn: true, quantityOut: true },
+      });
+      for (const o of openings) {
+        openingByLocation.set(
+          o.locationId,
+          round2(Number(o._sum.quantityIn ?? 0) - Number(o._sum.quantityOut ?? 0)),
+        );
+      }
+    }
+
+    const running = new Map<string, number>(openingByLocation);
     const total = transactions.length;
-    const rows = transactions.map((t) => ({
-      date: t.createdAt,
-      referenceType: t.referenceType,
-      referenceId: t.referenceId,
-      transactionType: t.transactionType,
-      location: t.location.name,
-      stockIn: Number(t.quantityIn),
-      stockOut: Number(t.quantityOut),
-      balance: Number(t.balance),
-      unitCost: Number(t.unitCost ?? 0),
-    }));
+    const rows = transactions.map((t) => {
+      const stockIn = Number(t.quantityIn);
+      const stockOut = Number(t.quantityOut);
+      const balance = round2((running.get(t.locationId) ?? 0) + stockIn - stockOut);
+      running.set(t.locationId, balance);
+      return {
+        date: t.createdAt,
+        referenceType: t.referenceType,
+        referenceId: t.referenceId,
+        transactionType: t.transactionType,
+        location: t.location.name,
+        stockIn,
+        stockOut,
+        balance,
+        unitCost: Number(t.unitCost ?? 0),
+      };
+    });
 
     const paginated = rows.slice((page - 1) * pageSize, page * pageSize);
 
@@ -75,19 +117,19 @@ export class InventoryReportsService {
 
     for (const item of items) {
       const inBefore = await this.prisma.inventoryTransaction.aggregate({
-        where: {
+        where: await this.withOrphanGuard({
           itemId: item.id,
           ...locationWhere,
           ...(from ? { createdAt: { lt: new Date(from) } } : {}),
-        },
+        }),
         _sum: { quantityIn: true, quantityOut: true },
       });
       const inRange = await this.prisma.inventoryTransaction.aggregate({
-        where: {
+        where: await this.withOrphanGuard({
           itemId: item.id,
           ...locationWhere,
           ...(from || to ? { createdAt: dateRange(from, to) } : {}),
-        },
+        }),
         _sum: { quantityIn: true, quantityOut: true },
       });
 
@@ -185,7 +227,7 @@ export class InventoryReportsService {
       const txnWhere: any = { itemId: item.id };
       if (locationId) txnWhere.locationId = locationId;
       const agg = await this.prisma.inventoryTransaction.aggregate({
-        where: txnWhere,
+        where: await this.withOrphanGuard(txnWhere),
         _sum: { quantityIn: true, quantityOut: true },
       });
       const qty = Number(agg._sum.quantityIn ?? 0) - Number(agg._sum.quantityOut ?? 0);
@@ -219,7 +261,7 @@ export class InventoryReportsService {
       let value = 0;
       for (const item of type.items) {
         const agg = await this.prisma.inventoryTransaction.aggregate({
-          where: { itemId: item.id },
+          where: await this.withOrphanGuard({ itemId: item.id }),
           _sum: { quantityIn: true, quantityOut: true },
         });
         const q = Number(agg._sum.quantityIn ?? 0) - Number(agg._sum.quantityOut ?? 0);

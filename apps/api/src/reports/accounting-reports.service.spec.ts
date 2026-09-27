@@ -1,12 +1,24 @@
 import { describe, it, expect, vi } from 'vitest';
 import { AccountingReportsService } from './accounting-reports.service';
 
-function buildService(mainAccounts: unknown[], aggregates: Record<string, { _sum: { debit: number; credit: number } }>) {
+function buildService(
+  mainAccounts: unknown[],
+  aggregates: Record<string, { _sum: { debit: number; credit: number } }>,
+  orphanReferences: string[] = [],
+) {
   const prisma = {
     mainAccount: { findMany: vi.fn().mockResolvedValue(mainAccounts) },
+    // The orphan guard runs one read-only query; empty means nothing is orphaned.
+    $queryRawUnsafe: vi.fn().mockResolvedValue(
+      orphanReferences.map((reference) => ({ reference })),
+    ),
     voucherEntry: {
-      aggregate: vi.fn(({ where }: { where: { mainAccountId: string; voucher?: unknown } }) => {
-        const isOpening = (where.voucher as { reference?: { startsWith?: string } })?.reference?.startsWith === 'OB:';
+      aggregate: vi.fn(({ where }: { where: { mainAccountId: string; voucher?: any } }) => {
+        const voucher = where.voucher ?? {};
+        // The opening query targets the OB voucher directly. The movements query
+        // is the mirror image - it lists the OB voucher in a NOT clause - so
+        // only a direct `reference` match means "this is the opening".
+        const isOpening = voucher.reference?.startsWith === 'OB:';
         return Promise.resolve(
           isOpening
             ? { _sum: { debit: 0, credit: 0 } }
@@ -111,5 +123,37 @@ describe('AccountingReportsService.trialBalance', () => {
       status: 'posted',
       voucherDate: { lte: new Date('2026-09-01T23:59:59.999Z') },
     });
+  });
+});
+
+describe('AccountingReportsService orphan guard', () => {
+  const account = {
+    id: 'cash', code: '01-01', name: 'Cash', accountType: 'ASSET',
+    openingBalance: 0, status: 'active', subHead: { name: 's', headAccount: { name: 'h' } },
+  };
+
+  it('excludes vouchers whose source document was deleted outside the app', async () => {
+    const { svc, prisma } = buildService(
+      [account],
+      { cash: { _sum: { debit: 100, credit: 0 } } },
+      ['SR-2026-000001'],
+    );
+    await svc.trialBalance({});
+
+    const call = prisma.voucherEntry.aggregate.mock.calls[0][0] as { where: { voucher: any } };
+    const not = call.where.voucher.NOT;
+    expect(not).toEqual(
+      expect.arrayContaining([{ reference: { notIn: ['SR-2026-000001'] } }]),
+    );
+  });
+
+  it('leaves the filter untouched when nothing is orphaned', async () => {
+    const { svc, prisma } = buildService([account], { cash: { _sum: { debit: 100, credit: 0 } } });
+    await svc.trialBalance({});
+
+    const call = prisma.voucherEntry.aggregate.mock.calls[0][0] as { where: { voucher: any } };
+    // Only the opening-balance exclusion; no `notIn` clause is added.
+    expect(call.where.voucher.NOT).toHaveLength(1);
+    expect(call.where.voucher.NOT[0]).toEqual({ reference: { startsWith: 'OB:' } });
   });
 });

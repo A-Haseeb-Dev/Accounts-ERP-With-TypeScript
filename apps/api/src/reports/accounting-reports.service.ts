@@ -2,10 +2,27 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApiException } from '../common/exceptions/api.exception';
 import { dateRange, endOfDay } from '../common/utils/date-filter';
+import { orphanVoucherExclusions } from '../common/utils/orphan-records';
 
 @Injectable()
 export class AccountingReportsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Base filter for every ledger query: posted vouchers, excluding opening
+   * balances and any voucher whose source document has since been deleted
+   * (see `orphan-records`).
+   */
+  private async postedVoucherFilter(extra: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    return {
+      status: 'posted',
+      NOT: [
+        { reference: { startsWith: 'OB:' } },
+        ...(await orphanVoucherExclusions(this.prisma)),
+      ],
+      ...extra,
+    };
+  }
 
   /**
    * Opening position of an account. Prefers the posted opening-balance voucher
@@ -39,10 +56,9 @@ export class AccountingReportsService {
     });
     if (!account) throw ApiException.notFound('Account');
 
-    const voucherWhere: any = { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } };
-    if (from || to) {
-      voucherWhere.voucherDate = dateRange(from, to);
-    }
+    const voucherWhere: any = await this.postedVoucherFilter(
+      from || to ? { voucherDate: dateRange(from, to) } : {},
+    );
 
     const entries = await this.prisma.voucherEntry.findMany({
       where: { mainAccountId: accountId, voucher: voucherWhere },
@@ -56,11 +72,7 @@ export class AccountingReportsService {
       const before = await this.prisma.voucherEntry.aggregate({
         where: {
           mainAccountId: accountId,
-          voucher: {
-            status: 'posted',
-            voucherDate: { lt: new Date(from) },
-            NOT: { reference: { startsWith: 'OB:' } },
-          },
+          voucher: await this.postedVoucherFilter({ voucherDate: { lt: new Date(from) } }),
         },
         _sum: { debit: true, credit: true },
       });
@@ -121,10 +133,9 @@ export class AccountingReportsService {
       orderBy: [{ subHead: { code: 'asc' } }, { code: 'asc' }],
     });
 
-    const voucherWhere: any = { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } };
-    if (from || to) {
-      voucherWhere.voucherDate = dateRange(from, to);
-    }
+    const voucherWhere: any = await this.postedVoucherFilter(
+      from || to ? { voucherDate: dateRange(from, to) } : {},
+    );
 
     const rows: any[] = [];
     let totalDebit = 0;
@@ -141,11 +152,7 @@ export class AccountingReportsService {
         const before = await this.prisma.voucherEntry.aggregate({
           where: {
             mainAccountId: acc.id,
-            voucher: {
-              status: 'posted',
-              voucherDate: { lt: new Date(from) },
-              NOT: { reference: { startsWith: 'OB:' } },
-            },
+            voucher: await this.postedVoucherFilter({ voucherDate: { lt: new Date(from) } }),
           },
           _sum: { debit: true, credit: true },
         });
@@ -223,7 +230,9 @@ export class AccountingReportsService {
   /** General Journal - all posted vouchers in date order. */
   async generalJournal(query: { from?: string; to?: string; page?: number; pageSize?: number }) {
     const { from, to, page = 1, pageSize = 100 } = query;
-    const where: any = { status: 'posted' };
+    const where: any = await this.postedVoucherFilter(
+      from || to ? { voucherDate: dateRange(from, to) } : {},
+    );
     if (from || to) {
       where.voucherDate = dateRange(from, to);
     }
@@ -276,8 +285,9 @@ export class AccountingReportsService {
     let totalCredit = 0;
 
     for (const acc of accounts) {
-      const voucherWhere: any = { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } };
-      if (asOf) voucherWhere.voucherDate = { lte: endOfDay(asOf) };
+      const voucherWhere: any = await this.postedVoucherFilter(
+        asOf ? { voucherDate: { lte: endOfDay(asOf) } } : {},
+      );
       const agg = await this.prisma.voucherEntry.aggregate({
         where: { mainAccountId: acc.id, voucher: voucherWhere },
         _sum: { debit: true, credit: true },
@@ -333,8 +343,9 @@ export class AccountingReportsService {
     let totalDebit = 0;
     let totalCredit = 0;
     for (const acc of accounts) {
-      const voucherWhere: any = { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } };
-      if (asOf) voucherWhere.voucherDate = { lte: endOfDay(asOf) };
+      const voucherWhere: any = await this.postedVoucherFilter(
+        asOf ? { voucherDate: { lte: endOfDay(asOf) } } : {},
+      );
       const agg = await this.prisma.voucherEntry.aggregate({
         where: { mainAccountId: acc.id, voucher: voucherWhere },
         _sum: { debit: true, credit: true },
@@ -384,8 +395,9 @@ export class AccountingReportsService {
     let totalDebit = 0;
     let totalCredit = 0;
     for (const acc of accounts) {
-      const voucherWhere: any = { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } };
-      if (asOf) voucherWhere.voucherDate = { lte: endOfDay(asOf) };
+      const voucherWhere: any = await this.postedVoucherFilter(
+        asOf ? { voucherDate: { lte: endOfDay(asOf) } } : {},
+      );
       const agg = await this.prisma.voucherEntry.aggregate({
         where: { mainAccountId: acc.id, voucher: voucherWhere },
         _sum: { debit: true, credit: true },
@@ -460,11 +472,9 @@ export class AccountingReportsService {
     const entries = await this.prisma.voucherEntry.findMany({
       where: {
         mainAccountId: account.id,
-        voucher: {
-          status: 'posted',
-          NOT: { reference: { startsWith: 'OB:' } },
-          ...(from || to ? { voucherDate: dateRange(from, to) } : {}),
-        },
+        voucher: await this.postedVoucherFilter(
+          from || to ? { voucherDate: dateRange(from, to) } : {},
+        ),
       },
       include: { voucher: { include: { createdBy: { select: { id: true, fullName: true } } } } },
       orderBy: [{ voucher: { voucherDate: 'asc' } }, { id: 'asc' }],
@@ -475,11 +485,9 @@ export class AccountingReportsService {
       const before = await this.prisma.voucherEntry.aggregate({
         where: {
           mainAccountId: account.id,
-          voucher: {
-            status: 'posted',
+          voucher: await this.postedVoucherFilter({
             voucherDate: { lt: new Date(`${from}T00:00:00.000Z`) },
-            NOT: { reference: { startsWith: 'OB:' } },
-          },
+          }),
         },
         _sum: { debit: true, credit: true },
       });
