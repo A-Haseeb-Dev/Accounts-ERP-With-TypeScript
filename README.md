@@ -123,7 +123,8 @@ Typical `.env` variables:
 | `JWT_ACCESS_EXPIRES_IN`      | e.g. `15m`                                   |
 | `JWT_REFRESH_EXPIRES_IN`     | e.g. `7d`                                    |
 | `WEB_URL`                    | Frontend origin for CORS                     |
-| `BOOTSTRAP_ADMIN_USERNAME` / `PASSWORD` / `EMAIL` | Default admin on first boot |
+
+> There is no admin bootstrap env var. The first admin comes from `pnpm db:seed` — see [Default Demo Users](#default-demo-users).
 
 For the web app, set `NEXT_PUBLIC_API_URL` in `apps/web/.env.local` (defaults to `http://localhost:4000`).
 
@@ -169,7 +170,9 @@ pnpm dev:api       # http://localhost:4000/api
 pnpm dev:web       # http://localhost:3000
 ```
 
-> On first API boot, the bootstrap admin user is created from `BOOTSTRAP_ADMIN_*` (default `developer` / `Developer@123`).
+> Nothing creates an admin user at boot. Run `pnpm db:seed` once per environment — it
+> creates the roles, permissions, organization and the demo users below, and it is
+> safe to re-run (existing passwords are preserved).
 
 ### Chart of accounts is yours to design
 
@@ -188,14 +191,20 @@ never redirect a posting.
 
 ## Default Demo Users
 
-Seeded users (`pnpm db:seed`):
+`pnpm db:seed` creates exactly two users:
 
-| Username     | Password        | Roles                             |
-|--------------|-----------------|-----------------------------------|
-| `developer`  | `Developer@123` | Developer, Super Admin            |
-| `admin`      | `Admin@123`     | Super Admin, Administrator        |
-| `accountant` | `Accountant@123`| Accountant                        |
-| `sales`      | `Sales@123`     | Sales User                        |
+| Username     | Password        | Roles                  |
+|--------------|-----------------|------------------------|
+| `developer`  | `Developer@123` | Developer, Super Admin |
+| `admin`      | `Admin@123`     | Super Admin            |
+
+It also creates seven roles — Developer, Super Admin, Accountant, Administrator,
+Inventory Manager, Sales User and Viewer — so you can create your own users and
+assign whichever role each person needs.
+
+Change both passwords before giving anyone access. Re-running the seed never
+overwrites an existing user's password, but it does reset these two users' role
+assignments to the defaults above.
 
 ## Running Tests
 
@@ -272,7 +281,9 @@ Environment variables (Project → Settings → Environment Variables):
 | `JWT_ACCESS_EXPIRES_IN`      | e.g. `15m`                               |
 | `JWT_REFRESH_EXPIRES_IN`     | e.g. `7d`                                |
 | `WEB_URL`                    | The web project URL(s), comma-separated  |
-| `BOOTSTRAP_ADMIN_USERNAME` / `BOOTSTRAP_ADMIN_PASSWORD` / `BOOTSTRAP_ADMIN_EMAIL` | Default admin on first boot |
+
+No admin bootstrap variables are needed. After the first deploy run `pnpm db:seed` to create
+the roles, permissions and the initial users.
 
 `apps/api/vercel.json` runs `pnpm vercel-build`, which runs `prisma generate` (against the root `prisma/schema.prisma`, via the `prisma` field in `apps/api/package.json`) and then `nest build` to `dist/`.
 
