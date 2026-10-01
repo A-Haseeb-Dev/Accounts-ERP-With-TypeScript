@@ -3,7 +3,7 @@
 -- these records added to the live company. No employees/designations referenced them,
 -- so a plain delete is safe. Idempotent: only removes the exact seeded codes.
 
--- DELETE FROM "Department"
--- WHERE "organizationId" = 'default-org'
---   AND "code" IN ('DEPT-RD', 'DEPT-LEGAL', 'DEPT-RECRUITMENT', 'DEPT-PLANNING')
---   AND "id" IN ('dept-rd', 'dept-legal', 'dept-recruitment', 'dept-planning');
+DELETE FROM "Department"
+WHERE "organizationId" = 'default-org'
+  AND "code" IN ('DEPT-RD', 'DEPT-LEGAL', 'DEPT-RECRUITMENT', 'DEPT-PLANNING')
+  AND "id" IN ('dept-rd', 'dept-legal', 'dept-recruitment', 'dept-planning');
