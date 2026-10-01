@@ -105,16 +105,16 @@ export class PurchasesService {
 
     // Resolve accounting accounts.
     const inventoryAccountId =
-      (await this.defaultAccounts.resolveAccount('accounting.inventory_account', 'Inventory')) ??
+      (await this.defaultAccounts.resolveAccount('accounting.inventory_account')) ??
       undefined;
     const payableAccountId =
       supplierAccountId(purchase.supplier) ??
-      ((await this.defaultAccounts.resolveAccount('accounting.payable_account', 'Accounts Payable')) ??
+      ((await this.defaultAccounts.resolveAccount('accounting.payable_account')) ??
         undefined);
 
     if (!inventoryAccountId || !payableAccountId) {
       throw ApiException.invalidTransaction(
-        'Accounting accounts are not configured (inventory / accounts payable). Set them in System Settings.',
+        'Accounting accounts are not set. Map Inventory / Stock and Accounts Payable in Settings > Accounting.',
       );
     }
 
@@ -154,7 +154,7 @@ export class PurchasesService {
       const taxAmount = round2(Number(purchase.grandTotal) - inventoryTotal);
       if (taxAmount !== 0) {
         const taxAccountId = taxAmount > 0
-          ? await this.defaultAccounts.resolveAccount('accounting.tax_account', 'Sales Tax Payable')
+          ? await this.defaultAccounts.resolveAccount('accounting.tax_account')
           : null;
         if (taxAccountId) {
           voucherEntries.push({
@@ -171,14 +171,8 @@ export class PurchasesService {
       // Inventory, supplier and tax accounts are untouched — it is booked as an
       // extra expense the business owes (e.g. to an agent) alongside the purchase.
       if (Number(purchase.commission) > 0) {
-        const commissionExpenseId = await this.defaultAccounts.resolveAccount(
-          'accounting.commission_expense_account',
-          'Commission Expense',
-        );
-        const commissionPayableId = await this.defaultAccounts.resolveAccount(
-          'accounting.commission_payable_account',
-          'Commission Payable',
-        );
+        const commissionExpenseId = await this.defaultAccounts.resolveAccount('accounting.commission_expense_account');
+        const commissionPayableId = await this.defaultAccounts.resolveAccount('accounting.commission_payable_account');
         if (commissionExpenseId && commissionPayableId) {
           voucherEntries.push({
             mainAccountId: commissionExpenseId,

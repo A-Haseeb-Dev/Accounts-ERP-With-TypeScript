@@ -590,13 +590,10 @@ export class AccountingReportsService {
       if (configured) return configured;
     }
 
-    const fallback = await this.prisma.mainAccount.findFirst({
-      where: { status: 'active', accountType: 'ASSET' },
-      include,
-      orderBy: { code: 'asc' },
-    });
-    if (!fallback) throw ApiException.notFound('Cash account — set one in Settings › Accounting');
-    return fallback;
+    // No guessing: every company lays out its own chart, so "the first asset by
+    // code" could easily be receivables or inventory rather than cash, and the
+    // Cash Book would quietly report the wrong balance.
+    throw ApiException.notFound('Cash account — set one in Settings › Accounting');
   }
 
   /** Accounts that can be used for a cash / bank book. */

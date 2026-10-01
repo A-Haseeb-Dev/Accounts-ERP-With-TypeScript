@@ -47,7 +47,29 @@ const SETTING_KEYS = [
   'security.idleTimeoutMinutes',
   'terms.title',
   'terms.content',
+  // Account roles for the posting engine. The chart of accounts is not seeded,
+  // so these point each role at one of the company's own main accounts. See
+  // `DefaultAccountsService`.
+  'accounting.cash_account',
+  'accounting.bank_account',
+  'accounting.receivable_account',
+  'accounting.inventory_account',
+  'accounting.cheque_in_hand_account',
+  'accounting.payable_account',
+  'accounting.tax_account',
+  'accounting.salaries_payable_account',
+  'accounting.payroll_deductions_account',
+  'accounting.cheque_issued_account',
+  'accounting.commission_payable_account',
+  'accounting.opening_equity_account',
+  'accounting.revenue_account',
+  'accounting.cost_of_sales_account',
+  'accounting.salary_expense_account',
+  'accounting.commission_expense_account',
 ];
+
+/** Setting keys whose value must be the id of an existing main account. */
+const ACCOUNT_ID_SETTING_KEYS = SETTING_KEYS.filter((key) => key.startsWith('accounting.'));
 
 // Feature switches are stored in system_settings too, so backups/restores pick
 // them up. They are whitelisted by expanding the feature catalog below.
@@ -177,6 +199,23 @@ export class SystemService {
 
     if (Object.keys(map).length === 0) {
       throw ApiException.validation('No valid settings provided to update');
+    }
+
+    // Reject an account mapping that points at nothing: the posting engine would
+    // otherwise block later with a much less obvious message.
+    const accountIds = Object.entries(map)
+      .filter(([key, value]) => ACCOUNT_ID_SETTING_KEYS.includes(key) && value)
+      .map(([key, value]) => ({ key, value }));
+    if (accountIds.length > 0) {
+      const found = await this.prisma.mainAccount.findMany({
+        where: { id: { in: accountIds.map((a) => a.value) } },
+        select: { id: true },
+      });
+      const valid = new Set(found.map((a) => a.id));
+      const bad = accountIds.find((a) => !valid.has(a.value));
+      if (bad) {
+        throw ApiException.validation(`"${bad.key}" must point at an existing account`);
+      }
     }
 
     // Capture the before-image so the audit trail records exactly what changed.

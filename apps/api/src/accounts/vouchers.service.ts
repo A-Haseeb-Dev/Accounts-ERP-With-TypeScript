@@ -236,7 +236,7 @@ export class VouchersService {
     // Never fall through to an unfiltered query: without an account filter this
     // would list every posted voucher entry in the ledger, not a cash book.
     const cashAccountId =
-      accountId ?? (await this.defaultAccounts.resolveAccount('accounting.cash_account', 'Cash Account'));
+      accountId ?? (await this.defaultAccounts.resolveAccount('accounting.cash_account'));
     if (!cashAccountId) {
       throw ApiException.notFound('Cash account - set one in Settings > Accounting');
     }

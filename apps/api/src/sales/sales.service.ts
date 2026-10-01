@@ -109,29 +109,29 @@ export class SalesService {
     await this.fiscal.assertOpen(sale.saleDate, 'Cannot post a sales invoice');
 
     const revenueAccountId =
-      (await this.defaultAccounts.resolveAccount('accounting.revenue_account', 'Sales Revenue')) ??
+      (await this.defaultAccounts.resolveAccount('accounting.revenue_account')) ??
       undefined;
     const receivableAccountId =
       sale.customer.mainAccountId ??
-      ((await this.defaultAccounts.resolveAccount('accounting.receivable_account', 'Accounts Receivable')) ??
+      ((await this.defaultAccounts.resolveAccount('accounting.receivable_account')) ??
         undefined);
 
     if (!revenueAccountId || !receivableAccountId) {
       throw ApiException.invalidTransaction(
-        'Customer is not linked to an account and the receivables control account is not configured.',
+        'Customer is not linked to an account and Accounts Receivable is not set in Settings > Accounting.',
       );
     }
 
     const inventoryAccountId =
-      (await this.defaultAccounts.resolveAccount('accounting.inventory_account', 'Inventory')) ??
+      (await this.defaultAccounts.resolveAccount('accounting.inventory_account')) ??
       undefined;
     const costOfSalesAccountId =
-      (await this.defaultAccounts.resolveAccount('accounting.cost_of_sales_account', 'Cost of Sales')) ??
+      (await this.defaultAccounts.resolveAccount('accounting.cost_of_sales_account')) ??
       undefined;
 
     if (!inventoryAccountId || !costOfSalesAccountId) {
       throw ApiException.invalidTransaction(
-        'The inventory or cost of sales account is not configured, so the cost of the goods sold cannot be recorded.',
+        'Inventory / Stock and Cost of Sales are not set in Settings > Accounting, so the cost of the goods sold cannot be recorded.',
       );
     }
 
@@ -198,10 +198,7 @@ export class SalesService {
         },
       ];
       if (Number(sale.tax) > 0) {
-        const taxAccountId = await this.defaultAccounts.resolveAccount(
-          'accounting.tax_account',
-          'Sales Tax Payable',
-        );
+        const taxAccountId = await this.defaultAccounts.resolveAccount('accounting.tax_account');
         if (taxAccountId) {
           entries.push({ mainAccountId: taxAccountId, credit: Number(sale.tax), narration: `Tax ${sale.number}` });
         } else {
@@ -232,14 +229,8 @@ export class SalesService {
       // The receivable and revenue accounts are untouched — this is an extra
       // expense the business owes (e.g. to an agent), booked alongside the sale.
       if (Number(sale.commission) > 0) {
-        const commissionExpenseId = await this.defaultAccounts.resolveAccount(
-          'accounting.commission_expense_account',
-          'Commission Expense',
-        );
-        const commissionPayableId = await this.defaultAccounts.resolveAccount(
-          'accounting.commission_payable_account',
-          'Commission Payable',
-        );
+        const commissionExpenseId = await this.defaultAccounts.resolveAccount('accounting.commission_expense_account');
+        const commissionPayableId = await this.defaultAccounts.resolveAccount('accounting.commission_payable_account');
         if (commissionExpenseId && commissionPayableId) {
           entries.push({
             mainAccountId: commissionExpenseId,
@@ -270,7 +261,7 @@ export class SalesService {
 
       // 3. If cash was paid, create a cash receipt voucher.
       if (Number(sale.amountPaid) > 0) {
-        const cashAccountId = await this.defaultAccounts.resolveAccount('accounting.cash_account', 'Cash Account');
+        const cashAccountId = await this.defaultAccounts.resolveAccount('accounting.cash_account');
         if (cashAccountId) {
           const cashVoucher = await this.accounting.createVoucher(
             tx,

@@ -199,6 +199,6 @@ describe('PurchaseReturnsService.post voucher netting', () => {
       { assertOpen: vi.fn() } as never,
     );
     await expect(svc.post('pr-1')).rejects.toThrow();
-    expect(await apiErrorMessage(svc.post('pr-1'))).toMatch(/Accounting accounts are not configured/);
+    expect(await apiErrorMessage(svc.post('pr-1'))).toMatch(/Accounting accounts are not set/);
   });
 });

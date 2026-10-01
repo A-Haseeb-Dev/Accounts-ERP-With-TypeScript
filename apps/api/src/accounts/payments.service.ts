@@ -240,7 +240,7 @@ export class PaymentsService {
 
     if (!partyAccount) {
       throw ApiException.invalidTransaction(
-        'Party is not linked to an account and the control account is not configured',
+        'Party is not linked to an account and the control account is not set in Settings > Accounting.',
       );
     }
 
@@ -252,13 +252,10 @@ export class PaymentsService {
     if (isPdc && entry.pdcAccountId) {
       postAccount = entry.pdcAccountId;
     } else if (isPdc && entry.paymentType === 'RECEIPT') {
-      const chequeInHand = await this.defaultAccounts.resolveAccount(
-        'accounting.cheque_in_hand_account',
-        'Cheque in Hand',
-      );
+      const chequeInHand = await this.defaultAccounts.resolveAccount('accounting.cheque_in_hand_account');
       if (!chequeInHand) {
         throw ApiException.invalidTransaction(
-          'The "Cheque in Hand" account is not configured. Add it to the chart of accounts or set accounting.cheque_in_hand_account.',
+          'The "Cheque in Hand" account is not set in Settings > Accounting.',
         );
       }
       postAccount = chequeInHand;
@@ -419,10 +416,10 @@ export class PaymentsService {
     if (entry.paymentType === 'PAYMENT') {
       const holdingAccount =
         entry.mainAccountId ??
-        (await this.defaultAccounts.resolveAccount('accounting.cheque_issued_account', 'Cheques Issued'));
+        (await this.defaultAccounts.resolveAccount('accounting.cheque_issued_account'));
       if (!holdingAccount) {
         throw ApiException.invalidTransaction(
-          'The "Cheques Issued" holding account is not configured.',
+          'The "Cheques Issued" holding account is not set in Settings > Accounting.',
         );
       }
       const issuedResult = await this.prisma.runInTransaction(async (tx) => {
@@ -474,13 +471,10 @@ export class PaymentsService {
       return issuedResult;
     }
 
-    const pdcAccount = entry.pdcAccountId ?? (await this.defaultAccounts.resolveAccount(
-      'accounting.cheque_in_hand_account',
-      'Cheque in Hand',
-    ));
+    const pdcAccount = entry.pdcAccountId ?? (await this.defaultAccounts.resolveAccount('accounting.cheque_in_hand_account'));
     if (!pdcAccount) {
       throw ApiException.invalidTransaction(
-        'The "Cheque in Hand" account is not configured.',
+        'The "Cheque in Hand" account is not set in Settings > Accounting.',
       );
     }
 
@@ -552,7 +546,7 @@ export class PaymentsService {
     const partyAccount = await this.resolvePartyAccount(entry);
     if (!partyAccount) {
       throw ApiException.invalidTransaction(
-        'Party is not linked to an account and the control account is not configured',
+        'Party is not linked to an account and the control account is not set in Settings > Accounting.',
       );
     }
     // Post-dated cheques ISSUED that come back (dishonoured / stale):
@@ -560,20 +554,17 @@ export class PaymentsService {
     const isIssued = entry.paymentType === 'PAYMENT';
     const holdingAccount = isIssued
       ? (entry.mainAccountId ??
-        (await this.defaultAccounts.resolveAccount('accounting.cheque_issued_account', 'Cheques Issued')))
+        (await this.defaultAccounts.resolveAccount('accounting.cheque_issued_account')))
       : null;
     if (isIssued && !holdingAccount) {
       throw ApiException.invalidTransaction(
-        'The "Cheques Issued" holding account is not configured.',
+        'The "Cheques Issued" holding account is not set in Settings > Accounting.',
       );
     }
-    const pdcAccount = entry.pdcAccountId ?? (await this.defaultAccounts.resolveAccount(
-      'accounting.cheque_in_hand_account',
-      'Cheque in Hand',
-    ));
+    const pdcAccount = entry.pdcAccountId ?? (await this.defaultAccounts.resolveAccount('accounting.cheque_in_hand_account'));
     if (!isIssued && !pdcAccount) {
       throw ApiException.invalidTransaction(
-        'The "Cheque in Hand" account is not configured.',
+        'The "Cheque in Hand" account is not set in Settings > Accounting.',
       );
     }
 
@@ -702,20 +693,16 @@ export class PaymentsService {
       party.mainAccountId ??
       (await this.defaultAccounts.resolveAccount(
         dto.partyType === 'CUSTOMER' ? 'accounting.receivable_account' : 'accounting.payable_account',
-        dto.partyType === 'CUSTOMER' ? 'Accounts Receivable' : 'Accounts Payable',
       ));
     if (!payeeAccount) {
       throw ApiException.invalidTransaction(
-        'The payee party is not linked to an account and the control account is not configured',
+        'The payee party is not linked to an account and the control account is not set in Settings > Accounting',
       );
     }
-    const pdcAccount = entry.pdcAccountId ?? (await this.defaultAccounts.resolveAccount(
-      'accounting.cheque_in_hand_account',
-      'Cheque in Hand',
-    ));
+    const pdcAccount = entry.pdcAccountId ?? (await this.defaultAccounts.resolveAccount('accounting.cheque_in_hand_account'));
     if (!pdcAccount) {
       throw ApiException.invalidTransaction(
-        'The "Cheque in Hand" account is not configured.',
+        'The "Cheque in Hand" account is not set in Settings > Accounting.',
       );
     }
 
@@ -1289,14 +1276,14 @@ export class PaymentsService {
             select: { mainAccountId: true },
           })
         )?.mainAccountId ??
-          (await this.defaultAccounts.resolveAccount('accounting.receivable_account', 'Accounts Receivable'))
+          (await this.defaultAccounts.resolveAccount('accounting.receivable_account'))
       : (
           await this.prisma.supplier.findUnique({
             where: { id: entry.partyId },
             select: { mainAccountId: true },
           })
         )?.mainAccountId ??
-          (await this.defaultAccounts.resolveAccount('accounting.payable_account', 'Accounts Payable'));
+          (await this.defaultAccounts.resolveAccount('accounting.payable_account'));
   }
 
   /**
@@ -1352,10 +1339,7 @@ export class PaymentsService {
   }
 
   private async resolveChequeIssuedAccount() {
-    const configured = await this.defaultAccounts.resolveAccount(
-      'accounting.cheque_issued_account',
-      'Cheques Issued',
-    );
+    const configured = await this.defaultAccounts.resolveAccount('accounting.cheque_issued_account');
     if (configured) {
       const account = await this.prisma.mainAccount.findUnique({
         where: { id: configured },

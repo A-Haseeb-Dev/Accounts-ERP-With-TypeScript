@@ -325,18 +325,9 @@ export class PayrollService {
     }
 
     const totals = this.itemTotals(run.items);
-    const salaryExpenseId = await this.defaultAccounts.resolveAccount(
-      'accounting.salary_expense_account',
-      'Salary Expense',
-    );
-    const salariesPayableId = await this.defaultAccounts.resolveAccount(
-      'accounting.salaries_payable_account',
-      'Salaries Payable',
-    );
-    const deductionsPayableId = await this.defaultAccounts.resolveAccount(
-      'accounting.payroll_deductions_account',
-      'Payroll Deductions Payable',
-    );
+    const salaryExpenseId = await this.defaultAccounts.resolveAccount('accounting.salary_expense_account');
+    const salariesPayableId = await this.defaultAccounts.resolveAccount('accounting.salaries_payable_account');
+    const deductionsPayableId = await this.defaultAccounts.resolveAccount('accounting.payroll_deductions_account');
     if (!salaryExpenseId || !salariesPayableId || (totals.deduction > 0 && !deductionsPayableId)) {
       throw ApiException.invalidTransaction(
         'Salary expense / salaries payable accounts are not configured. Set them in Chart of Accounts defaults before posting payroll.',
@@ -463,10 +454,7 @@ export class PayrollService {
       );
     }
 
-    const salariesPayableId = await this.defaultAccounts.resolveAccount(
-      'accounting.salaries_payable_account',
-      'Salaries Payable',
-    );
+    const salariesPayableId = await this.defaultAccounts.resolveAccount('accounting.salaries_payable_account');
     if (!salariesPayableId) {
       throw ApiException.invalidTransaction(
         'Salaries Payable account is not configured. Set it in Chart of Accounts defaults before disbursing payroll.',

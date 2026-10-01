@@ -137,15 +137,17 @@ export class PurchaseReturnsService {
     await this.fiscal.assertOpen(pr.returnDate, 'Cannot post a purchase return');
 
     const inventoryAccountId =
-      (await this.defaultAccounts.resolveAccount('accounting.inventory_account', 'Inventory')) ??
+      (await this.defaultAccounts.resolveAccount('accounting.inventory_account')) ??
       undefined;
     const payableAccountId =
       pr.supplier.mainAccountId ??
-      ((await this.defaultAccounts.resolveAccount('accounting.payable_account', 'Accounts Payable')) ??
+      ((await this.defaultAccounts.resolveAccount('accounting.payable_account')) ??
         undefined);
 
     if (!inventoryAccountId || !payableAccountId) {
-      throw ApiException.invalidTransaction('Accounting accounts are not configured');
+      throw ApiException.invalidTransaction(
+        'Accounting accounts are not set. Map Inventory / Stock and Accounts Payable in Settings > Accounting.',
+      );
     }
 
     const negativeSetting = await this.prisma.systemSetting.findFirst({
@@ -204,7 +206,7 @@ export class PurchaseReturnsService {
       const taxAmount = round2(Number(pr.grandTotal) - returnedTotal);
       if (taxAmount !== 0) {
         const taxAccountId = taxAmount > 0
-          ? await this.defaultAccounts.resolveAccount('accounting.tax_account', 'Sales Tax Payable')
+          ? await this.defaultAccounts.resolveAccount('accounting.tax_account')
           : null;
         if (taxAccountId) {
           voucherEntries.push({

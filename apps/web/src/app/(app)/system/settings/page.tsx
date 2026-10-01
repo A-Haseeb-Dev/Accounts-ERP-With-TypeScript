@@ -12,11 +12,37 @@ import { CURRENCIES } from '@/lib/currency';
 
 type Settings = Record<string, string>;
 
+/**
+ * Account roles the posting engine needs. The chart of accounts is not seeded,
+ * so each role is pointed at one of the company's own accounts here. Leaving a
+ * role unset is safe: the posting engine blocks with a clear message naming the
+ * missing role rather than guessing an account.
+ */
+const ACCOUNT_ROLES: { key: string; label: string }[] = [
+  { key: 'accounting.cash_account', label: 'Cash Account' },
+  { key: 'accounting.bank_account', label: 'Bank Account' },
+  { key: 'accounting.receivable_account', label: 'Accounts Receivable' },
+  { key: 'accounting.inventory_account', label: 'Inventory / Stock' },
+  { key: 'accounting.cheque_in_hand_account', label: 'Cheques in Hand (received)' },
+  { key: 'accounting.payable_account', label: 'Accounts Payable' },
+  { key: 'accounting.tax_account', label: 'Sales Tax Payable' },
+  { key: 'accounting.salaries_payable_account', label: 'Salaries Payable' },
+  { key: 'accounting.payroll_deductions_account', label: 'Payroll Deductions Payable' },
+  { key: 'accounting.cheque_issued_account', label: 'Cheques Issued' },
+  { key: 'accounting.commission_payable_account', label: 'Commission Payable' },
+  { key: 'accounting.opening_equity_account', label: 'Opening Equity' },
+  { key: 'accounting.revenue_account', label: 'Sales Revenue' },
+  { key: 'accounting.cost_of_sales_account', label: 'Cost of Sales' },
+  { key: 'accounting.salary_expense_account', label: 'Salary Expense' },
+  { key: 'accounting.commission_expense_account', label: 'Commission Expense' },
+];
+
 export default function SettingsPage() {
   const qc = useQueryClient();
   const { options: locationOptions } = useFlatOptions('stock-locations');
   const { options: customerOptions } = useFlatOptions('customers');
   const { options: supplierOptions } = useFlatOptions('suppliers');
+  const { options: accountOptions } = useFlatOptions('main-accounts');
 
   const { data, isLoading } = useQuery<Settings>({
     queryKey: ['settings'],
@@ -63,6 +89,12 @@ export default function SettingsPage() {
         'audit.retention_days': form['audit.retention_days'] || undefined,
         'mfa.issuer': form.mfaIssuer || undefined,
         'security.idleTimeoutMinutes': form['security.idleTimeoutMinutes'] || undefined,
+        // Read through `merged`, not `form`: `form` only holds the fields the user
+        // actually touched, so sending `form` here would blank every mapping on
+        // an unrelated save.
+        ...Object.fromEntries(
+          ACCOUNT_ROLES.map((role) => [role.key, merged[role.key] ?? '']),
+        ),
       },
     });
   };
@@ -241,6 +273,30 @@ export default function SettingsPage() {
                     {supplierOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </Select>
                 </Field>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-1 text-sm font-semibold text-slate-700">Accounting</p>
+              <p className="mb-3 text-xs text-slate-500">
+                Map each role to one of your own accounts. Sales, purchases, returns, payroll and
+                cheque postings all use these, so anything left unset will block the matching
+                document with a message naming it.
+              </p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {ACCOUNT_ROLES.map((role) => (
+                  <Field key={role.key} label={role.label}>
+                    <Select
+                      value={merged[role.key] ?? ''}
+                      onChange={(e) => set(role.key, e.target.value)}
+                    >
+                      <option value="">— Not set —</option>
+                      {accountOptions.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                ))}
               </div>
             </div>
 

@@ -193,6 +193,6 @@ describe('SalesReturnsService.post voucher netting', () => {
 
   it('refuses to post when the revenue account is missing', async () => {
     const { svc } = buildService({ revenueAccountId: null });
-    expect(await apiErrorMessage(svc.post('sr-1'))).toMatch(/Accounting accounts are not configured/);
+    expect(await apiErrorMessage(svc.post('sr-1'))).toMatch(/Accounting accounts are not set/);
   });
 });

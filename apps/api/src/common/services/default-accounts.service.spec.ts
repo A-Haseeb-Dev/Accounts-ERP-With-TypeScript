@@ -1,186 +1,94 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { DefaultAccountsService } from './default-accounts.service';
 
-interface MainAccountRow {
+interface AccountRow {
   id: string;
-  code: string;
-  name: string;
-  accountType: string;
-  subHeadId: string | null;
   status: string;
 }
 
-function buildPrisma(opts?: { existing?: MainAccountRow[]; voucherEntryCounts?: Record<string, number> }) {
-  const rows: MainAccountRow[] = opts?.existing ? [...opts.existing] : [];
-  const counts = opts?.voucherEntryCounts ?? {};
-
+function buildPrisma(opts: {
+  setting?: { value: string | null } | null;
+  account?: AccountRow | null;
+}) {
   const mainAccount = {
-    findFirst: vi.fn(async ({ where }: { where: { code?: string } }) =>
-      where.code ? rows.find((r) => r.code === where.code) ?? null : null,
-    ),
-    findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
-      rows.find((r) => r.id === where.id) ?? null,
-    ),
-    create: vi.fn(async ({ data }: { data: Partial<MainAccountRow> }) => {
-      const row: MainAccountRow = {
-        id: `new-${rows.length}`,
-        code: data.code ?? '',
-        name: data.name ?? '',
-        accountType: data.accountType ?? 'ASSET',
-        subHeadId: data.subHeadId ?? null,
-        status: data.status ?? 'active',
+    findFirst: vi.fn(async () => opts.account ?? null),
+  };
+  const systemSetting = {
+    findFirst: vi.fn(async () => opts.setting ?? null),
+  };
+  const svc = new DefaultAccountsService({ mainAccount, systemSetting } as never);
+  return { svc, mainAccount, systemSetting };
+}
+
+describe('DefaultAccountsService', () => {
+  describe('resolveAccount', () => {
+    it('returns the account id recorded in settings', async () => {
+      const { svc } = buildPrisma({
+        setting: { value: 'acc-cash' },
+        account: { id: 'acc-cash', status: 'active' },
+      });
+      expect(await svc.resolveAccount('accounting.cash_account')).toBe('acc-cash');
+    });
+
+    it('returns null when the role was never configured', async () => {
+      const { svc } = buildPrisma({ setting: null });
+      expect(await svc.resolveAccount('accounting.cash_account')).toBeNull();
+    });
+
+    it('returns null when the setting points at a deleted account', async () => {
+      const { svc } = buildPrisma({ setting: { value: 'gone' }, account: null });
+      expect(await svc.resolveAccount('accounting.cash_account')).toBeNull();
+    });
+
+    it('returns null when the setting is empty', async () => {
+      const { svc } = buildPrisma({ setting: { value: '' }, account: { id: 'x', status: 'active' } });
+      expect(await svc.resolveAccount('accounting.cash_account')).toBeNull();
+    });
+
+    it('ignores an account that is no longer active', async () => {
+      const { svc } = buildPrisma({ setting: { value: 'acc-old' }, account: null });
+      expect(await svc.resolveAccount('accounting.cash_account')).toBeNull();
+    });
+
+    it('never falls back to matching an account by name', async () => {
+      // Each company names its own accounts, so a name-based fallback would
+      // silently post to the wrong account after a rename. With nothing
+      // configured the lookup must stop without touching the account table.
+      const { svc, mainAccount } = buildPrisma({ setting: null });
+      expect(await svc.resolveAccount('accounting.revenue_account')).toBeNull();
+      expect(mainAccount.findFirst).toHaveBeenCalledTimes(0);
+    });
+  });
+
+  describe('resolveAccounts', () => {
+    it('resolves each requested role independently', async () => {
+      const setting = vi.fn(async ({ where }: { where: { key: string } }) =>
+        where.key === 'accounting.cash_account' ? { value: 'acc-cash' } : { value: 'missing' },
+      );
+      const mainAccount = {
+        findFirst: vi.fn(async ({ where }: { where: { id: string } }) =>
+          where.id === 'acc-cash' ? { id: 'acc-cash' } : null,
+        ),
       };
-      rows.push(row);
-      return row;
-    }),
-    update: vi.fn(async ({ where, data }: { where: { id: string }; data: Partial<MainAccountRow> }) => {
-      const row = rows.find((r) => r.id === where.id)!;
-      Object.assign(row, data);
-      return row;
-    }),
-  };
+      const svc = new DefaultAccountsService({ mainAccount, systemSetting: { findFirst: setting } } as never);
 
-  const prisma = {
-    headAccount: {
-      upsert: vi.fn().mockResolvedValue({}),
-      findUnique: vi.fn(async ({ where }: { where: { code: string } }) => ({
-        id: `head-${where.code}`,
-        code: where.code,
-        name: where.code,
-      })),
-    },
-    subHead: {
-      findFirst: vi.fn(async ({ where }: { where: { name: string } }) => ({
-        id: `sub-${where.name}`,
-        name: where.name,
-      })),
-      create: vi.fn().mockResolvedValue({}),
-    },
-    mainAccount,
-    voucherEntry: {
-      count: vi.fn(async ({ where }: { where: { mainAccountId: string } }) =>
-        counts[where.mainAccountId] ?? 0,
-      ),
-    },
-    systemSetting: {
-      findFirst: vi.fn().mockResolvedValue(null),
-      create: vi.fn().mockResolvedValue({}),
-      update: vi.fn().mockResolvedValue({}),
-    },
-  };
-
-  return { prisma, rows, mainAccount };
-}
-
-async function bootstrap(prisma: unknown): Promise<void> {
-  const svc = new DefaultAccountsService(prisma as never);
-  await (svc as unknown as { ensureDefaultAccounts: () => Promise<void> }).ensureDefaultAccounts();
-}
-
-function account(rows: MainAccountRow[], code: string): MainAccountRow {
-  const row = rows.find((r) => r.code === code);
-  if (!row) throw new Error(`account ${code} was never created`);
-  return row;
-}
-
-describe('DefaultAccountsService.ensureDefaultAccounts', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('classifies the purchase-side accounts as current assets, not expense', async () => {
-    const { prisma, rows } = buildPrisma();
-    await bootstrap(prisma);
-
-    const purchases = account(rows, '05-01');
-    expect(purchases.accountType).toBe('ASSET');
-    expect(purchases.subHeadId).toBe('sub-Current Assets');
-  });
-
-  it('does not seed separate sales return or purchase return accounts', async () => {
-    // A return offsets its source document on the same account, so a dedicated
-    // returns account would only ever hold a balance someone has to net off by
-    // hand. Nothing should create one.
-    const { prisma, rows } = buildPrisma();
-    await bootstrap(prisma);
-
-    expect(rows.find((r) => r.code === '04-02')).toBeUndefined();
-    expect(rows.find((r) => r.code === '05-02')).toBeUndefined();
-    const names = rows.map((r) => r.name);
-    expect(names).not.toContain('Sales Returns');
-    expect(names).not.toContain('Purchase Returns');
-  });
-
-  it('keeps the real inventory and revenue accounts on their existing types', async () => {
-    const { prisma, rows } = buildPrisma();
-    await bootstrap(prisma);
-
-    expect(account(rows, '01-04').accountType).toBe('ASSET');
-    expect(account(rows, '04-01').accountType).toBe('REVENUE');
-    expect(account(rows, '05-03').accountType).toBe('EXPENSE');
-  });
-
-  it('reclassifies an existing purchase account that has never been posted to', async () => {
-    // Simulates an install created before the fix: 05-01 seeded as an expense.
-    const { prisma, rows, mainAccount } = buildPrisma({
-      existing: [
-        {
-          id: 'acc-1',
-          code: '05-01',
-          name: 'Purchases',
-          accountType: 'EXPENSE',
-          subHeadId: 'sub-Cost of Sales',
-          status: 'active',
-        },
-      ],
+      const resolved = await svc.resolveAccounts([
+        'accounting.cash_account',
+        'accounting.revenue_account',
+      ]);
+      expect(resolved).toEqual({
+        'accounting.cash_account': 'acc-cash',
+        'accounting.revenue_account': null,
+      });
     });
-    await bootstrap(prisma);
-
-    const purchases = account(rows, '05-01');
-    expect(purchases.accountType).toBe('ASSET');
-    expect(purchases.subHeadId).toBe('sub-Current Assets');
-    expect(mainAccount.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'acc-1' } }),
-    );
   });
 
-  it('leaves a purchase account alone once a voucher references it', async () => {
-    const { prisma, rows, mainAccount } = buildPrisma({
-      existing: [
-        {
-          id: 'acc-1',
-          code: '05-01',
-          name: 'Purchases',
-          accountType: 'EXPENSE',
-          subHeadId: 'sub-Cost of Sales',
-          status: 'active',
-        },
-      ],
-      voucherEntryCounts: { 'acc-1': 4 },
+  describe('boot seeding', () => {
+    it('creates no chart of accounts', async () => {
+      // The service has no lifecycle hook at all, so a fresh install starts with
+      // an empty chart and each company builds its own.
+      const svc = new DefaultAccountsService({} as never);
+      expect((svc as unknown as { onModuleInit?: unknown }).onModuleInit).toBeUndefined();
     });
-    await bootstrap(prisma);
-
-    // Re-typing an account the user has actually posted to would silently move
-    // balances between the balance sheet and the P&L, so it must be left alone.
-    expect(account(rows, '05-01').accountType).toBe('EXPENSE');
-    expect(mainAccount.update).not.toHaveBeenCalled();
-  });
-
-  it('does not reclassify an account whose type already matches', async () => {
-    const { prisma, mainAccount } = buildPrisma({
-      existing: [
-        {
-          id: 'acc-1',
-          code: '05-01',
-          name: 'Purchases',
-          accountType: 'ASSET',
-          subHeadId: 'sub-Current Assets',
-          status: 'active',
-        },
-      ],
-    });
-    await bootstrap(prisma);
-
-    expect(mainAccount.update).not.toHaveBeenCalled();
   });
 });

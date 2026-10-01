@@ -148,10 +148,7 @@ export class DashboardService {
     ]);
 
     const stock = await this.inventory.totalStockValue();
-    const cashAccount = await this.defaultAccounts.resolveAccount(
-      'accounting.cash_account',
-      'Cash Account',
-    );
+    const cashAccount = await this.defaultAccounts.resolveAccount('accounting.cash_account');
     const [cashBalance, bankBalance, lowStockCount, topCustomers, outstanding] = await Promise.all([
       this.accountBalance(cashAccount),
       this.totalBankBalance(),

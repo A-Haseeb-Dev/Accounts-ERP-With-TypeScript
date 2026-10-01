@@ -154,7 +154,7 @@ pnpm db:studio
 pnpm db:seed
 ```
 
-This creates roles/permissions, the default organization, chart of accounts, master data, parties, and sample transactions.
+This creates roles/permissions, the default organization, system settings, and the demo users.
 
 ### 5. Run in development
 
@@ -171,6 +171,21 @@ pnpm dev:web       # http://localhost:3000
 
 > On first API boot, the bootstrap admin user is created from `BOOTSTRAP_ADMIN_*` (default `developer` / `Developer@123`).
 
+### Chart of accounts is yours to design
+
+Nothing seeds a chart of accounts, and no departments are created for you — every
+company starts with an empty, self-built structure:
+
+1. **Settings → Accounts** — add head accounts, sub-heads and main accounts.
+2. **Settings → Accounting** — bind each role the posting engine needs
+   (Cash, Bank, Accounts Receivable, Inventory / Stock, Accounts Payable,
+   Sales Revenue, Cost of Sales, payroll and cheque accounts).
+
+Until a role is mapped, the matching document is refused with a message naming it,
+rather than silently posting to an account you did not choose. Nothing is guessed
+by account name or by "first account of this type", so renaming an account can
+never redirect a posting.
+
 ## Default Demo Users
 
 Seeded users (`pnpm db:seed`):
@@ -184,7 +199,7 @@ Seeded users (`pnpm db:seed`):
 
 ## Running Tests
 
-Backend unit tests use Vitest (90 tests across 11 spec files).
+Backend unit tests use Vitest (303 tests across 28 spec files).
 
 ```bash
 pnpm --filter @has-erp/api test

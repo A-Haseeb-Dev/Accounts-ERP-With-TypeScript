@@ -1,164 +1,55 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
-const HEAD_ACCOUNTS = [
-  { code: '01', name: 'Assets', type: 'ASSET' },
-  { code: '02', name: 'Liabilities', type: 'LIABILITY' },
-  { code: '03', name: 'Equity', type: 'EQUITY' },
-  { code: '04', name: 'Revenue', type: 'REVENUE' },
-  { code: '05', name: 'Expenses', type: 'EXPENSE' },
-];
-
-const SUB_HEADS = [
-  { code: '01', name: 'Current Assets', headCode: '01' },
-  { code: '02', name: 'Fixed Assets', headCode: '01' },
-  { code: '03', name: 'PDCS', headCode: '01' },
-  { code: '01', name: 'Current Liabilities', headCode: '02' },
-  { code: '02', name: 'Long Term Liabilities', headCode: '02' },
-  { code: '01', name: 'Capital', headCode: '03' },
-  { code: '01', name: 'Direct Revenue', headCode: '04' },
-  { code: '01', name: 'Operating Expenses', headCode: '05' },
-  { code: '02', name: 'Cost of Sales', headCode: '05' },
-];
-
 /**
- * Standard default accounts used by the transaction engine. Their IDs are
- * recorded in system settings so integrators (sales/purchases) can resolve
- * them, and administrators can point them to different accounts later.
+ * Resolves the accounts that the transaction engine posts to.
+ *
+ * The chart of accounts itself is *not* seeded: every company builds its own
+ * head / sub-head / main accounts, and its own naming, so nothing here may
+ * assume a particular code or label exists.
+ *
+ * Instead, each role the posting engine needs is bound to one of the company's
+ * own main accounts through an `accounting.*` system setting. Administrators
+ * set these once in Settings > Accounting. `resolveAccount` is the single
+ * lookup every service uses.
  */
-const MAIN_ACCOUNTS: { code: string; name: string; subHead: string; type: string; settingKey?: string }[] = [
-  { code: '01-01', name: 'Cash Account', subHead: 'Current Assets', type: 'ASSET', settingKey: 'accounting.cash_account' },
-  { code: '01-02', name: 'Bank Account', subHead: 'Current Assets', type: 'ASSET' },
-  { code: '01-03', name: 'Accounts Receivable', subHead: 'Current Assets', type: 'ASSET', settingKey: 'accounting.receivable_account' },
-  { code: '01-04', name: 'Inventory', subHead: 'Current Assets', type: 'ASSET', settingKey: 'accounting.inventory_account' },
-  { code: '01-05', name: 'Cheque in Hand', subHead: 'Current Assets', type: 'ASSET', settingKey: 'accounting.cheque_in_hand_account' },
-  { code: '02-01', name: 'Accounts Payable', subHead: 'Current Liabilities', type: 'LIABILITY', settingKey: 'accounting.payable_account' },
-  { code: '02-02', name: 'Sales Tax Payable', subHead: 'Current Liabilities', type: 'LIABILITY', settingKey: 'accounting.tax_account' },
-  { code: '02-03', name: 'Salaries Payable', subHead: 'Current Liabilities', type: 'LIABILITY', settingKey: 'accounting.salaries_payable_account' },
-  { code: '02-04', name: 'Payroll Deductions Payable', subHead: 'Current Liabilities', type: 'LIABILITY', settingKey: 'accounting.payroll_deductions_account' },
-  { code: '02-05', name: 'Cheques Issued', subHead: 'Current Liabilities', type: 'LIABILITY', settingKey: 'accounting.cheque_issued_account' },
-  { code: '02-06', name: 'Commission Payable', subHead: 'Current Liabilities', type: 'LIABILITY', settingKey: 'accounting.commission_payable_account' },
-  { code: '03-01', name: 'Opening Equity', subHead: 'Capital', type: 'EQUITY', settingKey: 'accounting.opening_equity_account' },
-  { code: '03-02', name: 'Owner Capital', subHead: 'Capital', type: 'EQUITY' },
-  { code: '04-01', name: 'Sales Revenue', subHead: 'Direct Revenue', type: 'REVENUE', settingKey: 'accounting.revenue_account' },
-  // No separate sales return / purchase return account: a return offsets the
-  // original sale or purchase on the very same account, so returns and their
-  // source document net to zero without a contra account to reconcile.
-  { code: '05-01', name: 'Purchases', subHead: 'Current Assets', type: 'ASSET' },
-  { code: '05-05', name: 'Cost of Sales', subHead: 'Cost of Sales', type: 'EXPENSE', settingKey: 'accounting.cost_of_sales_account' },
-  { code: '05-03', name: 'Salary Expense', subHead: 'Operating Expenses', type: 'EXPENSE', settingKey: 'accounting.salary_expense_account' },
-  { code: '05-04', name: 'Commission Expense', subHead: 'Operating Expenses', type: 'EXPENSE', settingKey: 'accounting.commission_expense_account' },
-];
-
 @Injectable()
-export class DefaultAccountsService implements OnModuleInit {
-  private readonly logger = new Logger(DefaultAccountsService.name);
-
+export class DefaultAccountsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async onModuleInit() {
-    if (process.env.SKIP_ACCOUNT_BOOTSTRAP === 'true') return;
-    await this.ensureDefaultAccounts().catch((err) =>
-      this.logger.error(`Default accounts bootstrap failed: ${(err as Error).message}`),
-    );
-  }
+  /**
+   * Resolves a configured account id from system settings.
+   *
+   * Returns `null` when the setting is missing or points at an account that no
+   * longer exists - callers treat that as "not configured" and either block with
+   * a clear message or degrade gracefully. There is deliberately no name
+   * fallback: matching accounts by their English label would silently re-bind
+   * the ledger to the wrong account as soon as a company renames something.
+   */
+  async resolveAccount(settingKey: string): Promise<string | null> {
+    const setting = await this.prisma.systemSetting.findFirst({
+      where: { key: settingKey },
+      select: { value: true },
+    });
+    if (!setting?.value) return null;
 
-  private async ensureDefaultAccounts() {
-    for (const head of HEAD_ACCOUNTS) {
-      await this.prisma.headAccount.upsert({
-        where: { code: head.code },
-        create: { code: head.code, name: head.name, status: 'active' },
-        update: { name: head.name },
-      });
-    }
-
-    for (const sub of SUB_HEADS) {
-      const head = await this.prisma.headAccount.findUnique({ where: { code: sub.headCode } });
-      if (!head) continue;
-      const existing = await this.prisma.subHead.findFirst({
-        where: { code: sub.code, headAccountId: head.id },
-      });
-      if (!existing) {
-        await this.prisma.subHead.create({
-          data: { code: sub.code, name: sub.name, headAccountId: head.id, status: 'active' },
-        });
-      }
-    }
-
-    for (const acc of MAIN_ACCOUNTS) {
-      const subHead = await this.prisma.subHead.findFirst({ where: { name: acc.subHead } });
-      const existing = await this.prisma.mainAccount.findFirst({ where: { code: acc.code } });
-      let account = existing;
-      if (!existing) {
-        account = await this.prisma.mainAccount.create({
-          data: {
-            code: acc.code,
-            name: acc.name,
-            accountType: acc.type,
-            subHeadId: subHead?.id ?? null,
-            status: 'active',
-          },
-        });
-        this.logger.log(`Created default main account ${acc.name} (${acc.code})`);
-      } else if (subHead && (existing.accountType !== acc.type || existing.subHeadId !== subHead.id)) {
-        // Seed values are only applied on create, so a corrected default type
-        // would never reach an existing database. Repair it, but only while the
-        // account is untouched: once a voucher references it, the classification
-        // is the user's own doing and re-typing it would silently move balances
-        // between the balance sheet and the profit and loss.
-        const inUse = await this.prisma.voucherEntry.count({ where: { mainAccountId: existing.id } });
-        if (inUse === 0) {
-          await this.prisma.mainAccount.update({
-            where: { id: existing.id },
-            data: { accountType: acc.type, subHeadId: subHead.id },
-          });
-          this.logger.log(
-            `Reclassified ${acc.name} (${acc.code}): ${existing.accountType}/${existing.subHeadId ?? '-'} -> ${acc.type}/${acc.subHead}`,
-          );
-        }
-      }
-      if (acc.settingKey && account) {
-        const saved = await this.prisma.systemSetting.findFirst({
-          where: { key: acc.settingKey },
-        });
-        if (!saved) {
-          await this.prisma.systemSetting.create({
-            data: { key: acc.settingKey, value: account.id, organizationId: 'default-org' },
-          });
-        } else {
-          // Self-heal stale pointers: if the stored value references a main
-          // account that no longer exists (e.g. chart-of-accounts reset), point
-          // it back at this default account. Admins who linked a different
-          // existing account keep their choice — the value is only repaired when
-          // its target is gone or empty.
-          const valid = saved.value
-            ? await this.prisma.mainAccount.findFirst({ where: { id: saved.value } })
-            : null;
-          if (!valid && saved.value !== account.id) {
-            await this.prisma.systemSetting.update({
-              where: { id: saved.id },
-              data: { value: account.id },
-            });
-            this.logger.log(`Repaired stale ${acc.settingKey} -> ${account.name} (${account.code})`);
-          }
-        }
-      }
-    }
+    const account = await this.prisma.mainAccount.findFirst({
+      where: { id: setting.value, status: 'active' },
+      select: { id: true },
+    });
+    return account?.id ?? null;
   }
 
   /**
-   * Resolves a configured account id from system settings, falling back to a
-   * default account name lookup when the setting is missing.
+   * Resolves several roles at once, skipping the lookups entirely when a caller
+   * already knows one of them failed. Used by the posting services that need
+   * more than one account for a single document.
    */
-  async resolveAccount(settingKey: string, fallbackName: string): Promise<string | null> {
-    const setting = await this.prisma.systemSetting.findFirst({
-      where: { key: settingKey },
-    });
-    if (setting?.value) return setting.value;
-
-    const byName = await this.prisma.mainAccount.findFirst({
-      where: { name: fallbackName, status: 'active' },
-    });
-    return byName?.id ?? null;
+  async resolveAccounts(settingKeys: string[]): Promise<Record<string, string | null>> {
+    const resolved: Record<string, string | null> = {};
+    for (const key of settingKeys) {
+      resolved[key] = await this.resolveAccount(key);
+    }
+    return resolved;
   }
 }

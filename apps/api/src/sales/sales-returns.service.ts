@@ -129,15 +129,17 @@ export class SalesReturnsService {
     // "Sales Returns" account would leave the two balances sitting side by side
     // instead of cancelling, and would need an account that serves no purpose.
     const revenueAccountId =
-      (await this.defaultAccounts.resolveAccount('accounting.revenue_account', 'Sales Revenue')) ??
+      (await this.defaultAccounts.resolveAccount('accounting.revenue_account')) ??
       undefined;
     const customerAccountId =
       sr.customer.mainAccountId ??
-      ((await this.defaultAccounts.resolveAccount('accounting.receivable_account', 'Accounts Receivable')) ??
+      ((await this.defaultAccounts.resolveAccount('accounting.receivable_account')) ??
         undefined);
 
     if (!revenueAccountId || !customerAccountId) {
-      throw ApiException.invalidTransaction('Accounting accounts are not configured');
+      throw ApiException.invalidTransaction(
+        'Accounting accounts are not set. Map Sales Revenue and Accounts Receivable in Settings > Accounting.',
+      );
     }
 
     const result = await this.prisma.runInTransaction(async (tx) => {
@@ -177,7 +179,7 @@ export class SalesReturnsService {
       const taxAmount = Number(sr.tax);
       const taxAccountId =
         taxAmount > 0
-          ? await this.defaultAccounts.resolveAccount('accounting.tax_account', 'Sales Tax Payable')
+          ? await this.defaultAccounts.resolveAccount('accounting.tax_account')
           : null;
       // Without a tax account the tax is folded into the revenue reversal, so
       // the entry always nets to the grand total credited to the customer.
@@ -200,14 +202,14 @@ export class SalesReturnsService {
       // going back into stock carry their cost again.
       if (costOfGoodsSold !== 0) {
         const inventoryAccountId =
-          (await this.defaultAccounts.resolveAccount('accounting.inventory_account', 'Inventory')) ??
+          (await this.defaultAccounts.resolveAccount('accounting.inventory_account')) ??
           undefined;
         const costOfSalesAccountId =
-          (await this.defaultAccounts.resolveAccount('accounting.cost_of_sales_account', 'Cost of Sales')) ??
+          (await this.defaultAccounts.resolveAccount('accounting.cost_of_sales_account')) ??
           undefined;
         if (!inventoryAccountId || !costOfSalesAccountId) {
           throw ApiException.invalidTransaction(
-            'The inventory or cost of sales account is not configured, so the returned cost cannot be recorded.',
+            'Inventory / Stock and Cost of Sales are not set in Settings > Accounting, so the returned cost cannot be recorded.',
           );
         }
         entries.push({
