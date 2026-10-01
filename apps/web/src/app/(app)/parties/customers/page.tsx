@@ -1,10 +1,11 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { useState } from 'react';
 import { Eye, MessageCircle, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
-import { parseDeleteGuard } from '@/lib/delete-guard';
+import { parseDeleteGuard, deleteErrorMessage } from '@/lib/delete-guard';
 import { useFlatOptions } from '@/hooks/use-options';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
@@ -80,7 +81,9 @@ export default function CustomersPage() {
       if (info && deleteTarget) {
         setDeleteTarget(null);
         setDelWarn({ target: deleteTarget, forceable: info.forceable, labels: info.labels });
+        return;
       }
+      toast.error(deleteErrorMessage(e, 'Customer'));
     },
   });
 
@@ -90,8 +93,12 @@ export default function CustomersPage() {
       qc.invalidateQueries({ queryKey: ['customers'] });
       qc.invalidateQueries({ queryKey: ['flat', 'customers'] });
       setDelWarn(null);
+      toast.success('Customer deleted');
     },
-    onError: () => setDelWarn(null),
+    onError: (e: Error) => {
+      setDelWarn(null);
+      toast.error(deleteErrorMessage(e, 'Customer'));
+    },
   });
 
   const set = (name: keyof Customer | string, value: string | number | undefined) => setForm((f) => ({ ...f, [name]: value }));

@@ -1,6 +1,8 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { parseDeleteGuard, deleteErrorMessage } from '@/lib/delete-guard';
 import { useState } from 'react';
 import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
@@ -55,7 +57,19 @@ export default function SubHeadsPage() {
     mutationFn: (id: string) => apiFetch(`/sub-heads/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sub-heads'] });
+      qc.invalidateQueries({ queryKey: ['flat', 'sub-heads'] });
       setDeleteTarget(null);
+      toast.success('Sub head deleted');
+    },
+    onError: (e: Error) => {
+      // No force-delete dialog here: sub-heads only ever reference accounts, so
+      // the blocked detail is more useful inline than behind a second popup.
+      const info = parseDeleteGuard(e);
+      if (info?.labels.length) {
+        toast.error(`Still used by ${info.labels.join(', ')}`);
+        return;
+      }
+      toast.error(deleteErrorMessage(e, 'Sub head'));
     },
   });
 

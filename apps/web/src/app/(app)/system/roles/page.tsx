@@ -1,6 +1,8 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { parseDeleteGuard, deleteErrorMessage } from '@/lib/delete-guard';
 import { useMemo, useState } from 'react';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
@@ -89,7 +91,12 @@ function permissionLabel(p: Permission): string {
 
   const del = useMutation({
     mutationFn: (id: string) => apiFetch(`/roles/${id}`, { method: 'DELETE' }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['roles'] }); setDeleteTarget(null); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['roles'] });
+      setDeleteTarget(null);
+      toast.success('Role deleted');
+    },
+    onError: (e: Error) => toast.error(deleteErrorMessage(e, 'Role')),
   });
 
   const togglePerm = (permId: string) => {

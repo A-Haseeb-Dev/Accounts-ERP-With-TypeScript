@@ -1,10 +1,11 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { useState } from 'react';
 import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
-import { parseDeleteGuard } from '@/lib/delete-guard';
+import { parseDeleteGuard, deleteErrorMessage } from '@/lib/delete-guard';
 import { useFlatOptions } from '@/hooks/use-options';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
@@ -77,7 +78,9 @@ export default function ItemsPage() {
       if (info && deleteTarget) {
         setDeleteTarget(null);
         setDelWarn({ target: deleteTarget, labels: info.labels });
+        return;
       }
+      toast.error(deleteErrorMessage(e, 'Item'));
     },
   });
 

@@ -4,7 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Landmark, Pencil, Plus, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
-import { parseDeleteGuard } from '@/lib/delete-guard';
+import { parseDeleteGuard, deleteErrorMessage } from '@/lib/delete-guard';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { Modal } from '@/components/ui/modal';
@@ -218,13 +219,14 @@ export default function ChartOfAccountsPage() {
         qc.invalidateQueries({ queryKey: ['flat', 'sub-heads'] });
       }
       setDeleteTarget(null);
+      toast.success(deleteTarget.type === 'head' ? 'Head account deleted' : 'Sub head deleted');
     } catch (e) {
       const info = parseDeleteGuard(e);
       if (info && deleteTarget) {
         setDeleteTarget(null);
         setDelWarn({ name: deleteTarget.name, labels: info.labels });
       } else {
-        alert((e as Error).message);
+        toast.error(deleteErrorMessage(e, deleteTarget.type === 'head' ? 'Head account' : 'Sub head'));
       }
     } finally {
       setDeleting(false);

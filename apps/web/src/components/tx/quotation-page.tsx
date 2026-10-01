@@ -446,6 +446,7 @@ export function QuotationPage({ customerOptions }: { customerOptions: Option[] }
         title="Reject quotation"
         message={rejectTarget ? `Mark ${rejectTarget.number} as rejected. Optionally note why.` : ''}
         confirmLabel="Reject"
+        loading={statusAction.isPending}
         onCancel={() => { setRejectTarget(null); setRejectReason(''); }}
         onConfirm={() => rejectTarget && statusAction.mutate({ id: rejectTarget.id, action: 'reject', reason: rejectReason || 'Rejected by customer' })}
       >
@@ -462,6 +463,7 @@ export function QuotationPage({ customerOptions }: { customerOptions: Option[] }
         title="Delete quotation"
         message={deleteTarget ? `${deleteTarget.number} will be permanently removed. This cannot be undone.` : ''}
         confirmLabel="Delete"
+        loading={remove.isPending}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => deleteTarget && remove.mutate(deleteTarget.id)}
       />

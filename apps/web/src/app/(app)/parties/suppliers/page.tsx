@@ -1,10 +1,11 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { useState } from 'react';
 import { Eye, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
-import { parseDeleteGuard } from '@/lib/delete-guard';
+import { parseDeleteGuard, deleteErrorMessage } from '@/lib/delete-guard';
 import { useFlatOptions } from '@/hooks/use-options';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
@@ -80,7 +81,9 @@ export default function SuppliersPage() {
       if (info && deleteTarget) {
         setDeleteTarget(null);
         setDelWarn({ target: deleteTarget, forceable: info.forceable, labels: info.labels });
+        return;
       }
+      toast.error(deleteErrorMessage(e, 'Supplier'));
     },
   });
 
@@ -90,8 +93,12 @@ export default function SuppliersPage() {
       qc.invalidateQueries({ queryKey: ['suppliers'] });
       qc.invalidateQueries({ queryKey: ['flat', 'suppliers'] });
       setDelWarn(null);
+      toast.success('Supplier deleted');
     },
-    onError: () => setDelWarn(null),
+    onError: (e: Error) => {
+      setDelWarn(null);
+      toast.error(deleteErrorMessage(e, 'Supplier'));
+    },
   });
 
   const set = (name: keyof Supplier | string, value: string | number | undefined) => setForm((f) => ({ ...f, [name]: value }));

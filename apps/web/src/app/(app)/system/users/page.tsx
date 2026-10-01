@@ -1,6 +1,8 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { parseDeleteGuard, deleteErrorMessage } from '@/lib/delete-guard';
 import { useState } from 'react';
 import { Plus, Pencil, Power, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
@@ -80,7 +82,12 @@ export default function UsersPage() {
 
   const del = useMutation({
     mutationFn: (id: string) => apiFetch(`/users/${id}`, { method: 'DELETE' }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['users'] }); setDeleteTarget(null); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['users'] });
+      setDeleteTarget(null);
+      toast.success('User deleted');
+    },
+    onError: (e: Error) => toast.error(deleteErrorMessage(e, 'User')),
   });
 
   const submit = (e: React.FormEvent) => {
