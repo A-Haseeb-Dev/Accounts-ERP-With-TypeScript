@@ -456,6 +456,72 @@ export class AccountingReportsService {
     };
   }
 
+  /**
+   * Expense report — where the money went, grouped by expense account.
+   *
+   * Reads the same posted entries as the trial balance rather than any
+   * document total, so it always reconciles with the P&L even when an expense
+   * was booked by hand through a journal voucher.
+   */
+  async expenseReport(query: { from?: string; to?: string; subHeadId?: string }) {
+    const { from, to, subHeadId } = query;
+    const memo = createOrphanMemo();
+    const voucherWhere = await this.postedVoucherFilter(
+      from || to ? { voucherDate: dateRange(from, to) } : {},
+      memo,
+    );
+
+    const accounts = await this.prisma.mainAccount.findMany({
+      where: {
+        accountType: 'EXPENSE',
+        status: 'active',
+        ...(subHeadId ? { subHeadId } : {}),
+      },
+      include: { subHead: { include: { headAccount: true } } },
+      orderBy: { code: 'asc' },
+    });
+
+    // Guard the id list by type as well as relying on the SQL filter, so an
+    // asset or revenue account can never be summed into the expense total.
+    const expenseIds = accounts.filter((a) => a.accountType === 'EXPENSE').map((a) => a.id);
+
+    const grouped = await this.prisma.voucherEntry.groupBy({
+      by: ['mainAccountId'],
+      where: { debit: { gt: 0 }, mainAccountId: { in: expenseIds }, voucher: voucherWhere },
+      _sum: { debit: true, credit: true },
+    });
+    const sums = new Map(grouped.map((g) => [g.mainAccountId, g]));
+
+    const rows: any[] = [];
+    let total = 0;
+    for (const acc of accounts) {
+      const g = sums.get(acc.id);
+      const debit = round2(Number(g?._sum.debit ?? 0));
+      const credit = round2(Number(g?._sum.credit ?? 0));
+      if (debit === 0 && credit === 0) continue;
+      const net = round2(debit - credit);
+      total += net;
+      rows.push({
+        accountId: acc.id,
+        code: acc.code,
+        name: acc.name,
+        subHeadId: acc.subHeadId ?? null,
+        subHeadName: acc.subHead?.name ?? '—',
+        headName: acc.subHead?.headAccount.name ?? '—',
+        debit,
+        credit,
+        net,
+      });
+    }
+
+    return {
+      from: from ?? null,
+      to: to ?? null,
+      rows,
+      total: round2(total),
+    };
+  }
+
   /** Account list - chart of accounts. */
   async accountList() {
     const heads = await this.prisma.headAccount.findMany({

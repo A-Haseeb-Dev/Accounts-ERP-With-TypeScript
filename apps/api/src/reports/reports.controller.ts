@@ -4,6 +4,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import * as ExcelJS from 'exceljs';
 import { AccountingReportsService } from './accounting-reports.service';
 import { InventoryReportsService } from './inventory-reports.service';
+import { DayReportsService } from './day-reports.service';
+import { PartyReportsService } from './party-reports.service';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 
 @ApiTags('Reports')
@@ -13,6 +15,8 @@ export class ReportsController {
   constructor(
     private readonly accounting: AccountingReportsService,
     private readonly inventory: InventoryReportsService,
+    private readonly day: DayReportsService,
+    private readonly party: PartyReportsService,
   ) {}
 
   // ---------------- Accounting Reports ----------------
@@ -48,6 +52,51 @@ export class ReportsController {
   @ApiOperation({ summary: 'General Journal' })
   generalJournal(@Query('from') from?: string, @Query('to') to?: string, @Query('page') page = '1', @Query('pageSize') pageSize = '100') {
     return this.accounting.generalJournal({ from, to, page: Number(page), pageSize: Number(pageSize) });
+  }
+
+  @Get('day-report')
+  @Permissions('reports.accounting.view')
+  @ApiOperation({ summary: 'Day Report (day summary + day book for a single date)' })
+  dayReport(
+    @Query('date') date?: string,
+    @Query('page') page = '1',
+    @Query('pageSize') pageSize = '100',
+  ) {
+    return this.day.dayReport({ date, page: Number(page), pageSize: Number(pageSize) });
+  }
+
+  @Get('expense-report')
+  @Permissions('reports.accounting.view')
+  @ApiOperation({ summary: 'Expense Report (movement grouped by expense account)' })
+  expenseReport(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('subHeadId') subHeadId?: string,
+  ) {
+    return this.accounting.expenseReport({ from, to, subHeadId });
+  }
+
+  @Get('party-ageing')
+  @Permissions('reports.accounting.view')
+  @ApiOperation({ summary: 'Party Ageing (outstanding by bucket)' })
+  partyAgeing(
+    @Query('partyType') partyType?: string,
+    @Query('asOf') asOf?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.party.partyAgeing({ partyType, asOf, search });
+  }
+
+  @Get('party-statement')
+  @Permissions('reports.accounting.view')
+  @ApiOperation({ summary: 'Party Statement (ledger with running balance)' })
+  partyStatement(
+    @Query('partyType') partyType?: string,
+    @Query('partyId') partyId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.party.partyStatement({ partyType, partyId, from, to });
   }
 
   @Get('trial-balance')
