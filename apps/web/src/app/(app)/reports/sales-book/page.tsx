@@ -35,7 +35,7 @@ export default function SalesBookPage() {
   const [customerId, setCustomerId] = useState('');
   const [status, setStatus] = useState('posted');
 
-  const { data, isLoading, isError, refetch } = useQuery<{ rows: Sale[]; subtotal: number; tax: number; grandTotal: number }>({
+  const { data, isLoading, isError, error, refetch } = useQuery<{ rows: Sale[]; subtotal: number; tax: number; grandTotal: number }>({
     queryKey: ['sales-book', from, to, customerId, status],
     queryFn: () => apiFetch('/reports/sales-book' + qs({ from: from || undefined, to: to || undefined, customerId: customerId || undefined, status })),
   });
@@ -107,7 +107,7 @@ export default function SalesBookPage() {
           )}
         </div>
 
-        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
+        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError error={error} onRetry={() => refetch()} /></div>}
 
         {mode === 'byMonth' ? (
           <div id="sb-report" className="overflow-x-auto">

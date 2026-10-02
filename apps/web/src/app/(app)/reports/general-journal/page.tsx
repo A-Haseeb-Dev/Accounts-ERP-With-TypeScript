@@ -30,7 +30,7 @@ export default function GeneralJournalPage() {
   const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
 
-  const { data, isLoading, isError, refetch } = useQuery<{ vouchers: Voucher[]; total: number }>({
+  const { data, isLoading, isError, error, refetch } = useQuery<{ vouchers: Voucher[]; total: number }>({
     queryKey: ['general-journal', from, to, page],
     queryFn: () => apiFetch('/reports/general-journal' + qs({ from: from || undefined, to: to || undefined, page, pageSize: 30 })),
   });
@@ -60,7 +60,7 @@ export default function GeneralJournalPage() {
           </div>
         </div>
 
-        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
+        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError error={error} onRetry={() => refetch()} /></div>}
 
         <div id="gj-report" className="overflow-x-auto">
           <ReportPrintHeader title="General Journal" />

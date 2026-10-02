@@ -60,7 +60,7 @@ export default function DayReportPage() {
   const [date, setDate] = useState(today());
   const [page, setPage] = useState(1);
 
-  const { data, isLoading, isError, refetch } = useQuery<DayReport>({
+  const { data, isLoading, isError, error, refetch } = useQuery<DayReport>({
     queryKey: ['day-report', date, page],
     queryFn: () => apiFetch('/reports/day-report' + qs({ date, page, pageSize: 30 })),
   });
@@ -96,7 +96,7 @@ export default function DayReportPage() {
 
         {isError && (
           <div className="border-b border-slate-100 px-4 py-3">
-            <QueryError onRetry={() => refetch()} />
+            <QueryError error={error} onRetry={() => refetch()} />
           </div>
         )}
 

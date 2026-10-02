@@ -63,7 +63,7 @@ export default function PartyStatementPage() {
 
   const selected = useMemo(() => parties?.find((p) => p.id === partyId), [parties, partyId]);
 
-  const { data, isLoading, isError, refetch } = useQuery<Statement>({
+  const { data, isLoading, isError, error, refetch } = useQuery<Statement>({
     queryKey: ['party-statement', partyType, partyId, from, to],
     queryFn: () =>
       apiFetch('/reports/party-statement' + qs({ partyType, partyId, from: from || undefined, to: to || undefined })),
@@ -128,7 +128,7 @@ export default function PartyStatementPage() {
 
         {isError && (
           <div className="border-b border-slate-100 px-4 py-3">
-            <QueryError onRetry={() => refetch()} />
+            <QueryError error={error} onRetry={() => refetch()} />
           </div>
         )}
 

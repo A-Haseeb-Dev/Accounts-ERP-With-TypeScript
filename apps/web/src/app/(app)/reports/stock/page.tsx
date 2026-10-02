@@ -37,7 +37,7 @@ export default function StockReportPage() {
   const [itemTypeId, setItemTypeId] = useState('');
   const [brandId, setBrandId] = useState('');
 
-  const { data, isLoading, isError, refetch } = useQuery<{ rows: StockReportRow[]; totalQty: number; totalValue: number }>({
+  const { data, isLoading, isError, error, refetch } = useQuery<{ rows: StockReportRow[]; totalQty: number; totalValue: number }>({
     queryKey: ['stock-report', locationId, itemTypeId, brandId],
     queryFn: () => apiFetch('/reports/stock' + qs({ locationId: locationId || undefined, itemTypeId: itemTypeId || undefined, brandId: brandId || undefined })),
   });
@@ -95,7 +95,7 @@ export default function StockReportPage() {
           )}
         </div>
 
-        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
+        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError error={error} onRetry={() => refetch()} /></div>}
 
         {mode === 'byType' ? (
           <div id="stock-report" className="overflow-x-auto">

@@ -49,7 +49,7 @@ export default function SalesReturnReportPage() {
   const [status, setStatus] = useState('posted');
   const [detail, setDetail] = useState<SalesReturn | null>(null);
 
-  const { data, isLoading, isError, refetch } = useQuery<SalesReturnReport>({
+  const { data, isLoading, isError, error, refetch } = useQuery<SalesReturnReport>({
     queryKey: ['sales-return-report', from, to, customerId, status],
     queryFn: () =>
       apiFetch(
@@ -127,7 +127,7 @@ export default function SalesReturnReportPage() {
           )}
         </div>
 
-        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
+        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError error={error} onRetry={() => refetch()} /></div>}
 
         {view === 'items' ? (
           <div id="sr-report" className="overflow-x-auto">

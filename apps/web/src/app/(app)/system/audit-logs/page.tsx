@@ -38,7 +38,7 @@ export default function AuditLogsPage() {
   const [selected, setSelected] = useState<AuditEntry | null>(null);
   const [purgeOpen, setPurgeOpen] = useState(false);
 
-  const { data, isLoading, isError, refetch } = useQuery<Paginated<AuditEntry>>({
+  const { data, isLoading, isError, error, refetch } = useQuery<Paginated<AuditEntry>>({
     queryKey: ['audit-logs', page, module, action, search, from, to],
     queryFn: () =>
       apiFetch(
@@ -184,7 +184,7 @@ export default function AuditLogsPage() {
           <Field label="To"><Input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} className="w-40" /></Field>
         </div>
 
-        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
+        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError error={error} onRetry={() => refetch()} /></div>}
 
         <DataTable<AuditEntry>
           columns={columns}

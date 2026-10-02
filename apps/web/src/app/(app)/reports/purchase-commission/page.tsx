@@ -47,7 +47,7 @@ export default function PurchaseCommissionReportPage() {
   const [supplierId, setSupplierId] = useState('');
   const [status, setStatus] = useState('posted');
 
-  const { data, isLoading, isError, refetch } = useQuery<CommissionReport>({
+  const { data, isLoading, isError, error, refetch } = useQuery<CommissionReport>({
     queryKey: ['purchase-commission-report', from, to, supplierId, status],
     queryFn: () =>
       apiFetch(
@@ -123,7 +123,7 @@ export default function PurchaseCommissionReportPage() {
           )}
         </div>
 
-        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
+        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError error={error} onRetry={() => refetch()} /></div>}
 
         {view === 'supplier' ? (
           <div id="pc-report" className="overflow-x-auto">

@@ -50,7 +50,7 @@ export default function ExpenseReportPage() {
   const [to, setTo] = useState('');
   const [subHeadId, setSubHeadId] = useState('');
 
-  const { data, isLoading, isError, refetch } = useQuery<ExpenseReport>({
+  const { data, isLoading, isError, error, refetch } = useQuery<ExpenseReport>({
     queryKey: ['expense-report', from, to, subHeadId],
     queryFn: () =>
       apiFetch('/reports/expense-report' + qs({ from: from || undefined, to: to || undefined, subHeadId: subHeadId || undefined })),
@@ -95,7 +95,7 @@ export default function ExpenseReportPage() {
 
         {isError && (
           <div className="border-b border-slate-100 px-4 py-3">
-            <QueryError onRetry={() => refetch()} />
+            <QueryError error={error} onRetry={() => refetch()} />
           </div>
         )}
 

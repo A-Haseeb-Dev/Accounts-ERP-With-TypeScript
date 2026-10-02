@@ -56,7 +56,7 @@ export default function PartyAgeingPage() {
   const [asOf, setAsOf] = useState(today());
   const [search, setSearch] = useState('');
 
-  const { data, isLoading, isError, refetch } = useQuery<Ageing>({
+  const { data, isLoading, isError, error, refetch } = useQuery<Ageing>({
     queryKey: ['party-ageing', partyType, asOf, search],
     queryFn: () =>
       apiFetch(
@@ -113,7 +113,7 @@ export default function PartyAgeingPage() {
 
         {isError && (
           <div className="border-b border-slate-100 px-4 py-3">
-            <QueryError onRetry={() => refetch()} />
+            <QueryError error={error} onRetry={() => refetch()} />
           </div>
         )}
 

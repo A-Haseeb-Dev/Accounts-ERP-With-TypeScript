@@ -85,7 +85,7 @@ export default function GeneralLedgerPage() {
 
   const subHeadOptions = (subHeadData ?? []).filter((s) => !headId || s.headAccountId === headId);
 
-  const { data, isLoading, isError, refetch } = useQuery<{ rows: LedgerRow[]; total: number; openingBalance: number; openingBalanceType: string; closingBalance: number; closingBalanceType?: 'DR' | 'CR' | null; account?: MainAccount }>({
+  const { data, isLoading, isError, error, refetch } = useQuery<{ rows: LedgerRow[]; total: number; openingBalance: number; openingBalanceType: string; closingBalance: number; closingBalanceType?: 'DR' | 'CR' | null; account?: MainAccount }>({
     queryKey: ['general-ledger', accountId, from, to, page],
     queryFn: () => apiFetch('/reports/general-ledger' + qs({ accountId, from: from || undefined, to: to || undefined, page, pageSize: 30 })),
     enabled: mode === 'detail' && !!accountId,
@@ -169,7 +169,7 @@ export default function GeneralLedgerPage() {
 
         {mode === 'detail' && accountId && (
           <>
-            {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
+            {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError error={error} onRetry={() => refetch()} /></div>}
             <div id="gl-report" className="overflow-x-auto">
             <ReportPrintHeader title="General Ledger" />
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2 text-sm">

@@ -32,7 +32,7 @@ export default function PurchaseBookPage() {
   const [supplierId, setSupplierId] = useState('');
   const [status, setStatus] = useState('posted');
 
-  const { data, isLoading, isError, refetch } = useQuery<{ rows: Purchase[]; grandTotal: number }>({
+  const { data, isLoading, isError, error, refetch } = useQuery<{ rows: Purchase[]; grandTotal: number }>({
     queryKey: ['purchase-book', from, to, supplierId, status],
     queryFn: () => apiFetch('/reports/purchase-book' + qs({ from: from || undefined, to: to || undefined, supplierId: supplierId || undefined, status })),
   });
@@ -110,7 +110,7 @@ export default function PurchaseBookPage() {
           )}
         </div>
 
-        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
+        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError error={error} onRetry={() => refetch()} /></div>}
 
         {mode === 'byMonth' ? (
           <div id="pb-report" className="overflow-x-auto">

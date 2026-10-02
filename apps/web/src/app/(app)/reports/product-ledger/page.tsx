@@ -82,7 +82,7 @@ export default function ProductLedgerPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
 
-  const { data, isLoading, isError, refetch } = useQuery<{ rows: ProductLedgerRow[]; total: number; item?: Item }>({
+  const { data, isLoading, isError, error, refetch } = useQuery<{ rows: ProductLedgerRow[]; total: number; item?: Item }>({
     queryKey: ['product-ledger', itemId, locationId, from, to],
     queryFn: () => apiFetch('/reports/product-ledger' + qs({ itemId, locationId: locationId || undefined, from: from || undefined, to: to || undefined, pageSize: 100 })),
     enabled: mode === 'detail' && !!itemId,
@@ -165,7 +165,7 @@ export default function ProductLedgerPage() {
 
         {mode === 'detail' && itemId && (
           <>
-            {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
+            {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError error={error} onRetry={() => refetch()} /></div>}
             <div id="pl-report" className="overflow-x-auto">
             <ReportPrintHeader title="Product Ledger" />
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2 text-sm">

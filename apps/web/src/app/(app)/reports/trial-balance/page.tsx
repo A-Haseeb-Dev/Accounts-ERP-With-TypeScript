@@ -56,7 +56,7 @@ export default function TrialBalancePage() {
 
   const subHeadOptions = (subHeadData ?? []).filter((s) => !headId || s.headAccountId === headId);
 
-  const { data, isLoading, isError, refetch } = useQuery<{ rows: TrialBalanceRow[]; totalDebit: number; totalCredit: number; balanced: boolean }>({
+  const { data, isLoading, isError, error, refetch } = useQuery<{ rows: TrialBalanceRow[]; totalDebit: number; totalCredit: number; balanced: boolean }>({
     queryKey: ['trial-balance', asOf],
     queryFn: () => apiFetch('/reports/trial-balance' + (asOf ? `?asOf=${asOf}` : '')),
   });
@@ -151,7 +151,7 @@ export default function TrialBalancePage() {
           )}
         </div>
 
-        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
+        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError error={error} onRetry={() => refetch()} /></div>}
 
         {mode === 'summary' ? (
           <div id="tb-report" className="overflow-x-auto">

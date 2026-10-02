@@ -47,7 +47,7 @@ export default function SalesCommissionReportPage() {
   const [customerId, setCustomerId] = useState('');
   const [status, setStatus] = useState('posted');
 
-  const { data, isLoading, isError, refetch } = useQuery<CommissionReport>({
+  const { data, isLoading, isError, error, refetch } = useQuery<CommissionReport>({
     queryKey: ['sales-commission-report', from, to, customerId, status],
     queryFn: () =>
       apiFetch(
@@ -123,7 +123,7 @@ export default function SalesCommissionReportPage() {
           )}
         </div>
 
-        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
+        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError error={error} onRetry={() => refetch()} /></div>}
 
         {view === 'customer' ? (
           <div id="sc-report" className="overflow-x-auto">

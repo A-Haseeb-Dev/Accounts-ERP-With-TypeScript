@@ -49,7 +49,7 @@ export default function PurchaseReturnReportPage() {
   const [status, setStatus] = useState('posted');
   const [detail, setDetail] = useState<PurchaseReturn | null>(null);
 
-  const { data, isLoading, isError, refetch } = useQuery<PurchaseReturnReport>({
+  const { data, isLoading, isError, error, refetch } = useQuery<PurchaseReturnReport>({
     queryKey: ['purchase-return-report', from, to, supplierId, status],
     queryFn: () =>
       apiFetch(
@@ -127,7 +127,7 @@ export default function PurchaseReturnReportPage() {
           )}
         </div>
 
-        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
+        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError error={error} onRetry={() => refetch()} /></div>}
 
         {view === 'items' ? (
           <div id="pr-report" className="overflow-x-auto">

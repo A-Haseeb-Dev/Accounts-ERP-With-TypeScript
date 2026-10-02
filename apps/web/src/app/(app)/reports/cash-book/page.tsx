@@ -46,7 +46,7 @@ export default function CashBookReportPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data, isLoading, isError, refetch } = useQuery<CashBookReport>({
+  const { data, isLoading, isError, error, refetch } = useQuery<CashBookReport>({
     queryKey: ['cash-book', accountId, from, to, page, view],
     queryFn: () =>
       apiFetch(
@@ -101,6 +101,12 @@ export default function CashBookReportPage() {
   const period = from ? ` (${from}${to ? ` to ${to}` : ''})` : '';
   const reportTitle = `${account ? account.code + ' · ' + account.name : 'Cash Book'}${period}`;
 
+  // With no bookable account the report has nothing to report on. That is a
+  // setup gap rather than a failure, so it is called out as one instead of
+  // leaving a red error the user cannot act on.
+  const noAccountsYet = accounts?.length === 0;
+  const noAccountChosen = !accountId && !noAccountsYet;
+
   return (
     <div>
       <PageHeader
@@ -150,7 +156,25 @@ export default function CashBookReportPage() {
           )}
         </div>
 
-        {isError && <div className="border-b border-slate-100 px-4 py-3"><QueryError onRetry={() => refetch()} /></div>}
+        {isError && !noAccountsYet && (
+          <div className="border-b border-slate-100 px-4 py-3">
+            <QueryError error={error} onRetry={() => refetch()} />
+          </div>
+        )}
+
+        {noAccountsYet && (
+          <SetupNotice
+            title="No accounts to report on yet"
+            body="A Cash Book is printed for a cash or bank account, so it needs at least one main account before it can show anything."
+          />
+        )}
+
+        {noAccountChosen && (
+          <SetupNotice
+            title="Choose an account"
+            body="Pick a cash or bank account above, or set a default cash account in Settings › Accounting so this report opens on it."
+          />
+        )}
 
         <div className="grid grid-cols-2 gap-3 border-b border-slate-100 px-4 py-3 sm:grid-cols-4">
           <SummaryTile label="Opening" value={`${money(data?.openingBalance ?? 0)} ${data?.openingBalanceType ?? ''}`} />
@@ -275,6 +299,17 @@ export default function CashBookReportPage() {
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+function SetupNotice({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="border-b border-slate-100 px-4 py-3">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+        <p className="font-semibold text-slate-800">{title}</p>
+        <p className="mt-0.5 text-slate-600">{body}</p>
+      </div>
     </div>
   );
 }

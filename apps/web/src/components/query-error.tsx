@@ -1,16 +1,23 @@
 'use client';
 
+import { queryErrorMessage } from '@/lib/query-error-message';
+
+export { queryErrorMessage };
+
 /**
  * Inline error banner used across data pages. Shown when a query fails so the
  * user sees a clear message (and a retry) instead of a blank area or crash.
  */
 export function QueryError({
-  message = 'Something went wrong while loading this data.',
+  error,
+  message,
   onRetry,
 }: {
+  error?: unknown;
   message?: string;
   onRetry?: () => void;
 }) {
+  const text = message ?? queryErrorMessage(error);
   return (
     <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
       <div className="flex items-start justify-between gap-3">
@@ -20,7 +27,7 @@ export function QueryError({
             <line x1="12" y1="8" x2="12" y2="12" />
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
-          <span>{message}</span>
+          <span>{text}</span>
         </div>
         {onRetry && (
           <button

@@ -39,7 +39,7 @@ export default function CompanyFeaturesPage() {
   const isDeveloper = user?.roles?.includes('Developer') ?? false;
   const [search, setSearch] = useState('');
 
-  const { data, isLoading, isError, refetch } = useQuery<FeatureFlag[]>({
+  const { data, isLoading, isError, error, refetch } = useQuery<FeatureFlag[]>({
     queryKey: ['features'],
     queryFn: () => apiFetch('/system/features'),
     staleTime: 30_000,
@@ -124,7 +124,7 @@ export default function CompanyFeaturesPage() {
         </div>
       </div>
 
-      {isError && <QueryError onRetry={() => refetch()} />}
+      {isError && <QueryError error={error} onRetry={() => refetch()} />}
       {isLoading && <PageLoader />}
 
       {toggle.isError && (
