@@ -45,6 +45,7 @@ export default function MainAccountsPage() {
   const [form, setForm] = useState<Partial<MainAccount>>({});
   const [deleteTarget, setDeleteTarget] = useState<MainAccount | null>(null);
   const [deleteError, setDeleteError] = useState('');
+  const [notice, setNotice] = useState('');
   const [delWarn, setDelWarn] = useState<{ target: MainAccount; labels: string[] } | null>(null);
   const [error, setError] = useState('');
 
@@ -124,15 +125,22 @@ export default function MainAccountsPage() {
       const merged: Partial<MainAccount> = { ...payload };
       if (!editing?.id) merged.code = generatedCode || payload.code;
       return editing?.id
-        ? apiFetch(`/main-accounts/${editing.id}`, { method: 'PATCH', body: JSON.stringify(merged) })
-        : apiFetch('/main-accounts', { method: 'POST', body: JSON.stringify(merged) });
+        ? apiFetch<Partial<MainAccount> & { warning?: string }>(`/main-accounts/${editing.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(merged),
+          })
+        : apiFetch<Partial<MainAccount> & { warning?: string }>('/main-accounts', {
+            method: 'POST',
+            body: JSON.stringify(merged),
+          });
     },
-    onSuccess: () => {
+    onSuccess: (saved: Partial<MainAccount> & { warning?: string }) => {
       qc.invalidateQueries({ queryKey: ['main-accounts'] });
       qc.invalidateQueries({ queryKey: ['flat', 'main-accounts'] });
       setModalOpen(false);
       setEditing(null);
       setForm({});
+      setNotice(saved?.warning ?? '');
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -181,6 +189,15 @@ export default function MainAccountsPage() {
           )
         }
       />
+
+      {notice && (
+        <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span>{notice}</span>
+          <button onClick={() => setNotice('')} className="shrink-0 font-medium text-amber-700 hover:underline">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">

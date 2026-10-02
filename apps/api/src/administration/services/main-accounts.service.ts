@@ -42,9 +42,12 @@ export class MainAccountsService {
       include: { subHead: { include: { headAccount: true } } },
     });
 
-    if (Number(dto.openingBalance ?? 0) !== 0) {
-      await this.accounting.syncOpeningVoucher(item.id, actorId, item.openingDate);
-    }
+    const syncWarning = await this.syncOpening(
+      item.id,
+      actorId,
+      dto.openingBalance,
+      item.openingDate,
+    );
 
     this.audit.record({
       userId: actorId, action: 'CREATE', module: 'MAIN_ACCOUNT', entity: 'MainAccount',
@@ -52,7 +55,29 @@ export class MainAccountsService {
       metadata: { accountType: item.accountType },
     });
 
-    return item;
+    return syncWarning ? { ...item, warning: syncWarning } : item;
+  }
+
+  /**
+   * Posts the opening balance voucher when one is warranted and returns a
+   * message to show the user if it could not be posted.
+   *
+   * The account itself is already committed by the time this runs, so a missing
+   * equity account must not fail the request: it would leave the account
+   * created but report failure. The balance is still carried by the stored
+   * `openingBalance`, which reports read correctly, so the user is simply told
+   * what to set up rather than being handed a database error.
+   */
+  private async syncOpening(
+    accountId: string,
+    actorId: string | undefined,
+    openingBalance: unknown,
+    openingDate?: Date | string | null,
+  ): Promise<string | undefined> {
+    if (Number(openingBalance ?? 0) === 0) return undefined;
+    const result = await this.accounting.syncOpeningVoucher(accountId, actorId, openingDate ?? null);
+    if (result.posted) return undefined;
+    return 'Account saved, but its opening balance voucher was not posted because no Opening Equity account exists. Create an equity account (or map it in Settings > Accounting) and re-save this account to post the opening balance.';
   }
 
   async findAll(query: {
@@ -133,11 +158,12 @@ export class MainAccountsService {
     });
 
     const balanceAfter = Number(item.openingBalance ?? 0);
-    if (openingChanged || typeChanged || dateChanged || balanceAfter !== 0) {
-      await this.accounting.syncOpeningVoucher(id, actorId, item.openingDate);
-    }
+    const syncWarning =
+      openingChanged || typeChanged || dateChanged || balanceAfter !== 0
+        ? await this.syncOpening(id, actorId, balanceAfter, item.openingDate)
+        : undefined;
 
-    return item;
+    return syncWarning ? { ...item, warning: syncWarning } : item;
   }
 
   async remove(id: string, actorId?: string) {

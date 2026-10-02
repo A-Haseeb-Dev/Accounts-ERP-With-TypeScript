@@ -80,6 +80,33 @@ export class ApiExceptionFilter implements ExceptionFilter {
           success: false,
           error: { code: 'NOT_FOUND', message: 'Record not found', details: [] },
         };
+      } else if (exception.code === 'P2003') {
+        // A referenced record is missing or still in use. Prisma's raw message
+        // ("Foreign key constraint violated: VoucherEntry_mainAccountId_fkey
+        // (index)") names internal constraints and means nothing to a user, so
+        // it is translated rather than passed through.
+        const field = foreignKeyField(exception);
+        status = HttpStatus.CONFLICT;
+        body = {
+          success: false,
+          error: {
+            code: 'REFERENCE_ERROR',
+            message: field
+              ? `This record refers to "${field}", which no longer exists. Refresh and try again.`
+              : 'This record refers to another record that no longer exists. Refresh and try again.',
+            details: field ? [field] : [],
+          },
+        };
+      } else if (exception.code === 'P2014') {
+        status = HttpStatus.CONFLICT;
+        body = {
+          success: false,
+          error: {
+            code: 'REFERENCE_ERROR',
+            message: 'The change would break a required relation between records.',
+            details: [],
+          },
+        };
       } else {
         body = {
           success: false,
@@ -110,4 +137,40 @@ export class ApiExceptionFilter implements ExceptionFilter {
 
     response.status(status).json(body);
   }
+}
+
+/**
+ * Pulls a human field name out of a Prisma P2003 error.
+ *
+ * The constraint name encodes the relation
+ * (`<Table>_<field>_fkey`), which is mapped to the label the UI uses. Anything
+ * unrecognised yields null so the caller falls back to a generic message rather
+ * than guessing a field that does not exist.
+ */
+const RELATION_LABELS: Record<string, string> = {
+  mainAccount: 'main account',
+  subHead: 'sub head',
+  headAccount: 'head account',
+  voucher: 'voucher',
+  voucherEntry: 'voucher entry',
+  customer: 'customer',
+  supplier: 'supplier',
+  user: 'user',
+  organization: 'organisation',
+};
+
+function foreignKeyField(exception: Prisma.PrismaClientKnownRequestError): string | null {
+  const raw =
+    (exception.meta as { field_name?: string } | undefined)?.field_name ??
+    (typeof exception.meta === 'object' && exception.meta !== null
+      ? ((exception.meta as { constraint?: string }).constraint ?? '')
+      : '');
+  if (!raw) return null;
+
+  const match = /^(.+?)_(.+?)_fkey$/.exec(raw);
+  if (match) {
+    const relation = RELATION_LABELS[match[1]];
+    return relation ?? match[2].replace(/Id$/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+  }
+  return raw.replace(/Id$/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
 }

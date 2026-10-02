@@ -286,3 +286,223 @@ describe('AccountingService.accountBalance', () => {
     expect(err.status).toBe(404);
   });
 });
+
+/**
+ * Regression cover for "Invalid prisma.voucher.create() invocation: Foreign
+ * key constraint violated: VoucherEntry_mainAccountId_fkey".
+ *
+ * The configured Opening Equity id can outlive the account it points at, because
+ * the chart of accounts is rebuilt by hand. Trusting that id made every account
+ * created with an opening balance fail on insert.
+ */
+describe('AccountingService.syncOpeningVoucher', () => {
+  const account = {
+    id: 'acc-1',
+    code: '1101',
+    name: 'Cash',
+    openingBalance: 5000,
+    openingBalanceType: 'DR',
+    createdAt: new Date('2024-01-01T00:00:00Z'),
+  };
+
+  /**
+   * @param accounts Ids that actually exist in `MainAccount`, keyed by type.
+   * @param setting  The stored `accounting.opening_equity_account` value.
+   */
+  const build = (options: {
+    existing?: Record<string, { accountType: string; status: string }>;
+    setting?: string | null;
+    entries?: Array<Record<string, unknown>>;
+  }) => {
+    const { existing = {}, setting = null, entries = [] } = options;
+    const settingUpdate = vi.fn().mockResolvedValue({});
+    const voucherCreate = vi.fn().mockResolvedValue({ id: 'v1', entries });
+    const findUnique = vi.fn().mockImplementation(({ where }: { where: { id: string } }) =>
+      Promise.resolve(
+        where.id === account.id
+          ? account
+          : existing[where.id]
+            ? { id: where.id, ...existing[where.id] }
+            : null,
+      ),
+    );
+    const tx = {
+      voucher: {
+        create: voucherCreate,
+        findFirst: vi.fn().mockResolvedValue(null),
+        // `findUnique` serves two purposes here: the free-number probe (by
+        // `number`, which must miss) and `postVoucher`'s read-back of the draft
+        // it just created (by `id`, which must return balanced entries).
+        findUnique: vi.fn().mockImplementation(({ where }: { where: { id?: string; number?: string } }) =>
+          Promise.resolve(
+            where.number !== undefined
+              ? null
+              : {
+                  id: 'v1',
+                  status: 'draft',
+                  entries: entries.length
+                    ? entries
+                    : [
+                        { mainAccountId: 'acc-1', debit: 5000, credit: 0 },
+                        { mainAccountId: 'equity', credit: 5000, debit: 0 },
+                      ],
+                },
+          ),
+        ),
+        update: vi.fn().mockResolvedValue({ id: 'v1', status: 'posted' }),
+      },
+      voucherEntry: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      systemSetting: { upsert: vi.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      mainAccount: { findUnique, findFirst: vi.fn().mockResolvedValue(null) },
+      systemSetting: {
+        findFirst: vi.fn().mockResolvedValue(setting ? { id: 's1', value: setting } : null),
+        update: settingUpdate,
+      },
+      $transaction: vi.fn().mockImplementation((fn: (t: unknown) => unknown) => fn(tx)),
+    };
+    const svc = new AccountingService(prisma as never, {
+      next: vi.fn().mockResolvedValue('OB-1'),
+    } as never);
+    return { svc, tx, prisma, voucherCreate, settingUpdate, findUnique };
+  };
+
+  it('ignores a configured equity id whose account no longer exists', async () => {
+    const { svc, tx, voucherCreate } = build({
+      setting: 'deleted-equity-id',
+      existing: { 'acc-1': { accountType: 'ASSET', status: 'active' } },
+    });
+
+    const result = await svc.syncOpeningVoucher('acc-1');
+
+    // No equity account is left to balance against, so nothing is posted and
+    // nothing is written - critically, no voucher is created.
+    expect(result).toEqual({ posted: false, reason: 'NO_EQUITY_ACCOUNT' });
+    expect(voucherCreate).not.toHaveBeenCalled();
+    expect(tx.voucher.findFirst).toHaveBeenCalled();
+  });
+
+  it('clears a stale configured id so it is not re-verified forever', async () => {
+    const { svc, prisma } = build({ setting: 'deleted-equity-id' });
+
+    await svc.syncOpeningVoucher('acc-1');
+
+    expect(prisma.systemSetting.update).toHaveBeenCalledWith({
+      where: { id: 's1' },
+      data: { value: null },
+    });
+  });
+
+  it('posts the opening voucher when the configured equity account is valid', async () => {
+    const { svc, voucherCreate } = build({
+      setting: 'equity-1',
+      existing: {
+        'acc-1': { accountType: 'ASSET', status: 'active' },
+        'equity-1': { accountType: 'EQUITY', status: 'active' },
+      },
+    });
+
+    const result = await svc.syncOpeningVoucher('acc-1');
+
+    expect(result.posted).toBe(true);
+    expect(voucherCreate).toHaveBeenCalled();
+    const rows = voucherCreate.mock.calls[0][0].data.entries.create;
+    expect(rows.map((e: { mainAccountId: string }) => e.mainAccountId).sort()).toEqual([
+      'acc-1',
+      'equity-1',
+    ]);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ mainAccountId: 'acc-1', debit: 5000, credit: 0 }),
+        expect.objectContaining({ mainAccountId: 'equity-1', debit: 0, credit: 5000 }),
+      ]),
+    );
+  });
+
+  it('refuses to balance an opening balance against a non-equity account', async () => {
+    const { svc, voucherCreate } = build({
+      setting: 'some-asset',
+      existing: {
+        'acc-1': { accountType: 'ASSET', status: 'active' },
+        'some-asset': { accountType: 'ASSET', status: 'active' },
+      },
+    });
+
+    const result = await svc.syncOpeningVoucher('acc-1');
+
+    expect(result).toEqual({ posted: false, reason: 'NO_EQUITY_ACCOUNT' });
+    expect(voucherCreate).not.toHaveBeenCalled();
+  });
+
+  it('refuses to balance an opening balance against an inactive account', async () => {
+    const { svc, voucherCreate } = build({
+      setting: 'equity-1',
+      existing: {
+        'acc-1': { accountType: 'ASSET', status: 'active' },
+        'equity-1': { accountType: 'EQUITY', status: 'inactive' },
+      },
+    });
+
+    const result = await svc.syncOpeningVoucher('acc-1');
+
+    expect(result).toEqual({ posted: false, reason: 'NO_EQUITY_ACCOUNT' });
+    expect(voucherCreate).not.toHaveBeenCalled();
+  });
+
+  it('never uses the account being opened as its own counterpart', async () => {
+    const { svc, voucherCreate } = build({
+      setting: 'acc-1',
+      existing: { 'acc-1': { accountType: 'EQUITY', status: 'active' } },
+    });
+
+    const result = await svc.syncOpeningVoucher('acc-1');
+
+    expect(result).toEqual({ posted: false, reason: 'NO_EQUITY_ACCOUNT' });
+    expect(voucherCreate).not.toHaveBeenCalled();
+  });
+
+  it('falls back to any usable equity account when the setting is absent', async () => {
+    const { svc, prisma, voucherCreate } = build({
+      setting: null,
+      existing: { 'acc-1': { accountType: 'ASSET', status: 'active' } },
+    });
+    prisma.mainAccount.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'equity-9' });
+
+    const result = await svc.syncOpeningVoucher('acc-1');
+
+    expect(result.posted).toBe(true);
+    expect(voucherCreate).toHaveBeenCalled();
+    const rows = voucherCreate.mock.calls[0][0].data.entries.create;
+    expect(rows.map((e: { mainAccountId: string }) => e.mainAccountId)).toContain('equity-9');
+  });
+
+  it('falls back to name lookup when the configured id is stale', async () => {
+    const { svc, prisma, voucherCreate } = build({
+      setting: 'deleted-equity-id',
+      existing: { 'acc-1': { accountType: 'ASSET', status: 'active' } },
+    });
+    prisma.mainAccount.findFirst.mockResolvedValueOnce({
+      id: 'equity-by-name',
+      accountType: 'EQUITY',
+      status: 'active',
+    });
+
+    const result = await svc.syncOpeningVoucher('acc-1');
+
+    expect(result.posted).toBe(true);
+    expect(voucherCreate).toHaveBeenCalled();
+  });
+
+  it('removes the opening voucher without an equity account when the balance is zeroed', async () => {
+    const { svc, prisma, voucherCreate } = build({ setting: 'deleted-equity-id' });
+    prisma.mainAccount.findUnique.mockResolvedValueOnce({ ...account, openingBalance: 0 });
+
+    const result = await svc.syncOpeningVoucher('acc-1');
+
+    // Zeroing a balance only needs to clear the old voucher, never a
+    // counterpart account, so it still succeeds.
+    expect(result).toEqual({ posted: true });
+    expect(voucherCreate).not.toHaveBeenCalled();
+  });
+});

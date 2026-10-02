@@ -215,8 +215,19 @@ export class AccountingService {
    * Equity account on the other. When the opening balance is zeroed the voucher
    * is removed; when the amount or side changes the old voucher is cancelled
    * (preserved for audit) and replaced.
+   *
+   * When the company has no equity account to balance against there is nothing
+   * to post, and that is a configuration gap rather than a failure - a fresh
+   * chart legitimately has no equity account yet. This reports it instead of
+   * throwing, so creating the account still succeeds. Reports stay correct
+   * either way: `accountOpening` falls back to the stored `openingBalance` when
+   * no opening voucher exists.
    */
-  async syncOpeningVoucher(accountId: string, actorId?: string, openingDate?: Date | string | null): Promise<void> {
+  async syncOpeningVoucher(
+    accountId: string,
+    actorId?: string,
+    openingDate?: Date | string | null,
+  ): Promise<{ posted: boolean; reason?: string }> {
     const account = await this.prisma.mainAccount.findUnique({
       where: { id: accountId },
     });
@@ -224,7 +235,11 @@ export class AccountingService {
 
     const openingDay = openingDate ? new Date(openingDate) : account.createdAt;
 
-    await this.prisma.$transaction(async (tx) => {
+    // Resolve before opening the transaction so a missing equity account is
+    // reported as a gap rather than failing half way through on a foreign key.
+    const equityAccountId = await this.resolveOpeningEquityId(accountId);
+
+    const result = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.voucher.findFirst({
         where: { reference: `OB:${accountId}` },
         include: { entries: true },
@@ -244,7 +259,7 @@ export class AccountingService {
 
       if (amount === 0) {
         if (existing) await removeTrace(existing);
-        return;
+        return { posted: true } as const;
       }
 
       const dateChanged =
@@ -259,12 +274,11 @@ export class AccountingService {
             e.mainAccountId === accountId &&
             Number(isDr ? e.debit : e.credit) === amount,
         );
-      if (unchanged) return;
+      if (unchanged) return { posted: true } as const;
 
       if (existing) await removeTrace(existing);
 
-      const equityAccountId = await this.resolveOpeningEquityId();
-      if (!equityAccountId) return;
+      if (!equityAccountId) return { posted: false, reason: 'NO_EQUITY_ACCOUNT' } as const;
 
       // Reserve a free number. The OB counter can be lagging behind rows that
       // predate sequential numbering (e.g. after a reseed/reset), which would
@@ -311,18 +325,66 @@ export class AccountingService {
         create: { key: 'accounting.opening_equity_account', value: equityAccountId, organizationId: 'default-org' },
         update: {},
       });
+      return { posted: true } as const;
     });
+
+    return result;
   }
 
-  private async resolveOpeningEquityId(): Promise<string | null> {
+  /**
+   * Resolves the account that absorbs the other side of an opening balance.
+   *
+   * The stored id is never trusted on its own. Companies delete and rebuild
+   * their chart of accounts, so a configured id can outlive the row it points
+   * at - and a dangling id turns every opening balance into a foreign key
+   * failure at insert time. So the id is verified, a stale one is repaired,
+   * and the account must genuinely be usable equity.
+   *
+   * `accountId` is excluded: an opening voucher that hit the same account on
+   * both sides would balance on paper while meaning nothing.
+   */
+  private async resolveOpeningEquityId(accountId?: string): Promise<string | null> {
+    const usable = async (id: string | null | undefined) => {
+      if (!id || id === accountId) return null;
+      const acc = await this.prisma.mainAccount.findUnique({
+        where: { id },
+        select: { id: true, accountType: true, status: true },
+      });
+      if (!acc || acc.status !== 'active') return null;
+      // Opening balances only balance against equity. Anything else would let a
+      // stock or asset account absorb them and quietly skew the balance sheet.
+      return acc.accountType === 'EQUITY' ? acc.id : null;
+    };
+
     const setting = await this.prisma.systemSetting.findFirst({
       where: { key: 'accounting.opening_equity_account' },
+      select: { id: true, value: true },
     });
-    if (setting?.value) return setting.value;
+
+    const fromSetting = await usable(setting?.value);
+    if (fromSetting) return fromSetting;
+
+    // Stale or unusable: clear it so the next lookup does not re-verify a dead
+    // id, and do not silently accept a value that is not equity.
+    if (setting?.value && !fromSetting) {
+      await this.prisma.systemSetting
+        .update({ where: { id: setting.id }, data: { value: null } })
+        .catch(() => undefined);
+    }
+
     const byName = await this.prisma.mainAccount.findFirst({
       where: { name: 'Opening Equity', status: 'active' },
+      select: { id: true, accountType: true, status: true },
     });
-    return byName?.id ?? null;
+    if (byName && byName.accountType === 'EQUITY' && byName.id !== accountId) return byName.id;
+
+    // No configured account, but the chart may still hold usable equity.
+    const anyEquity = await this.prisma.mainAccount.findFirst({
+      where: { accountType: 'EQUITY', status: 'active', ...(accountId ? { id: { not: accountId } } : {}) },
+      select: { id: true },
+      orderBy: { code: 'asc' },
+    });
+    return anyEquity?.id ?? null;
   }
 }
 

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 import { ApiExceptionFilter } from './api-exception.filter';
 import { ApiException } from '../exceptions/api.exception';
 import { HttpException, HttpStatus } from '@nestjs/common';
@@ -112,5 +113,89 @@ describe('ApiExceptionFilter', () => {
         error: expect.objectContaining({ code: 'UNAUTHORIZED' }),
       }),
     );
+  });
+
+  /**
+   * The raw Prisma text for this class of failure used to reach the browser
+   * verbatim, naming internal constraints ("..._fkey (index)") that mean
+   * nothing to a user.
+   */
+  describe('foreign key violations', () => {
+    const prismaError = (meta: Record<string, unknown>) =>
+      new Prisma.PrismaClientKnownRequestError(
+        'Invalid `prisma.voucher.create()` invocation: Foreign key constraint violated: VoucherEntry_mainAccountId_fkey (index)',
+        { code: 'P2003', clientVersion: '6.0.0', meta },
+      );
+
+    it('translates a named constraint instead of leaking Prisma internals', () => {
+      const filter = new ApiExceptionFilter();
+      const exception = prismaError({ constraint: 'VoucherEntry_mainAccountId_fkey' });
+      const { host, response } = createMockHost(exception);
+
+      filter.catch(exception, host as any);
+
+      expect(response.status).toHaveBeenCalledWith(409);
+      const body = response.json.mock.calls[0][0];
+      expect(body.error.code).toBe('REFERENCE_ERROR');
+      expect(body.error.message).toBe(
+        'This record refers to "main account", which no longer exists. Refresh and try again.',
+      );
+      expect(JSON.stringify(body)).not.toContain('fkey');
+      expect(JSON.stringify(body)).not.toContain('Prisma');
+    });
+
+    it('uses Prisma field_name when no constraint is supplied', () => {
+      const filter = new ApiExceptionFilter();
+      const exception = prismaError({ field_name: 'customerId' });
+      const { host, response } = createMockHost(exception);
+
+      filter.catch(exception, host as any);
+
+      const body = response.json.mock.calls[0][0];
+      expect(body.error.message).toContain('customer');
+      expect(JSON.stringify(body)).not.toContain('fkey');
+    });
+
+    it('still returns a readable message when the constraint is unrecognisable', () => {
+      const filter = new ApiExceptionFilter();
+      const exception = prismaError({});
+      const { host, response } = createMockHost(exception);
+
+      filter.catch(exception, host as any);
+
+      expect(response.status).toHaveBeenCalledWith(409);
+      const body = response.json.mock.calls[0][0];
+      expect(body.error.code).toBe('REFERENCE_ERROR');
+      expect(body.error.message).not.toMatch(/fkey|Prisma/i);
+    });
+
+    it('reports a broken required relation readably (P2014)', () => {
+      const filter = new ApiExceptionFilter();
+      const exception = new Prisma.PrismaClientKnownRequestError(
+        'The change failed because it would break a required relation',
+        { code: 'P2014', clientVersion: '6.0.0' },
+      );
+      const { host, response } = createMockHost(exception);
+
+      filter.catch(exception, host as any);
+
+      expect(response.status).toHaveBeenCalledWith(409);
+      const body = response.json.mock.calls[0][0];
+      expect(body.error.code).toBe('REFERENCE_ERROR');
+      expect(body.error.message).not.toMatch(/Prisma/i);
+    });
+
+    it('leaves unrelated Prisma codes as DATABASE_ERROR', () => {
+      const filter = new ApiExceptionFilter();
+      const exception = new Prisma.PrismaClientKnownRequestError('division by zero', {
+        code: 'P2019',
+        clientVersion: '6.0.0',
+      });
+      const { host, response } = createMockHost(exception);
+
+      filter.catch(exception, host as any);
+
+      expect(response.json.mock.calls[0][0].error.code).toBe('DATABASE_ERROR');
+    });
   });
 });
