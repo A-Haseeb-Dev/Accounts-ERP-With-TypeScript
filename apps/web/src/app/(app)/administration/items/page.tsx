@@ -15,7 +15,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import { DeleteWarnDialog } from '@/components/delete-warn-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
-import { StatusBadge, Badge } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/ui/badge';
 import { dateTime, money } from '@/lib/utils';
 import { useAuth } from '@/context/auth-context';
 import type { Item, Paginated } from '@/lib/types';

@@ -573,7 +573,6 @@ function DocumentDetailModal({
   loading,
   detail,
   priceKey,
-  itemLineField,
   dateField,
   partyLabel,
   showAmountPaid,

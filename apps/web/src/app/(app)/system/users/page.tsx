@@ -2,12 +2,12 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { parseDeleteGuard, deleteErrorMessage } from '@/lib/delete-guard';
+import { deleteErrorMessage } from '@/lib/delete-guard';
 import { useState } from 'react';
 import { Plus, Pencil, Power, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Field, Input, Select, Textarea } from '@/components/ui/field';
+import { Field, Input, Select } from '@/components/ui/field';
 import { Modal } from '@/components/ui/modal';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';

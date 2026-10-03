@@ -21,7 +21,6 @@ import {
 import {
   LAYOUT_BLOCK_LABELS,
   PRINT_DOC_TYPES,
-  blockFontSize,
   decodeLayoutOverrides,
   decodeNamedLayouts,
   decodePrintLayout,

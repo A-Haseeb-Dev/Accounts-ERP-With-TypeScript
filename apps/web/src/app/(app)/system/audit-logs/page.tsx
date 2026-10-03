@@ -64,7 +64,10 @@ export default function AuditLogsPage() {
   const canPurge = can('system.audit.purge');
 
   const items = data?.items ?? [];
-  const modules = useMemo(() => Array.from(new Set(items.map((r) => r.module).filter(Boolean))).sort(), [items]);
+  const modules = useMemo(
+    () => Array.from(new Set((data?.items ?? []).map((r) => r.module).filter(Boolean))).sort(),
+    [data],
+  );
 
   const exportCsv = () => {
     const header = ['Date', 'Module', 'Action', 'Entity', 'Entity ID', 'User', 'Message', 'Metadata'];

@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { apiFetch, qs } from '@/lib/api';
 import { useFlatOptions } from '@/hooks/use-options';
-import { Field, Input, Select } from '@/components/ui/field';
+import { Field, Select } from '@/components/ui/field';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { ReportActions } from '@/components/report-actions';

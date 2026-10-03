@@ -27,7 +27,6 @@ import {
   paperPxFor,
   resolveLayout,
   type LayoutBlockConfig,
-  type LayoutBlockKey,
 } from '@/lib/print-layout';
 import type { BrandingSetting, TransactionDoc, DocLine } from '@/lib/types';
 

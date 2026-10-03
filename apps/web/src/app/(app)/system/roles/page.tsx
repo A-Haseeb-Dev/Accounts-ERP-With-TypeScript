@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { parseDeleteGuard, deleteErrorMessage } from '@/lib/delete-guard';
+import { deleteErrorMessage } from '@/lib/delete-guard';
 import { useMemo, useState } from 'react';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';

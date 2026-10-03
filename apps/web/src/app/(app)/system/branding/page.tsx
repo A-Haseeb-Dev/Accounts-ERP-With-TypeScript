@@ -13,7 +13,7 @@ import type { BrandingSetting } from '@/lib/types';
 export default function BrandingPage() {
   const qc = useQueryClient();
 
-  const { data, isLoading } = useQuery<BrandingSetting | null>({
+  const { data } = useQuery<BrandingSetting | null>({
     queryKey: ['branding'],
     queryFn: () => apiFetch('/system/branding'),
   });

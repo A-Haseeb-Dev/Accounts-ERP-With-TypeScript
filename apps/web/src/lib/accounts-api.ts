@@ -3,9 +3,7 @@ import { apiFetch } from './api';
 import type {
   Voucher,
   VoucherType,
-  VoucherStatus,
   PaymentEntry,
-  PaymentAllocation,
   OpenInvoice,
   PaymentMethod,
 } from './types';

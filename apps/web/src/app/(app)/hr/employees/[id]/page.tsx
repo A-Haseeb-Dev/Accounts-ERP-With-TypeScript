@@ -168,12 +168,13 @@ export default function EmployeeDetailPage() {
                       min={0}
                       step="0.01"
                       className="w-32"
+                      disabled={!canSetStructure}
                       value={resolvedValues[c.value] ?? ''}
                       onChange={(e) => setValues((v) => ({ ...v, [c.value]: e.target.value }))}
                     />
                   </div>
                 ))}
-                {flatComponents.options.length > 0 && (
+                {flatComponents.options.length > 0 && canSetStructure && (
                   <div className="flex justify-end pt-2">
                     <Button onClick={saveStructure} loading={structureMutation.isPending}>
                       <Save className="h-4 w-4" /> Save Structure

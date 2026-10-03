@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { parseDeleteGuard } from '@/lib/delete-guard';
@@ -173,12 +173,12 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
     setModalOpen(true);
   };
 
-  const openEdit = (row: TRecord) => {
+  const openEdit = useCallback((row: TRecord) => {
     setEditing(row);
     setForm(row);
     setFormError('');
     setModalOpen(true);
-  };
+  }, []);
 
   const onFieldChange = (name: string, value: unknown) => {
     setForm((f) => ({ ...f, [name]: value }));
@@ -230,7 +230,7 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
       });
     }
     return base;
-  }, [config.columns, config.allowStatusFilter, canUpdate, canDelete]);
+  }, [config.columns, config.allowStatusFilter, canUpdate, canDelete, openEdit]);
 
   const optionsFor = (field: FieldDef) => field.options ?? [];
   const nameOf = (r: TRecord | null) =>

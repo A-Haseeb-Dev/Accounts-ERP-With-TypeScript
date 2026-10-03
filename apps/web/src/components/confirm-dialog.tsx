@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function ConfirmDialog({

@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Eye, Landmark, Pencil, Plus, RefreshCcw, Search, ShieldCheck, ShieldX, XCircle } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Eye, Landmark, Pencil, Plus, RefreshCcw, Search, ShieldCheck, XCircle } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { createPayment, postPayment, cancelPayment, depositCheque, bounceCheque, endorseCheque, updatePayment, fetchOpenInvoices, fetchNextPaymentNumber } from '@/lib/accounts-api';
 import type { EditChequePayload, PaymentPayload } from '@/lib/accounts-api';
@@ -47,7 +47,7 @@ export default function PaymentsPage() {
   const { options: accountOptions, data: accountsData } = useFlatOptions<FlatAccount>('main-accounts');
   const { options: customerOptions } = useFlatOptions('customers');
   const { options: supplierOptions } = useFlatOptions('suppliers');
-  const { options: bankOptions, data: banks } = useFlatOptions('banks');
+  const { options: bankOptions } = useFlatOptions('banks');
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');

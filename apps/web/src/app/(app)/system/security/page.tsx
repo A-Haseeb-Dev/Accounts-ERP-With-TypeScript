@@ -33,7 +33,6 @@ export default function SecurityPage() {
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const [disableCode, setDisableCode] = useState('');
   const [disableOpen, setDisableOpen] = useState(false);
-  const [pendingCode, setPendingCode] = useState(false);
   const [regenerateOpen, setRegenerateOpen] = useState(false);
   const [regenerateCode, setRegenerateCode] = useState('');
 
