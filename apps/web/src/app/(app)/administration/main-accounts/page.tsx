@@ -412,7 +412,10 @@ export default function MainAccountsPage() {
         confirmLabel="Delete"
         loading={del.isPending}
         onCancel={() => { setDeleteTarget(null); setDeleteError(''); }}
-        onConfirm={() => { setDeleteError(''); deleteTarget?.id && del.mutate(deleteTarget.id); }}
+        onConfirm={() => {
+          setDeleteError('');
+          if (deleteTarget?.id) del.mutate(deleteTarget.id);
+        }}
       >
         {deleteError && (
           <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{deleteError}</div>
