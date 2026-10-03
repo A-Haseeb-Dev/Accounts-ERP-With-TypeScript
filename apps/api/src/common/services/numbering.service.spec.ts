@@ -4,6 +4,7 @@ import { NumberingService } from './numbering.service';
 function buildService() {
   const prisma = {
     $queryRawUnsafe: vi.fn(),
+    $executeRawUnsafe: vi.fn().mockResolvedValue(0),
     systemSetting: { findFirst: vi.fn().mockImplementation(() => null) },
     brandingSetting: { findFirst: vi.fn().mockResolvedValue(null) },
   };
@@ -139,5 +140,114 @@ describe('NumberingService.preview', () => {
 
     const number = await svc.preview('sale', 'SI');
     expect(number).toBe(`SI-${new Date().getFullYear()}/000003`);
+  });
+});
+
+/**
+ * The chart of accounts needs the bare serial, not a formatted document number,
+ * because it assembles `A1` + `-01` + `-0001` itself. These three methods are the
+ * contract it relies on: an atomic draw, a floor it can raise but never lower,
+ * and a read that reserves nothing.
+ */
+describe('NumberingService sequences', () => {
+  describe('nextSequence', () => {
+    it('returns the bare number for the caller to format', async () => {
+      const { svc, prisma } = buildService();
+      prisma.$queryRawUnsafe.mockResolvedValue([{ value: '7' }]);
+
+      expect(await svc.nextSequence('account.head.A')).toBe(7);
+    });
+
+    it('is not scoped by year, so a series continues across years', async () => {
+      const { svc, prisma } = buildService();
+      prisma.$queryRawUnsafe.mockResolvedValue([{ value: '1' }]);
+
+      await svc.nextSequence('account.head.A');
+      expect(prisma.$queryRawUnsafe.mock.calls[0][2]).toBe('numbering.account.head.A');
+    });
+
+    it('stays atomic by running one upsert through the given transaction client', async () => {
+      const { svc, prisma } = buildService();
+      const tx = {
+        $queryRawUnsafe: vi.fn().mockResolvedValue([{ value: '6' }]),
+        $executeRawUnsafe: vi.fn(),
+      };
+
+      expect(await svc.nextSequence('account.head.A', tx)).toBe(6);
+      expect(tx.$queryRawUnsafe.mock.calls[0][0]).toContain('ON CONFLICT ("key", "organizationId")');
+      expect(tx.$queryRawUnsafe.mock.calls[0][0]).toContain('RETURNING "value"');
+      expect(prisma.$queryRawUnsafe).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('seedSequence', () => {
+    it('raises the counter to the floor', async () => {
+      const { svc, prisma } = buildService();
+
+      await svc.seedSequence('account.head.A', 7);
+      expect(prisma.$executeRawUnsafe.mock.calls[0][0]).toContain('UPDATE "SystemSetting"');
+      expect(prisma.$executeRawUnsafe.mock.calls[0][1]).toBe('7');
+    });
+
+    it('never lowers a counter that is already ahead', async () => {
+      const { svc, prisma } = buildService();
+
+      await svc.seedSequence('account.head.A', 7);
+      // The guard lives in the SQL so it holds under concurrency, not just in JS.
+      expect(prisma.$executeRawUnsafe.mock.calls[0][0]).toContain('< $3');
+    });
+
+    it('writes nothing for a floor of zero or less', async () => {
+      const { svc, prisma } = buildService();
+
+      await svc.seedSequence('account.head.A', 0);
+      await svc.seedSequence('account.head.A', -3);
+      expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
+    });
+
+    it('writes nothing for a floor that is not a number', async () => {
+      const { svc, prisma } = buildService();
+
+      await svc.seedSequence('account.head.A', Number.NaN);
+      expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
+    });
+
+    it('seeds through the transaction client when given one', async () => {
+      const { svc, prisma } = buildService();
+      const tx = { $executeRawUnsafe: vi.fn().mockResolvedValue(1), $queryRawUnsafe: vi.fn() };
+
+      await svc.seedSequence('account.head.A', 7, tx);
+      expect(tx.$executeRawUnsafe).toHaveBeenCalledTimes(1);
+      expect(prisma.$executeRawUnsafe).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('peekSequence', () => {
+    it('reads the current value without reserving anything', async () => {
+      const { svc, prisma } = buildService();
+      prisma.systemSetting.findFirst.mockResolvedValue({ value: '42' });
+
+      expect(await svc.peekSequence('account.head.A')).toBe(42);
+      expect(prisma.$queryRawUnsafe).not.toHaveBeenCalled();
+      expect(prisma.systemSetting.findFirst).toHaveBeenCalledWith({
+        where: { key: 'numbering.account.head.A' },
+        select: { value: true },
+      });
+    });
+
+    it('reports 0 when the series has never been used', async () => {
+      const { svc, prisma } = buildService();
+      prisma.systemSetting.findFirst.mockResolvedValue(null);
+      expect(await svc.peekSequence('account.head.A')).toBe(0);
+    });
+
+    it('reports 0 rather than NaN for an empty or corrupt counter', async () => {
+      const { svc, prisma } = buildService();
+
+      for (const value of ['', '   ', 'not-a-number']) {
+        prisma.systemSetting.findFirst.mockResolvedValue({ value });
+        expect(await svc.peekSequence('account.head.A')).toBe(0);
+      }
+    });
   });
 });

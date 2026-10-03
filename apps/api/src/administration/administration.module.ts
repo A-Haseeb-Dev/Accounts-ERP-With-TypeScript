@@ -17,6 +17,7 @@ import { MainAccountsService } from './services/main-accounts.service';
 import { SimpleMasterService } from './services/simple-master.service';
 import { BanksService } from './services/banks.service';
 import { ItemsService } from './services/items.service';
+import { AccountCodeService } from './services/account-code.service';
 
 @Module({
   controllers: [
@@ -30,6 +31,7 @@ import { ItemsService } from './services/items.service';
     StockLocationsController,
   ],
   providers: [
+    AccountCodeService,
     HeadAccountsService,
     SubHeadsService,
     MainAccountsService,
@@ -37,6 +39,6 @@ import { ItemsService } from './services/items.service';
     BanksService,
     ItemsService,
   ],
-  exports: [ItemsService],
+  exports: [ItemsService, AccountCodeService],
 })
 export class AdministrationModule {}

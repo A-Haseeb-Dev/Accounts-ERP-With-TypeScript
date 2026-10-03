@@ -4,11 +4,18 @@ export type Status = 'active' | 'inactive';
 
 export const statusEnum = () => ['active', 'inactive'];
 
+/**
+ * Codes are assigned by the server from the chart scheme
+ * (`A1` > `A1-01` > `A1-01-0001`) and are deliberately absent from every DTO
+ * here. `ValidationPipe` runs with `whitelist: true`, so a `code` sent by a
+ * client is stripped rather than applied — there is no path for a user to type
+ * one, and a stored code can never contradict the hierarchy it sits in.
+ */
 export class CreateHeadAccountDto {
-  @IsString()
-  @IsNotEmpty({ message: 'Account code is required' })
-  @MaxLength(20)
-  code: string;
+  @IsEnum(['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'], {
+    message: 'Account type must be ASSET, LIABILITY, EQUITY, REVENUE or EXPENSE',
+  })
+  accountType: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
 
   @IsString()
   @IsNotEmpty({ message: 'Account name is required' })
@@ -29,11 +36,6 @@ export class CreateHeadAccountDto {
 export class UpdateHeadAccountDto {
   @IsString()
   @IsOptional()
-  @MaxLength(20)
-  code?: string;
-
-  @IsString()
-  @IsOptional()
   @MaxLength(150)
   name?: string;
 
@@ -49,11 +51,6 @@ export class UpdateHeadAccountDto {
 }
 
 export class CreateSubHeadDto {
-  @IsString()
-  @IsNotEmpty({ message: 'Sub head code is required' })
-  @MaxLength(20)
-  code: string;
-
   @IsString()
   @IsNotEmpty({ message: 'Sub head name is required' })
   @MaxLength(150)
@@ -77,11 +74,6 @@ export class CreateSubHeadDto {
 export class UpdateSubHeadDto {
   @IsString()
   @IsOptional()
-  @MaxLength(20)
-  code?: string;
-
-  @IsString()
-  @IsOptional()
   @MaxLength(150)
   name?: string;
 
@@ -102,11 +94,6 @@ export class UpdateSubHeadDto {
 
 export class CreateMainAccountDto {
   @IsString()
-  @IsNotEmpty({ message: 'Account code is required' })
-  @MaxLength(20)
-  code: string;
-
-  @IsString()
   @IsNotEmpty({ message: 'Account name is required' })
   @MaxLength(150)
   name: string;
@@ -114,12 +101,6 @@ export class CreateMainAccountDto {
   @IsString()
   @IsNotEmpty({ message: 'Sub head is required' })
   subHeadId: string;
-
-  @IsEnum(['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'], {
-    message: 'Account type must be ASSET, LIABILITY, EQUITY, REVENUE or EXPENSE',
-  })
-  @IsOptional()
-  accountType?: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
 
   @IsString()
   @IsOptional()
@@ -147,21 +128,12 @@ export class CreateMainAccountDto {
 export class UpdateMainAccountDto {
   @IsString()
   @IsOptional()
-  @MaxLength(20)
-  code?: string;
-
-  @IsString()
-  @IsOptional()
   @MaxLength(150)
   name?: string;
 
   @IsString()
   @IsOptional()
   subHeadId?: string;
-
-  @IsEnum(['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'])
-  @IsOptional()
-  accountType?: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'EXPENSE';
 
   @IsString()
   @IsOptional()

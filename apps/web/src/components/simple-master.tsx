@@ -7,6 +7,7 @@ import { apiFetch, qs } from '@/lib/api';
 import { parseDeleteGuard } from '@/lib/delete-guard';
 import { useAuth } from '@/context/auth-context';
 import { useFlatOptions, type FlatResource } from '@/hooks/use-options';
+import { useNextAccountCode } from '@/hooks/use-next-account-code';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { DataTable, type Column } from '@/components/data-table';
@@ -29,6 +30,11 @@ export interface FieldDef {
   required?: boolean;
   placeholder?: string;
   auto?: boolean;
+  /**
+   * Shown only when creating. For a value the server fixes for the lifetime of
+   * the record — an account type implied by an immutable code, say.
+   */
+  createOnly?: boolean;
 }
 
 export interface SimpleMasterConfig<TRecord extends { id: string }> {
@@ -40,6 +46,12 @@ export interface SimpleMasterConfig<TRecord extends { id: string }> {
   columns: Column<TRecord>[];
   fields: FieldDef[];
   allowStatusFilter?: boolean;
+  /**
+   * Fields the auto code depends on, sent as query params to the `next-code`
+   * endpoint — an account type for a head, a parent id for the levels below it.
+   * Until they are all chosen there is no code to show.
+   */
+  nextCodeDependsOn?: string[];
 }
 
 function RemoteSelect({
@@ -89,16 +101,18 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
 
   const autoField = config.fields.find((f) => f.auto);
 
-  const { data: nextCode } = useQuery<string>({
-    queryKey: [config.apiPath, 'next-code'],
-    queryFn: async () => {
-      if (!autoField) return '';
-      const res = await apiFetch<{ code?: string }>(`${config.apiPath}/next-code`);
-      return res?.code ?? '';
-    },
-    enabled: modalOpen && !!autoField && !editing,
-    staleTime: 0,
-  });
+  // A code that extends a parent's cannot be shown until the parent is chosen, so
+  // the preview only runs once every dependency has a value.
+  const nextCodeParams = Object.fromEntries(
+    (config.nextCodeDependsOn ?? []).map((name) => [name, form[name] == null ? undefined : String(form[name])]),
+  );
+  const nextCodeReady = (config.nextCodeDependsOn ?? []).every((name) => !!form[name]);
+
+  const { code: nextCode, isLoading: nextCodeLoading } = useNextAccountCode(
+    config.apiPath,
+    nextCodeParams,
+    modalOpen && !!autoField && !editing && nextCodeReady,
+  );
 
   const saveMutation = useMutation({
     mutationFn: async (payload: unknown) => {
@@ -174,9 +188,9 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
     e.preventDefault();
     setFormError('');
     const payload: Record<string, unknown> = { ...form };
-    if (autoField && !payload[autoField.name]) {
-      payload[autoField.name] = nextCode ?? '';
-    }
+    // The code is shown for reference only. Sending it would be ignored by the
+    // API, and on save the server assigns the authoritative one.
+    if (autoField) delete payload[autoField.name];
     saveMutation.mutate(payload);
   };
 
@@ -272,7 +286,9 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
         size="md"
       >
         <form onSubmit={submit} className="space-y-4">
-          {config.fields.map((field) =>
+          {config.fields
+            .filter((field) => !(field.createOnly && editing))
+            .map((field) =>
             field.type === 'textarea' ? (
               <Field key={field.name} label={field.label} required={field.required}>
                 <Textarea
@@ -322,22 +338,26 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
                 key={field.name}
                 label={field.label}
                 required={field.required && !field.auto}
-                hint={field.auto ? 'Auto-generated — it cannot be edited.' : undefined}
+                hint={field.auto
+                  ? nextCodeReady
+                    ? 'Assigned automatically from the chart hierarchy — it cannot be edited.'
+                    : 'The code appears once the selection above is made.'
+                  : undefined}
               >
                 <Input
                   type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
                   step={field.type === 'number' ? '0.01' : undefined}
                   readOnly={field.auto}
-                  className={field.auto ? 'bg-slate-100 text-slate-500' : undefined}
-                  value={String(field.auto && !editing ? (form[field.name] ?? nextCode ?? '') : (form[field.name] ?? ''))}
-                  placeholder={field.placeholder}
+                  className={field.auto ? 'bg-slate-100 font-mono text-slate-500' : undefined}
+                  value={String(field.auto ? (editing ? (form[field.name] ?? '') : nextCode) : (form[field.name] ?? ''))}
+                  placeholder={field.auto ? (nextCodeLoading ? 'Loading…' : '') : field.placeholder}
                   onChange={(e) =>
                     onFieldChange(field.name, field.type === 'number' ? (e.target.value === '' ? 0 : Number(e.target.value)) : e.target.value)
                   }
                 />
               </Field>
             ),
-          )}
+            )}
 
           {formError && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{formError}</div>}
 

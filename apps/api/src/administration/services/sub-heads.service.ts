@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { ApiException } from '../../common/exceptions/api.exception';
+import { AccountCodeService } from './account-code.service';
 import { CreateSubHeadDto, UpdateSubHeadDto } from '../dto/accounts.dto';
 
 @Injectable()
@@ -9,31 +10,30 @@ export class SubHeadsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly codes: AccountCodeService,
   ) {}
 
   async create(dto: CreateSubHeadDto, actorId?: string) {
     const head = await this.prisma.headAccount.findUnique({ where: { id: dto.headAccountId } });
     if (!head) throw ApiException.notFound('Head account');
 
-    const existing = await this.prisma.subHead.findFirst({
-      where: { code: dto.code, headAccountId: dto.headAccountId },
-    });
-    if (existing) throw ApiException.duplicateCode('Sub head code');
-
     const dupName = await this.prisma.subHead.findFirst({
       where: { headAccountId: dto.headAccountId, name: { equals: dto.name, mode: 'insensitive' } },
     });
     if (dupName) throw ApiException.conflict(`A sub head named "${dto.name}" already exists under this head`);
 
-    const item = await this.prisma.subHead.create({
-      data: {
-        code: dto.code,
-        name: dto.name,
-        headAccountId: dto.headAccountId,
-        description: dto.description ?? null,
-        status: dto.status ?? 'active',
-      },
-      include: { headAccount: true },
+    const item = await this.prisma.$transaction(async (tx) => {
+      const code = await this.codes.nextSubHeadCode(head.code, tx);
+      return tx.subHead.create({
+        data: {
+          code,
+          name: dto.name,
+          headAccountId: dto.headAccountId,
+          description: dto.description ?? null,
+          status: dto.status ?? 'active',
+        },
+        include: { headAccount: true },
+      });
     });
 
     this.audit.record({
@@ -41,6 +41,12 @@ export class SubHeadsService {
       entityId: item.id, message: `Sub head ${item.name} (${item.code}) created`,
     });
     return item;
+  }
+
+  async previewCode(headAccountId: string) {
+    const head = await this.prisma.headAccount.findUnique({ where: { id: headAccountId } });
+    if (!head) throw ApiException.notFound('Head account');
+    return this.codes.previewSubHeadCode(head.code);
   }
 
   async findAll(query: { page?: number; pageSize?: number; search?: string; status?: string; headAccountId?: string }) {
@@ -86,28 +92,84 @@ export class SubHeadsService {
   async update(id: string, dto: UpdateSubHeadDto, actorId?: string) {
     const existing = await this.ensureExists(id);
     const parentId = dto.headAccountId ?? existing.headAccountId;
+    const reparenting = dto.headAccountId !== undefined && dto.headAccountId !== existing.headAccountId;
+
+    let targetHead = null;
     if (dto.headAccountId) {
-      const head = await this.prisma.headAccount.findUnique({ where: { id: dto.headAccountId } });
-      if (!head) throw ApiException.notFound('Head account');
+      targetHead = await this.prisma.headAccount.findUnique({ where: { id: dto.headAccountId } });
+      if (!targetHead) throw ApiException.notFound('Head account');
     }
-    if (dto.code) {
-      const dup = await this.prisma.subHead.findFirst({
-        where: { code: dto.code, headAccountId: parentId, id: { not: id } },
-      });
-      if (dup) throw ApiException.duplicateCode('Sub head code');
-    }
+
     if (dto.name) {
       const dupName = await this.prisma.subHead.findFirst({
         where: { headAccountId: parentId, name: { equals: dto.name, mode: 'insensitive' }, id: { not: id } },
       });
       if (dupName) throw ApiException.conflict(`A sub head named "${dto.name}" already exists under this head`);
     }
-    const item = await this.prisma.subHead.update({ where: { id }, data: dto });
+
+    const item = reparenting
+      ? await this.reparent(id, dto, targetHead!.code, targetHead!.id)
+      : await this.prisma.subHead.update({
+          where: { id },
+          data: { name: dto.name, description: dto.description, status: dto.status },
+        });
+
     this.audit.record({
       userId: actorId, action: 'UPDATE', module: 'SUB_HEAD', entity: 'SubHead',
-      entityId: id, message: `Sub head ${item.name} updated`,
+      entityId: id, message: `Sub head ${item.name} updated${reparenting ? ` (moved, renumbered to ${item.code})` : ''}`,
     });
-    return item;
+    return this.prisma.subHead.findUnique({ where: { id }, include: { headAccount: true } });
+  }
+
+  /**
+   * Moves a sub head to a different head account and renumbers it.
+   *
+   * A sub head code carries its parent's code (`A1-01`), so moving one from
+   * `A1` to `L2` has to issue a new code — and every account beneath it carries
+   * the sub head code in its own, so those are renumbered in step. Doing it in
+   * one transaction means the tree is never visible with codes that disagree
+   * with where it actually sits.
+   *
+   * Renumbering only changes labels. Voucher entries, balances and links all
+   * reference account ids, so the ledger is untouched; only the code shown on
+   * reports moves, and the account type follows the new head.
+   */
+  private async reparent(
+    id: string,
+    dto: UpdateSubHeadDto,
+    targetHeadCode: string,
+    targetHeadId: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const code = await this.codes.nextSubHeadCode(targetHeadCode, tx);
+      const accountType = this.codes.accountTypeForHeadCode(targetHeadCode);
+
+      // Oldest first, so relative order — and therefore which account keeps
+      // which serial — is preserved across the move.
+      const accounts = await tx.mainAccount.findMany({
+        where: { subHeadId: id },
+        orderBy: { code: 'asc' },
+        select: { id: true },
+      });
+      for (const acc of accounts) {
+        const nextCode = await this.codes.nextMainAccountCode(code, tx);
+        await tx.mainAccount.update({
+          where: { id: acc.id },
+          data: { code: nextCode, accountType },
+        });
+      }
+
+      return tx.subHead.update({
+        where: { id },
+        data: {
+          headAccountId: targetHeadId,
+          code,
+          name: dto.name,
+          description: dto.description,
+          status: dto.status,
+        },
+      });
+    });
   }
 
   async remove(id: string, actorId?: string) {

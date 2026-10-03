@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { ApiException } from '../../common/exceptions/api.exception';
+import { AccountCodeService } from './account-code.service';
 import { CreateHeadAccountDto, UpdateHeadAccountDto } from '../dto/accounts.dto';
 
 @Injectable()
@@ -9,19 +10,26 @@ export class HeadAccountsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly codes: AccountCodeService,
   ) {}
 
+  /**
+   * A head account's code is the anchor of the whole subtree below it, so the
+   * code and the row are written together — a half-created head would consume a
+   * code in the series and leave its sub heads numbering against a head that
+   * does not exist.
+   */
   async create(dto: CreateHeadAccountDto, actorId?: string) {
-    const existing = await this.prisma.headAccount.findUnique({ where: { code: dto.code } });
-    if (existing) throw ApiException.duplicateCode('Account code');
-
     const dupName = await this.prisma.headAccount.findFirst({
       where: { name: { equals: dto.name, mode: 'insensitive' } },
     });
     if (dupName) throw ApiException.conflict(`A head account named "${dto.name}" already exists`);
 
-    const item = await this.prisma.headAccount.create({
-      data: { code: dto.code, name: dto.name, description: dto.description ?? null, status: dto.status ?? 'active' },
+    const item = await this.prisma.$transaction(async (tx) => {
+      const code = await this.codes.nextHeadCode(dto.accountType, tx);
+      return tx.headAccount.create({
+        data: { code, name: dto.name, description: dto.description ?? null, status: dto.status ?? 'active' },
+      });
     });
 
     this.audit.record({
@@ -30,6 +38,11 @@ export class HeadAccountsService {
     });
 
     return item;
+  }
+
+  /** The code the next head of this type would be assigned, for the create form. */
+  async previewCode(accountType: CreateHeadAccountDto['accountType']) {
+    return this.codes.previewHeadCode(accountType);
   }
 
   async findAll(query: { page?: number; pageSize?: number; search?: string; status?: string }) {
@@ -68,17 +81,21 @@ export class HeadAccountsService {
 
   async update(id: string, dto: UpdateHeadAccountDto, actorId?: string) {
     await this.ensureExists(id);
-    if (dto.code) {
-      const dup = await this.prisma.headAccount.findFirst({ where: { code: dto.code, id: { not: id } } });
-      if (dup) throw ApiException.duplicateCode('Account code');
-    }
     if (dto.name) {
       const dupName = await this.prisma.headAccount.findFirst({
         where: { name: { equals: dto.name, mode: 'insensitive' }, id: { not: id } },
       });
       if (dupName) throw ApiException.conflict(`A head account named "${dto.name}" already exists`);
     }
-    const item = await this.prisma.headAccount.update({ where: { id }, data: dto });
+    // The code and therefore the account type are immutable: every sub head and
+    // account below this head carries the code in its own, and renumbering a
+    // live head would silently restate a whole statement. Fields are listed
+    // rather than spreading `dto` so immutability does not rest on the
+    // validation pipe alone.
+    const item = await this.prisma.headAccount.update({
+      where: { id },
+      data: { name: dto.name, description: dto.description, status: dto.status },
+    });
     this.audit.record({
       userId: actorId, action: 'UPDATE', module: 'HEAD_ACCOUNT', entity: 'HeadAccount',
       entityId: id, message: `Head account ${item.name} updated`,

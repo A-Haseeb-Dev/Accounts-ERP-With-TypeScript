@@ -16,7 +16,8 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge, Badge } from '@/components/ui/badge';
 import { dateTime, num } from '@/lib/utils';
-import { nextMainAccountCode, typeForLetter } from '@/lib/accounts';
+import { useNextAccountCode } from '@/hooks/use-next-account-code';
+import { AutoCodeField } from '@/components/auto-code-field';
 import { useAuth } from '@/context/auth-context';
 import type { MainAccount, SubHead, Paginated } from '@/lib/types';
 
@@ -27,6 +28,21 @@ const ACCOUNT_TYPES = [
   { value: 'REVENUE', label: 'Revenue' },
   { value: 'EXPENSE', label: 'Expense' },
 ];
+
+/**
+ * The statement an account belongs to, read off the first character of its code.
+ * The server is what assigns that character — it derives the same thing when it
+ * saves the row — so this is for display only, never for choosing a type.
+ */
+const TYPE_BY_LETTER: Record<string, string> = {
+  A: 'ASSET',
+  L: 'LIABILITY',
+  P: 'EQUITY',
+  R: 'REVENUE',
+  E: 'EXPENSE',
+};
+
+const typeForLetter = (letter: string): string => TYPE_BY_LETTER[letter.toUpperCase()] ?? 'ASSET';
 
 const headTypeFor = (sh: SubHead): string => typeForLetter(String(sh.headAccount?.code ?? sh.code ?? 'A')[0]);
 
@@ -122,21 +138,23 @@ export default function MainAccountsPage() {
 
   const save = useMutation({
     mutationFn: (payload: Partial<MainAccount>) => {
-      const merged: Partial<MainAccount> = { ...payload };
-      if (!editing?.id) merged.code = generatedCode || payload.code;
+      // `code` is assigned by the server from the chosen sub head, and the
+      // account type follows the head it sits under — neither is sent.
+      const { code: _code, accountType: _accountType, ...body } = payload;
       return editing?.id
         ? apiFetch<Partial<MainAccount> & { warning?: string }>(`/main-accounts/${editing.id}`, {
             method: 'PATCH',
-            body: JSON.stringify(merged),
+            body: JSON.stringify(body),
           })
         : apiFetch<Partial<MainAccount> & { warning?: string }>('/main-accounts', {
             method: 'POST',
-            body: JSON.stringify(merged),
+            body: JSON.stringify(body),
           });
     },
     onSuccess: (saved: Partial<MainAccount> & { warning?: string }) => {
       qc.invalidateQueries({ queryKey: ['main-accounts'] });
       qc.invalidateQueries({ queryKey: ['flat', 'main-accounts'] });
+      qc.invalidateQueries({ queryKey: ['main-accounts', 'next-code'] });
       setModalOpen(false);
       setEditing(null);
       setForm({});
@@ -168,13 +186,14 @@ export default function MainAccountsPage() {
   const set = (name: keyof MainAccount | string, value: string | number | undefined) => setForm((f) => ({ ...f, [name]: value }));
 
   const selectedSubHead = subHeadData.find((s) => s.id === form.subHeadId);
-  const accountCodesUnderSub = allAccounts
-    .filter((a) => a.subHeadId === form.subHeadId)
-    .map((a) => a.code ?? '');
-  const generatedCode =
-    editing || !selectedSubHead
-      ? form.code ?? ''
-      : nextMainAccountCode(selectedSubHead.code, accountCodesUnderSub);
+  const { code: nextCode, isLoading: nextCodeLoading } = useNextAccountCode(
+    '/main-accounts',
+    { subHeadId: form.subHeadId || undefined },
+    modalOpen && !editing && !!form.subHeadId,
+  );
+  // Moving an account to a different sub head renumbers it, so the code on screen
+  // only applies to the parent it is currently filed under.
+  const movingParent = !!editing && !!form.subHeadId && form.subHeadId !== editing.subHeadId;
 
   return (
     <div>
@@ -183,7 +202,7 @@ export default function MainAccountsPage() {
         description="Leaf accounts in the chart of accounts where voucher entries are posted."
         actions={
           canCreate && (
-            <Button onClick={() => { setEditing(null); setForm({ status: 'active', accountType: 'ASSET' }); setError(''); setModalOpen(true); }}>
+            <Button onClick={() => { setEditing(null); setForm({ status: 'active' }); setError(''); setModalOpen(true); }}>
               <Plus className="h-4 w-4" /> New Main Account
             </Button>
           )
@@ -312,32 +331,45 @@ export default function MainAccountsPage() {
           className="space-y-4"
         >
           <div className="grid grid-cols-2 gap-4">
-          <Field label="Code" required>
-            <Input
-              value={generatedCode}
-              onChange={(e) => set('code', e.target.value)}
-              placeholder="auto A1-001-0001"
-              required
-              disabled={!!selectedSubHead && !editing}
-            />
-            {!!selectedSubHead && !editing && (
-              <p className="mt-1 text-[11px] text-slate-400">Auto-generated from the selected sub head. Clear the sub head to enter manually.</p>
+            {editing ? (
+              <Field
+                label="Code"
+                hint={
+                  movingParent
+                    ? 'Saving under the newly selected sub head will renumber this account and follow its type.'
+                    : 'Assigned automatically from the chart hierarchy — it cannot be edited.'
+                }
+              >
+                <Input readOnly value={form.code ?? ''} className="bg-slate-100 font-mono text-slate-500" />
+              </Field>
+            ) : (
+              <AutoCodeField
+                code={nextCode}
+                isLoading={nextCodeLoading}
+                waitingForParent="sub head"
+                parentLabel={selectedSubHead ? `Extends ${selectedSubHead.code ?? 'the sub head'}` : undefined}
+              />
             )}
-          </Field>
             <Field label="Name" required>
               <Input value={form.name ?? ''} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Petty Cash" required />
             </Field>
           </div>
           <Field label="Sub Head" required>
-            <Select value={form.subHeadId ?? ''} onChange={(e) => { set('subHeadId', e.target.value); const sh = subHeadData.find((s) => s.id === e.target.value); if (sh) set('accountType', headTypeFor(sh)); }} disabled={subHeadsLoading} required>
+            <Select value={form.subHeadId ?? ''} onChange={(e) => set('subHeadId', e.target.value)} disabled={subHeadsLoading} required>
               <option value="">Select sub head…</option>
               {subHeadOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
           </Field>
-          <Field label="Account Type" required hint="Auto-derived from the selected sub head's head account.">
-            <Select value={form.accountType ?? 'ASSET'} onChange={(e) => set('accountType', e.target.value)}>
-              {ACCOUNT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </Select>
+          <Field
+            label="Account Type"
+            hint="Taken from the head account above the selected sub head."
+          >
+            <Input
+              readOnly
+              value={editing ? (form.accountType ?? '') : (selectedSubHead?.headAccount ? headTypeFor(selectedSubHead) : '')}
+              placeholder={selectedSubHead?.headAccount ? undefined : 'Select a sub head to see its type'}
+              className="bg-slate-100 text-slate-500"
+            />
           </Field>
           <div className="grid grid-cols-3 gap-4">
             <Field label="Opening Balance" hint="Posted as an opening entry in the ledger.">

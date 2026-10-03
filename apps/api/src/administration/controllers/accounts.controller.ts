@@ -27,6 +27,19 @@ export class HeadAccountsController {
     return this.service.findAll({ page: Number(page), pageSize: Number(pageSize), search, status });
   }
 
+  @Get('next-code')
+  @Permissions('administration.head-accounts.view')
+  @ApiOperation({ summary: 'Next auto-generated head account code for a type' })
+  async nextCode(@Query('accountType') accountType: any) {
+    // The letter, and therefore the code, is a function of the type — so the
+    // type has to be a real one, not something that falls back to a default.
+    const types = ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'];
+    if (!types.includes(accountType)) {
+      return { code: null };
+    }
+    return { code: await this.service.previewCode(accountType) };
+  }
+
   @Get('flat')
   @Permissions('administration.head-accounts.view')
   @ApiOperation({ summary: 'List all head accounts (flat, for selects)' })
@@ -83,6 +96,16 @@ export class SubHeadsController {
     return this.service.findAllFlat();
   }
 
+  @Get('next-code')
+  @Permissions('administration.sub-heads.view')
+  @ApiOperation({ summary: 'Next auto-generated sub head code for a head account' })
+  async nextCode(@Query('headAccountId') headAccountId?: string) {
+    // Without a parent there is no prefix to extend, so there is no code to
+    // offer yet — the form must show a parent first.
+    if (!headAccountId) return { code: null };
+    return { code: await this.service.previewCode(headAccountId) };
+  }
+
   @Get(':id')
   @Permissions('administration.sub-heads.view')
   @ApiOperation({ summary: 'Get a sub head' })
@@ -130,6 +153,16 @@ export class MainAccountsController {
   @ApiOperation({ summary: 'List all main accounts (for selects)' })
   findAllFlat(@Query('active') active?: string, @Query('type') type?: string) {
     return this.service.findAllFlat(filterFromQuery(active, type));
+  }
+
+  @Get('next-code')
+  @Permissions('administration.main-accounts.view')
+  @ApiOperation({ summary: 'Next auto-generated main account code for a sub head' })
+  async nextCode(@Query('subHeadId') subHeadId?: string) {
+    // The code extends the sub head's, so it cannot be known before a parent is
+    // chosen.
+    if (!subHeadId) return { code: null };
+    return { code: await this.service.previewCode(subHeadId) };
   }
 
   @Get(':id')

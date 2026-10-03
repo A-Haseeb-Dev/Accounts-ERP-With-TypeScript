@@ -7,6 +7,8 @@ import { useState } from 'react';
 import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { useFlatOptions } from '@/hooks/use-options';
+import { useNextAccountCode } from '@/hooks/use-next-account-code';
+import { AutoCodeField } from '@/components/auto-code-field';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { DataTable } from '@/components/data-table';
@@ -40,12 +42,18 @@ export default function SubHeadsPage() {
   });
 
   const save = useMutation({
-    mutationFn: (payload: Partial<SubHead>) =>
-      editing?.id
-        ? apiFetch(`/sub-heads/${editing.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
-        : apiFetch('/sub-heads', { method: 'POST', body: JSON.stringify(payload) }),
+    mutationFn: (payload: Partial<SubHead>) => {
+      // The code is assigned by the server from the chosen head, so it is never
+      // sent; what shows in the form is a preview of it.
+      const { code: _code, ...body } = payload;
+      return editing?.id
+        ? apiFetch(`/sub-heads/${editing.id}`, { method: 'PATCH', body: JSON.stringify(body) })
+        : apiFetch('/sub-heads', { method: 'POST', body: JSON.stringify(body) });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sub-heads'] });
+      qc.invalidateQueries({ queryKey: ['flat', 'sub-heads'] });
+      qc.invalidateQueries({ queryKey: ['sub-heads', 'next-code'] });
       setModalOpen(false);
       setEditing(null);
       setForm({});
@@ -74,6 +82,14 @@ export default function SubHeadsPage() {
   });
 
   const set = (name: keyof SubHead | string, value: string | number | undefined) => setForm((f) => ({ ...f, [name]: value }));
+
+  const { code: nextCode, isLoading: nextCodeLoading } = useNextAccountCode(
+    '/sub-heads',
+    { headAccountId: form.headAccountId || undefined },
+    modalOpen && !editing && !!form.headAccountId,
+  );
+
+  const selectedHead = headOptions.find((o) => o.value === form.headAccountId);
 
   return (
     <div>
@@ -128,17 +144,29 @@ export default function SubHeadsPage() {
           onSubmit={(e) => { e.preventDefault(); setError(''); save.mutate(form); }}
           className="space-y-4"
         >
-          <Field label="Code" required>
-            <Input value={form.code ?? ''} onChange={(e) => set('code', e.target.value)} placeholder="e.g. 03" required />
-          </Field>
-          <Field label="Name" required>
-            <Input value={form.name ?? ''} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Current Assets" required />
-          </Field>
           <Field label="Head Account" required>
             <Select value={form.headAccountId ?? ''} onChange={(e) => set('headAccountId', e.target.value)} disabled={headsLoading} required>
               <option value="">Select head account…</option>
               {headOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
+          </Field>
+          {editing ? (
+            <Field
+              label="Code"
+              hint="Assigned automatically from the chart hierarchy — it cannot be edited."
+            >
+              <Input readOnly value={form.code ?? ''} className="bg-slate-100 font-mono text-slate-500" />
+            </Field>
+          ) : (
+            <AutoCodeField
+              code={nextCode}
+              isLoading={nextCodeLoading}
+              waitingForParent="head account"
+              parentLabel={selectedHead ? `Extends ${selectedHead.label}` : undefined}
+            />
+          )}
+          <Field label="Name" required>
+            <Input value={form.name ?? ''} onChange={(e) => set('name', e.target.value)} placeholder="e.g. Current Assets" required />
           </Field>
           <Field label="Description">
             <Textarea value={form.description ?? ''} onChange={(e) => set('description', e.target.value)} />

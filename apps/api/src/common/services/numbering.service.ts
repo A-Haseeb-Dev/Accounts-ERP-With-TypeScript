@@ -102,6 +102,75 @@ export class NumberingService {
     return this.format(nextPrefix, current + 1, padLength, useYear);
   }
 
+  /**
+   * Atomically reserves the next number in a series and returns it unformatted.
+   *
+   * Callers that build their own code shape (the chart of accounts, for example,
+   * which joins `A1` + `-01` + `-0001` rather than using a template) need the
+   * number itself, not a formatted string. Same guarantee as `next()`: the
+   * single-statement upsert means two concurrent callers can never be handed
+   * the same value. Series are never scoped by year.
+   */
+  async nextSequence(settingKey: string, tx?: any): Promise<number> {
+    const client = tx ?? this.prisma;
+    const key = `numbering.${settingKey}`;
+    const rowId =
+      typeof globalThis.crypto?.randomUUID === 'function'
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    const rows: { value: string }[] = await client.$queryRawUnsafe(
+      `INSERT INTO "SystemSetting" ("id", "key", "value", "organizationId", "updatedAt")
+       VALUES ($1, $2, '1', 'default-org', now())
+       ON CONFLICT ("key", "organizationId")
+       DO UPDATE SET "value" = (
+         COALESCE(NULLIF("SystemSetting"."value", '')::int, 0) + 1
+       )::text, "updatedAt" = now()
+       RETURNING "value"`,
+      rowId,
+      key,
+    );
+    return Number(rows[0]?.value ?? 1);
+  }
+
+  /**
+   * Raises a series counter so it is at least `floor`, never lowering it.
+   *
+   * A counter only knows about numbers this service handed out. A chart built
+   * before the counters existed — or one edited by hand — can already hold
+   * higher numbers, and restarting at 1 would collide with live ledger rows.
+   * Seeding to the highest number actually in use closes that gap. Idempotent,
+   * and safe to call on every allocation.
+   */
+  async seedSequence(settingKey: string, floor: number, tx?: any): Promise<void> {
+    if (!Number.isFinite(floor) || floor <= 0) return;
+    const client = tx ?? this.prisma;
+    const key = `numbering.${settingKey}`;
+    await client.$executeRawUnsafe(
+      `UPDATE "SystemSetting" SET "value" = $1::text, "updatedAt" = now()
+       WHERE "key" = $2 AND "organizationId" = 'default-org'
+         AND COALESCE(NULLIF("value", '')::int, 0) < $3`,
+      String(floor),
+      key,
+      floor,
+    );
+  }
+
+  /**
+   * Reads the current value of a series WITHOUT reserving the next one, so the
+   * caller can preview what `nextSequence()` would hand out. As with
+   * `preview()`, the answer may be off by one if someone else allocates in the
+   * meantime — it is only ever shown to the user, never persisted.
+   */
+  async peekSequence(settingKey: string): Promise<number> {
+    const row = await this.prisma.systemSetting.findFirst({
+      where: { key: `numbering.${settingKey}` },
+      select: { value: true },
+    });
+    const current = Number(row?.value ?? 0);
+    return Number.isFinite(current) && current > 0 ? current : 0;
+  }
+
   private async configuredPrefix(settingKey: string): Promise<string | undefined> {
     const configKey = this.prefixOverrides[settingKey];
     if (!configKey) return undefined;

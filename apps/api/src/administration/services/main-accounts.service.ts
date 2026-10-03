@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { AccountingService } from '../../common/services/accounting.service';
 import { ApiException } from '../../common/exceptions/api.exception';
+import { AccountCodeService } from './account-code.service';
 import { CreateMainAccountDto, UpdateMainAccountDto } from '../dto/accounts.dto';
 
 @Injectable()
@@ -11,6 +12,7 @@ export class MainAccountsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly accounting: AccountingService,
+    private readonly codes: AccountCodeService,
   ) {}
 
   async create(dto: CreateMainAccountDto, actorId?: string) {
@@ -20,26 +22,26 @@ export class MainAccountsService {
     });
     if (!subHead) throw ApiException.notFound('Sub head');
 
-    const existing = await this.prisma.mainAccount.findFirst({ where: { code: dto.code } });
-    if (existing) throw ApiException.duplicateCode('Account code');
+    // The type follows the head the account is filed under, so an account can
+    // never claim a type that contradicts the statement it is reported in.
+    const accountType = this.codes.accountTypeForHeadCode(subHead.headAccount.code);
 
-    const accountType =
-  dto.accountType ??
-  typeForLetter((subHead.code ?? subHead.headAccount.code ?? '').charAt(0));
-
-    const item = await this.prisma.mainAccount.create({
-      data: {
-        code: dto.code,
-        name: dto.name,
-        subHeadId: dto.subHeadId,
-        accountType,
-        description: dto.description ?? null,
-        openingBalance: dto.openingBalance ?? 0,
-        openingBalanceType: dto.openingBalanceType ?? 'DR',
-        openingDate: dto.openingDate ? new Date(dto.openingDate) : null,
-        status: dto.status ?? 'active',
-      },
-      include: { subHead: { include: { headAccount: true } } },
+    const item = await this.prisma.$transaction(async (tx) => {
+      const code = await this.codes.nextMainAccountCode(subHead.code, tx);
+      return tx.mainAccount.create({
+        data: {
+          code,
+          name: dto.name,
+          subHeadId: dto.subHeadId,
+          accountType,
+          description: dto.description ?? null,
+          openingBalance: dto.openingBalance ?? 0,
+          openingBalanceType: dto.openingBalanceType ?? 'DR',
+          openingDate: dto.openingDate ? new Date(dto.openingDate) : null,
+          status: dto.status ?? 'active',
+        },
+        include: { subHead: { include: { headAccount: true } } },
+      });
     });
 
     const syncWarning = await this.syncOpening(
@@ -56,6 +58,12 @@ export class MainAccountsService {
     });
 
     return syncWarning ? { ...item, warning: syncWarning } : item;
+  }
+
+  async previewCode(subHeadId: string) {
+    const subHead = await this.prisma.subHead.findUnique({ where: { id: subHeadId } });
+    if (!subHead) throw ApiException.notFound('Sub head');
+    return this.codes.previewMainAccountCode(subHead.code);
   }
 
   /**
@@ -132,13 +140,28 @@ export class MainAccountsService {
 
   async update(id: string, dto: UpdateMainAccountDto, actorId?: string) {
     const current = await this.ensureExists(id);
+    let target: { id: string; code: string; headCode: string } | null = null;
     if (dto.subHeadId) {
-      const subHead = await this.prisma.subHead.findUnique({ where: { id: dto.subHeadId } });
+      const subHead = await this.prisma.subHead.findUnique({
+        where: { id: dto.subHeadId },
+        include: { headAccount: true },
+      });
       if (!subHead) throw ApiException.notFound('Sub head');
+      target = { id: subHead.id, code: subHead.code, headCode: subHead.headAccount.code };
     }
+
+    // Moving an account to another sub head renumbers it, because its code
+    // carries that sub head's. The type follows the new head so the account is
+    // still reported on the statement it now belongs to.
+    const moving = !!target && target.id !== current.subHeadId;
 
     const data: Record<string, unknown> = { ...dto };
     if (dto.openingDate !== undefined) data.openingDate = dto.openingDate ? new Date(dto.openingDate) : null;
+    if (moving) {
+      const code = await this.codes.nextMainAccountCode(target!.code);
+      data.code = code;
+      data.accountType = this.codes.accountTypeForHeadCode(target!.headCode);
+    }
 
     const openingChanged = dto.openingBalance !== undefined
       ? Number(dto.openingBalance) !== Number(current.openingBalance)
@@ -154,7 +177,10 @@ export class MainAccountsService {
     const item = await this.prisma.mainAccount.update({ where: { id }, data });
     this.audit.record({
       userId: actorId, action: 'UPDATE', module: 'MAIN_ACCOUNT', entity: 'MainAccount',
-      entityId: id, message: `Main account ${item.name} updated`,
+      entityId: id,
+      message: moving
+        ? `Main account ${item.name} moved to ${target!.code} and renumbered to ${item.code}`
+        : `Main account ${item.name} updated`,
     });
 
     const balanceAfter = Number(item.openingBalance ?? 0);
@@ -193,16 +219,4 @@ export class MainAccountsService {
     if (!item) throw ApiException.notFound('Main account');
     return item;
   }
-}
-
-const LETTER_TO_TYPE: Record<string, string> = {
-  A: 'ASSET',
-  L: 'LIABILITY',
-  E: 'EXPENSE',
-  R: 'REVENUE',
-  P: 'EQUITY',
-};
-
-function typeForLetter(letter: string): string {
-  return LETTER_TO_TYPE[letter.toUpperCase()] ?? 'ASSET';
 }

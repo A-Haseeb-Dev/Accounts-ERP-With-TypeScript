@@ -16,22 +16,41 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { useFlatOptions } from '@/hooks/use-options';
+import { useNextAccountCode } from '@/hooks/use-next-account-code';
+import { AutoCodeField } from '@/components/auto-code-field';
 import { useAuth } from '@/context/auth-context';
-import {
-  ACCOUNT_TYPES,
-  ACCOUNT_TYPE_LABELS,
-  nextHeadCode,
-  nextSubHeadCode,
-  regenerateHeadCode,
-  typeForLetter,
-} from '@/lib/accounts';
 import type { HeadAccount, SubHead } from '@/lib/types';
 
 type Head = HeadAccount;
 
+const ACCOUNT_TYPES = ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'] as const;
+type AccountType = (typeof ACCOUNT_TYPES)[number];
+
+const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
+  ASSET: 'Asset',
+  LIABILITY: 'Liability',
+  EQUITY: 'Equity',
+  REVENUE: 'Revenue',
+  EXPENSE: 'Expense',
+};
+
+/**
+ * The statement a head belongs to, read off the first character of its code. The
+ * server decides that character; this only mirrors it for display.
+ */
+const TYPE_BY_LETTER: Record<string, AccountType> = {
+  A: 'ASSET',
+  L: 'LIABILITY',
+  P: 'EQUITY',
+  R: 'REVENUE',
+  E: 'EXPENSE',
+};
+
+const typeForLetter = (letter: string): AccountType => TYPE_BY_LETTER[letter.toUpperCase()] ?? 'ASSET';
+
 interface HeadForm {
   name: string;
-  type: string;
+  type: AccountType;
   description: string;
 }
 interface SubForm {
@@ -40,14 +59,13 @@ interface SubForm {
 }
 
 interface HeadPayload {
-  code: string;
+  accountType?: AccountType;
   name: string;
   description?: string;
   status: string;
 }
 
 interface SubPayload {
-  code: string;
   name: string;
   headAccountId: string;
   description?: string;
@@ -103,6 +121,19 @@ export default function ChartOfAccountsPage() {
   const [delWarn, setDelWarn] = useState<{ name: string; labels: string[] } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Codes are assigned by the server from the type and the chosen parent; the
+  // form only shows what would be issued.
+  const { code: nextHeadCode, isLoading: headCodeLoading } = useNextAccountCode(
+    '/head-accounts',
+    { accountType: headForm.type },
+    headModal && !editingHead,
+  );
+  const { code: nextSubCode, isLoading: subCodeLoading } = useNextAccountCode(
+    '/sub-heads',
+    { headAccountId: subParentHead?.id },
+    subModal && !editingSub && !!subParentHead,
+  );
+
   const openNewHead = () => {
     setEditingHead(null);
     setHeadForm({ name: '', type: 'ASSET', description: '' });
@@ -140,33 +171,23 @@ export default function ChartOfAccountsPage() {
     if (!headForm.name.trim()) return setHeadError('Name is required');
     setHeadSaving(true);
     try {
-      const code = editingHead
-        ? regenerateHeadCode(editingHead.code, headForm.type, heads.map((h) => h.code))
-        : nextHeadCode(headForm.type, heads.map((h) => h.code));
+      // The code is the server's to assign, from the account type. On edit the
+      // type is fixed (it is baked into an immutable code), so only the details
+      // are sent.
       const payload: HeadPayload = {
-        code,
+        ...(editingHead ? {} : { accountType: headForm.type }),
         name: headForm.name.trim(),
         description: headForm.description.trim() || undefined,
         status: 'active',
       };
       if (editingHead) {
-        const oldCode = editingHead.code;
         await apiFetch(`/head-accounts/${editingHead.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
-        // Re-prefix sub head codes when the head code changed (e.g. 01 -> A1).
-        if (code !== oldCode) {
-          const subs = grouped[editingHead.id] ?? [];
-          for (const sub of subs) {
-            const newSubCode = `${code}-${suffixOf(sub.code, 3)}`;
-            if (newSubCode !== sub.code) {
-              await apiFetch(`/sub-heads/${sub.id}`, { method: 'PATCH', body: JSON.stringify({ code: newSubCode }) });
-            }
-          }
-        }
       } else {
         await apiFetch('/head-accounts', { method: 'POST', body: JSON.stringify(payload) });
       }
       qc.invalidateQueries({ queryKey: ['flat', 'head-accounts'] });
       qc.invalidateQueries({ queryKey: ['flat', 'sub-heads'] });
+      qc.invalidateQueries({ queryKey: ['head-accounts', 'next-code'] });
       setHeadModal(false);
     } catch (e) {
       setHeadError((e as Error).message);
@@ -181,12 +202,7 @@ export default function ChartOfAccountsPage() {
     if (!subForm.name.trim()) return setSubError('Name is required');
     setSubSaving(true);
     try {
-      const siblings = grouped[subParentHead.id] ?? [];
-      const code = editingSub
-        ? editingSub.code
-        : nextSubHeadCode(subParentHead.code, siblings.map((s) => s.code));
       const payload: SubPayload = {
-        code,
         name: subForm.name.trim(),
         headAccountId: subParentHead.id,
         description: subForm.description.trim() || undefined,
@@ -199,6 +215,7 @@ export default function ChartOfAccountsPage() {
       }
       qc.invalidateQueries({ queryKey: ['flat', 'sub-heads'] });
       qc.invalidateQueries({ queryKey: ['flat', 'head-accounts'] });
+      qc.invalidateQueries({ queryKey: ['sub-heads', 'next-code'] });
       setSubModal(false);
     } catch (e) {
       setSubError((e as Error).message);
@@ -232,12 +249,6 @@ export default function ChartOfAccountsPage() {
       setDeleting(false);
     }
   };
-
-  const previewCode = editingHead
-    ? regenerateHeadCode(editingHead.code, headForm.type, heads.map((h) => h.code))
-    : nextHeadCode(headForm.type, heads.map((h) => h.code));
-  const subPreviewCode =
-    editingSub && subParentHead ? editingSub.code : subParentHead ? nextSubHeadCode(subParentHead.code, (grouped[subParentHead.id] ?? []).map((s) => s.code)) : '';
 
   return (
     <div>
@@ -328,13 +339,21 @@ export default function ChartOfAccountsPage() {
             <Input value={headForm.name} onChange={(e) => setHeadForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Assets" required />
           </Field>
           <Field label="Type" required hint="Determines the code letter: A (Assets), L (Liabilities), E (Expenses), R (Revenue), P (Proprietorship).">
-            <Select value={headForm.type} onChange={(e) => setHeadForm((f) => ({ ...f, type: e.target.value }))}>
+            <Select
+              value={headForm.type}
+              onChange={(e) => setHeadForm((f) => ({ ...f, type: e.target.value as AccountType }))}
+              disabled={!!editingHead}
+            >
               {ACCOUNT_TYPES.map((t) => <option key={t} value={t}>{ACCOUNT_TYPE_LABELS[t]}</option>)}
             </Select>
           </Field>
-          <Field label="Generated Code">
-            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3.5 py-2.5 font-mono text-sm font-semibold text-teal-700">{previewCode}</div>
-          </Field>
+          {editingHead ? (
+            <Field label="Code" hint="Fixed for the life of the head — it is part of every code beneath it.">
+              <Input readOnly value={editingHead.code} className="bg-slate-100 font-mono text-slate-500" />
+            </Field>
+          ) : (
+            <AutoCodeField code={nextHeadCode} isLoading={headCodeLoading} />
+          )}
           <Field label="Description">
             <Input value={headForm.description} onChange={(e) => setHeadForm((f) => ({ ...f, description: e.target.value }))} />
           </Field>
@@ -359,9 +378,17 @@ export default function ChartOfAccountsPage() {
           <Field label="Name" required>
             <Input value={subForm.name} onChange={(e) => setSubForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Current Assets" required />
           </Field>
-          <Field label="Generated Code">
-            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3.5 py-2.5 font-mono text-sm font-semibold text-teal-700">{subPreviewCode}</div>
-          </Field>
+          {editingSub ? (
+            <Field label="Code" hint="Fixed unless this sub head is moved to another head, which renumbers it and everything beneath it.">
+              <Input readOnly value={editingSub.code} className="bg-slate-100 font-mono text-slate-500" />
+            </Field>
+          ) : (
+            <AutoCodeField
+              code={nextSubCode}
+              isLoading={subCodeLoading}
+              parentLabel={subParentHead ? `Extends ${subParentHead.code}` : undefined}
+            />
+          )}
           <Field label="Status">
             <Select defaultValue="active">
               <option value="active">Active</option>
@@ -407,14 +434,6 @@ export default function ChartOfAccountsPage() {
 
 function letterOf(code: string): string {
   return (code.trim().split('-')[0] ?? 'A').charAt(0).toUpperCase();
-}
-
-function suffixOf(code: string, pad: number): string {
-  const parts = code.trim().split('-');
-  const last = parts[parts.length - 1].trim();
-  const num = parseInt(last, 10);
-  if (Number.isNaN(num)) return last.padStart(pad, '0');
-  return String(num).padStart(pad, '0');
 }
 
 function toneForType(type: string): 'teal' | 'amber' | 'blue' | 'green' | 'red' {

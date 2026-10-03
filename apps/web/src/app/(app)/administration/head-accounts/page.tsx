@@ -3,6 +3,14 @@
 import { SimpleMaster } from '@/components/simple-master';
 import type { HeadAccount } from '@/lib/types';
 
+const ACCOUNT_TYPES = [
+  { value: 'ASSET', label: 'Asset' },
+  { value: 'LIABILITY', label: 'Liability' },
+  { value: 'EQUITY', label: 'Equity' },
+  { value: 'REVENUE', label: 'Revenue' },
+  { value: 'EXPENSE', label: 'Expense' },
+];
+
 export default function HeadAccountsPage() {
   return (
     <SimpleMaster<HeadAccount>
@@ -18,11 +26,26 @@ export default function HeadAccountsPage() {
           { key: 'description', header: 'Description', render: (r) => r.description ? <span className="text-slate-500">{r.description}</span> : '-' },
         ],
         fields: [
-          { name: 'code', label: 'Code', type: 'text', required: true, placeholder: 'e.g. 06' },
-          { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Assets' },
+          {
+            name: 'accountType',
+            label: 'Account Type',
+            type: 'select',
+            required: true,
+            createOnly: true,
+            options: ACCOUNT_TYPES,
+          },
+          {
+            name: 'code',
+            label: 'Code',
+            auto: true,
+            required: true,
+          },
+          { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Current Assets' },
           { name: 'description', label: 'Description', type: 'textarea' },
           { name: 'status', label: 'Status', type: 'status' },
         ],
+        // The type fixes the code's letter, so it is chosen before the code.
+        nextCodeDependsOn: ['accountType'],
       }}
     />
   );
