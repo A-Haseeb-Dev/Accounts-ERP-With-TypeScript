@@ -44,36 +44,56 @@ export class DashboardService {
       returnsAgg,
       pendingReceipts,
     ] = await Promise.all([
+      // `lt: tomorrow` throughout: these figures are "so far", and a document dated
+      // ahead was open-entered, not spent. Without the upper bound a purchase
+      // dated next month reported itself as an expense of this one, and the
+      // cheque queries below already bounded themselves the same way.
       this.prisma.sale.aggregate({
-        where: { status: 'posted', saleDate: { gte: today } },
+        where: { status: 'posted', saleDate: { gte: today, lt: tomorrow } },
         _sum: { grandTotal: true },
       }),
       this.prisma.purchase.aggregate({
-        where: { status: 'posted', purchaseDate: { gte: today } },
+        where: { status: 'posted', purchaseDate: { gte: today, lt: tomorrow } },
         _sum: { grandTotal: true },
       }),
       this.prisma.sale.aggregate({
-        where: { status: 'posted', saleDate: { gte: monthStart } },
+        where: { status: 'posted', saleDate: { gte: monthStart, lt: tomorrow } },
         _sum: { grandTotal: true },
       }),
       this.prisma.purchase.aggregate({
-        where: { status: 'posted', purchaseDate: { gte: monthStart } },
+        where: { status: 'posted', purchaseDate: { gte: monthStart, lt: tomorrow } },
         _sum: { grandTotal: true },
       }),
       this.prisma.paymentEntry.aggregate({
-        where: { status: 'posted', paymentType: 'RECEIPT', paymentDate: { gte: today } },
+        where: {
+          status: 'posted',
+          paymentType: 'RECEIPT',
+          paymentDate: { gte: today, lt: tomorrow },
+        },
         _sum: { amount: true },
       }),
       this.prisma.paymentEntry.aggregate({
-        where: { status: 'posted', paymentType: 'PAYMENT', paymentDate: { gte: today } },
+        where: {
+          status: 'posted',
+          paymentType: 'PAYMENT',
+          paymentDate: { gte: today, lt: tomorrow },
+        },
         _sum: { amount: true },
       }),
       this.prisma.paymentEntry.aggregate({
-        where: { status: 'posted', paymentType: 'RECEIPT', paymentDate: { gte: monthStart } },
+        where: {
+          status: 'posted',
+          paymentType: 'RECEIPT',
+          paymentDate: { gte: monthStart, lt: tomorrow },
+        },
         _sum: { amount: true },
       }),
       this.prisma.paymentEntry.aggregate({
-        where: { status: 'posted', paymentType: 'PAYMENT', paymentDate: { gte: monthStart } },
+        where: {
+          status: 'posted',
+          paymentType: 'PAYMENT',
+          paymentDate: { gte: monthStart, lt: tomorrow },
+        },
         _sum: { amount: true },
       }),
       this.prisma.customer.count({ where: { status: 'active' } }),
