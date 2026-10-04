@@ -1,4 +1,5 @@
 import {
+  IsISO8601,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -124,6 +125,18 @@ export class CreateItemDto {
   @IsOptional()
   defaultLocationId?: string;
 
+  @IsOptional()
+  @IsNumber()
+  openingQuantity?: number;
+
+  @IsOptional()
+  @IsNumber()
+  openingUnitCost?: number;
+
+  @IsOptional()
+  @IsISO8601()
+  openingDate?: string;
+
   @IsString()
   @IsOptional()
   status?: string;
@@ -178,6 +191,18 @@ export class UpdateItemDto {
   @IsString()
   @IsOptional()
   defaultLocationId?: string;
+
+  @IsOptional()
+  @IsNumber()
+  openingQuantity?: number;
+
+  @IsOptional()
+  @IsNumber()
+  openingUnitCost?: number;
+
+  @IsOptional()
+  @IsISO8601()
+  openingDate?: string;
 
   @IsString()
   @IsOptional()

@@ -52,7 +52,7 @@ function buildService(overrides?: {
   };
   const audit = overrides?.audit ?? { record: vi.fn().mockResolvedValue(undefined) };
   const numbering = overrides?.numbering ?? { next: vi.fn().mockResolvedValue('JV-000001') };
-  const accounting = new AccountingService({} as never, {} as never);
+  const accounting = new AccountingService({} as never, {} as never, { resolveAccount: async () => null } as never);
   const defaultAccounts = overrides?.defaultAccounts ?? {
     resolveAccount: vi.fn().mockResolvedValue('cash'),
   };
@@ -111,7 +111,7 @@ describe('VouchersService.create', () => {
     };
     const audit = { record: vi.fn().mockResolvedValue(undefined) };
     const numbering = { next: vi.fn().mockResolvedValue('JV-000001') };
-    const accounting = new AccountingService({} as never, {} as never);
+    const accounting = new AccountingService({} as never, {} as never, { resolveAccount: async () => null } as never);
     const defaultAccounts = { resolveAccount: vi.fn().mockResolvedValue('cash') };
     const fiscal = { assertOpen: vi.fn().mockResolvedValue(undefined) };
     const svc = new VouchersService(
@@ -150,7 +150,7 @@ describe('VouchersService.post', () => {
     const draft = { id: 'v1', number: 'JV-000001', voucherType: 'JOURNAL', status: 'draft' };
     const posted = { ...draft, status: 'posted' };
     const runTx = async (fn: (tx: unknown) => unknown) => {
-      const accounting = new AccountingService({} as never, {} as never);
+      const accounting = new AccountingService({} as never, {} as never, { resolveAccount: async () => null } as never);
       const inside = {
         ...draft,
         entries: [

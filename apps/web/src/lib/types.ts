@@ -264,6 +264,9 @@ export interface Item {
   purchasePrice: number;
   salePrice: number;
   minStockLevel: number;
+  openingQuantity?: number;
+  openingUnitCost?: number;
+  openingDate?: string;
   description?: string;
   status: AccountStatus;
   itemTypeId?: string;

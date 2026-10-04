@@ -63,6 +63,10 @@ export class InventoryService {
    * actually on hand. Movements without a cost (an internal stock transfer,
    * which is the same goods changing location) must not move the average, and
    * pass `affectsCosting: false` to make that explicit.
+   *
+   * `date` backdates the movement. It exists for opening stock, which by
+   * definition happened before the company started using the system; every
+   * other movement is stamped when it is posted.
    */
   async recordIn(
     tx: any,
@@ -75,6 +79,7 @@ export class InventoryService {
       referenceId?: string;
       unitCost?: number;
       createdById?: string;
+      date?: Date | string | null;
     },
     opts: { affectsCosting?: boolean } = {},
   ): Promise<number> {
@@ -96,6 +101,7 @@ export class InventoryService {
         balance,
         unitCost: input.unitCost ?? null,
         createdById: input.createdById ?? null,
+        ...(input.date ? { createdAt: new Date(input.date) } : {}),
       },
     });
 
@@ -208,6 +214,69 @@ export class InventoryService {
       total += qty * Number(costMap.get(rowAny.itemId) ?? 0);
     }
     return { totalValue: total, items: itemIds.length };
+  }
+
+  /**
+   * Rewrites the stored running `balance` of every movement for one item at one
+   * location, in movement order.
+   *
+   * Each movement stores the balance it left behind, which is what the item
+   * ledger prints. That makes the column a cache of the sequence rather than a
+   * fact of its own, so anything that changes an earlier movement - which
+   * opening stock does, by definition - invalidates every row after it. Callers
+   * re-derive instead of adjusting the single row they touched.
+   */
+  async recomputeBalances(tx: any, itemId: string, locationId: string): Promise<void> {
+    const rows = await tx.inventoryTransaction.findMany({
+      where: { itemId, locationId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, quantityIn: true, quantityOut: true, balance: true },
+    });
+
+    let running = 0;
+    for (const row of rows) {
+      running += Number(row.quantityIn ?? 0) - Number(row.quantityOut ?? 0);
+      if (Number(row.balance) !== running) {
+        await tx.inventoryTransaction.update({ where: { id: row.id }, data: { balance: running } });
+      }
+    }
+  }
+
+  /**
+   * Rebuilds an item's weighted-average cost from its whole movement history.
+   *
+   * `updateAverageCost` folds one new movement into the running figure, which is
+   * all a normal purchase needs. Changing opening stock is not normal: it is the
+   * first movement, so every average after it was computed from a figure that no
+   * longer exists and has to be derived again from the start.
+   *
+   * Follows the same rules as the incremental path - a quantity-in with a cost
+   * moves the average, one without a cost (a transfer, the same goods in another
+   * place) does not, and a quantity-out only reduces the units held.
+   */
+  async recomputeAverageCost(tx: any, itemId: string): Promise<void> {
+    const rows = await tx.inventoryTransaction.findMany({
+      where: { itemId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { quantityIn: true, quantityOut: true, unitCost: true },
+    });
+
+    let onHand = 0;
+    let average = 0;
+    for (const row of rows) {
+      const qtyIn = Number(row.quantityIn ?? 0);
+      if (qtyIn > 0) {
+        const unitCost = row.unitCost == null ? null : Number(row.unitCost);
+        if (unitCost != null) {
+          const after = onHand + qtyIn;
+          average = after <= 0 ? unitCost : (average * onHand + unitCost * qtyIn) / after;
+        }
+        onHand += qtyIn;
+      }
+      onHand -= Number(row.quantityOut ?? 0);
+    }
+
+    await tx.item.update({ where: { id: itemId }, data: { averageCost: round4(average) } });
   }
 }
 

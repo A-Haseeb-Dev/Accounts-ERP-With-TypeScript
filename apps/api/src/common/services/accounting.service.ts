@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NumberingService } from './numbering.service';
+import { DefaultAccountsService } from './default-accounts.service';
 import { ApiException } from '../exceptions/api.exception';
 
 export interface VoucherEntryInput {
@@ -40,6 +41,7 @@ export class AccountingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly numbering: NumberingService,
+    private readonly defaultAccounts: DefaultAccountsService,
   ) {}
 
   /**
@@ -385,6 +387,110 @@ export class AccountingService {
       orderBy: { code: 'asc' },
     });
     return anyEquity?.id ?? null;
+  }
+
+  /**
+   * Posts the ledger side of an item's opening stock: Dr Inventory, Cr Opening
+   * Equity, dated at the opening date.
+   *
+   * Without this the stock reports and the trial balance disagree - goods are on
+   * hand that no entry accounts for. It is the stock counterpart of
+   * `syncOpeningVoucher`, with two differences worth stating. The reference is
+   * `OBS:` rather than `OB:`, so it is a document movement and not an account
+   * opening balance: `accountOpening` reads `OB:` vouchers as the opening
+   * figure of an account, and an item's opening stock is not that. And it
+   * reports rather than throws when the company has not bound an Inventory or
+   * Opening Equity account, because a stock movement that has been recorded is
+   * not something to refuse over a settings gap - the caller warns instead.
+   */
+  async syncOpeningStockVoucher(
+    itemId: string,
+    amount: number,
+    actorId?: string,
+    openingDate?: Date | string | null,
+  ): Promise<{ posted: boolean; reason?: string }> {
+    const value = round2(Number(amount ?? 0));
+
+    const inventoryAccountId = await this.defaultAccounts.resolveAccount(
+      'accounting.inventory_account',
+    );
+    const equityAccountId = await this.resolveOpeningEquityId();
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.voucher.findFirst({
+        where: { reference: `OBS:${itemId}` },
+        include: { entries: true },
+      });
+
+      const removeTrace = async (v: any) => {
+        if (v.status === 'posted') {
+          await this.cancelVoucher(tx, v.id, 'Opening stock adjusted', actorId);
+        } else {
+          await tx.voucherEntry.deleteMany({ where: { voucherId: v.id } });
+          await tx.voucher.delete({ where: { id: v.id } });
+        }
+      };
+
+      if (value === 0) {
+        if (existing) await removeTrace(existing);
+        return { posted: true } as const;
+      }
+
+      const openingDay = openingDate ? new Date(openingDate) : new Date();
+      const dateChanged =
+        existing && openingDate
+          ? existing.voucherDate.toDateString() !== openingDay.toDateString()
+          : false;
+      const unchanged =
+        existing?.status === 'posted' &&
+        !dateChanged &&
+        existing.entries.some((e) => e.mainAccountId === inventoryAccountId && Number(e.debit) === value);
+      if (unchanged) return { posted: true } as const;
+
+      if (existing) await removeTrace(existing);
+
+      if (!inventoryAccountId) return { posted: false, reason: 'NO_INVENTORY_ACCOUNT' } as const;
+      if (!equityAccountId) return { posted: false, reason: 'NO_EQUITY_ACCOUNT' } as const;
+
+      let number: string | null = null;
+      for (let attempt = 0; attempt < 32 && !number; attempt++) {
+        const candidate = await this.numbering.next('voucher_opening', 'OBS', tx);
+        const clash = await tx.voucher.findUnique({ where: { number: candidate } });
+        if (!clash) {
+          number = candidate;
+        }
+      }
+      if (!number) {
+        throw ApiException.invalidTransaction(
+          'Unable to allocate a unique opening stock voucher number.',
+        );
+      }
+
+      const item = await this.prisma.item.findUnique({
+        where: { id: itemId },
+        select: { code: true, name: true },
+      });
+
+      const voucher = await this.createVoucher(
+        tx,
+        {
+          voucherType: 'JOURNAL',
+          voucherDate: openingDay,
+          description: `Opening stock - ${item?.name ?? itemId}${item?.code ? ` (${item.code})` : ''}`,
+          reference: `OBS:${itemId}`,
+          entries: [
+            { mainAccountId: inventoryAccountId, debit: value, narration: 'Opening stock' },
+            { mainAccountId: equityAccountId, credit: value, narration: 'Opening stock' },
+          ],
+          createdById: actorId,
+        },
+        number,
+      );
+      await this.postVoucher(tx, voucher.id, actorId);
+      return { posted: true } as const;
+    });
+
+    return result;
   }
 }
 

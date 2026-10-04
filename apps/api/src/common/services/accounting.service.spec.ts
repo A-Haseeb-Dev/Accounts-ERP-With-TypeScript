@@ -46,7 +46,7 @@ describe('AccountingService.assertBalanced', () => {
   let svc: AccountingService;
 
   beforeEach(() => {
-    svc = new AccountingService({} as never, {} as never);
+    svc = new AccountingService({} as never, {} as never, { resolveAccount: async () => null } as never);
   });
 
   it('rejects an empty entry list', () => {
@@ -97,7 +97,7 @@ describe('AccountingService.createVoucher', () => {
   let svc: AccountingService;
 
   beforeEach(() => {
-    svc = new AccountingService({} as never, {} as never);
+    svc = new AccountingService({} as never, {} as never, { resolveAccount: async () => null } as never);
   });
 
   it('throws for an unbalanced draft', async () => {
@@ -156,7 +156,7 @@ describe('AccountingService.postVoucher', () => {
   let svc: AccountingService;
 
   beforeEach(() => {
-    svc = new AccountingService({} as never, {} as never);
+    svc = new AccountingService({} as never, {} as never, { resolveAccount: async () => null } as never);
   });
 
   it('throws NOT_FOUND for a missing voucher', async () => {
@@ -209,7 +209,7 @@ describe('AccountingService.cancelVoucher', () => {
   let svc: AccountingService;
 
   beforeEach(() => {
-    svc = new AccountingService({} as never, {} as never);
+    svc = new AccountingService({} as never, {} as never, { resolveAccount: async () => null } as never);
   });
 
   it('throws NOT_FOUND for a missing voucher', async () => {
@@ -254,7 +254,7 @@ describe('AccountingService.accountBalance', () => {
           .mockResolvedValue({ _sum: { debit: 500, credit: 200 } }),
       },
     };
-    const svc = new AccountingService(prisma as never, {} as never);
+    const svc = new AccountingService(prisma as never, {} as never, { resolveAccount: async () => null } as never);
     const balance = await svc.accountBalance('cash');
     expect(balance).toBe(1300);
     expect(prisma.voucherEntry.aggregate).toHaveBeenCalledTimes(2);
@@ -272,7 +272,7 @@ describe('AccountingService.accountBalance', () => {
           .mockResolvedValue({ _sum: { debit: 0, credit: 200 } }),
       },
     };
-    const svc = new AccountingService(prisma as never, {} as never);
+    const svc = new AccountingService(prisma as never, {} as never, { resolveAccount: async () => null } as never);
     const balance = await svc.accountBalance('cash');
     expect(balance).toBe(300);
   });
@@ -281,7 +281,7 @@ describe('AccountingService.accountBalance', () => {
     const prisma = {
       mainAccount: { findUnique: vi.fn().mockResolvedValue(null) },
     };
-    const svc = new AccountingService(prisma as never, {} as never);
+    const svc = new AccountingService(prisma as never, {} as never, { resolveAccount: async () => null } as never);
     const err = await apiError(svc.accountBalance('ghost'));
     expect(err.status).toBe(404);
   });
@@ -364,7 +364,7 @@ describe('AccountingService.syncOpeningVoucher', () => {
     };
     const svc = new AccountingService(prisma as never, {
       next: vi.fn().mockResolvedValue('OB-1'),
-    } as never);
+    } as never, { resolveAccount: async () => null } as never);
     return { svc, tx, prisma, voucherCreate, settingUpdate, findUnique };
   };
 

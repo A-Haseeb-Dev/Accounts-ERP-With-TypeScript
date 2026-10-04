@@ -299,6 +299,16 @@ model Item {
   /// `purchasePrice` is only the latest quoted price and is not a cost basis.
   averageCost      Decimal  @default(0) @db.Decimal(18, 2)
   minStockLevel    Decimal  @default(0) @db.Decimal(18, 2)
+  /// Stock the company already held when it started using the system, and the
+  /// date that stock was on hand. Entering these posts a single `OPENING`
+  /// movement at the opening date, so every stock figure is a sum of real
+  /// movements rather than a number sitting beside them - a column alone would
+  /// show in the item form and then read as zero in the stock report.
+  /// `openingUnitCost` is what that stock was worth; it also seeds
+  /// `averageCost`, which is what cost of goods sold is valued at.
+  openingQuantity  Decimal  @default(0) @db.Decimal(18, 2)
+  openingUnitCost  Decimal? @db.Decimal(18, 2)
+  openingDate      DateTime?
   description      String?
   status           String   @default("active")
   itemTypeId       String?

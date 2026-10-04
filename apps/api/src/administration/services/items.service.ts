@@ -3,8 +3,17 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { ApiException } from '../../common/exceptions/api.exception';
 import { NumberingService } from '../../common/services/numbering.service';
+import { InventoryService } from '../../common/services/inventory.service';
+import { AccountingService } from '../../common/services/accounting.service';
 import { CreateItemDto, UpdateItemDto } from '../dto/products.dto';
 import { dateRange } from '../../common/utils/date-filter';
+
+/**
+ * How the opening movement is recognised on an inventory transaction. Kept as a
+ * constant so the write in `syncOpeningStock` and the cleanup that zeroes an
+ * opening cannot drift apart.
+ */
+const OPENING_REFERENCE = 'OPENING_STOCK';
 
 @Injectable()
 export class ItemsService {
@@ -12,6 +21,8 @@ export class ItemsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly numbering: NumberingService,
+    private readonly inventory: InventoryService,
+    private readonly accounting: AccountingService,
   ) {}
 
   previewCode() {
@@ -28,6 +39,13 @@ export class ItemsService {
       if (byBarcode) throw ApiException.duplicateCode('Barcode');
     }
 
+    const openingQuantity = dto.openingQuantity ?? 0;
+    if (openingQuantity !== 0 && !dto.defaultLocationId) {
+      throw ApiException.invalidTransaction(
+        'Set a default stock location first: opening stock has to be held somewhere.',
+      );
+    }
+
     const item = await this.prisma.item.create({
       data: {
         code,
@@ -37,6 +55,9 @@ export class ItemsService {
         purchasePrice: dto.purchasePrice ?? 0,
         salePrice: dto.salePrice ?? 0,
         minStockLevel: dto.minStockLevel ?? 0,
+        openingQuantity,
+        openingUnitCost: dto.openingUnitCost ?? null,
+        openingDate: dto.openingDate ? new Date(dto.openingDate) : null,
         description: dto.description ?? null,
         itemTypeId: dto.itemTypeId ?? null,
         brandId: dto.brandId ?? null,
@@ -46,12 +67,17 @@ export class ItemsService {
       include: { itemType: true, brand: true, defaultLocation: true },
     });
 
+    const warning = await this.syncOpeningStock(item.id, actorId);
+
     this.audit.record({
       userId: actorId, action: 'CREATE', module: 'ITEM', entity: 'Item',
       entityId: item.id, message: `Item ${item.name} (${item.code}) created`,
+      ...(openingQuantity !== 0
+        ? { metadata: { openingQuantity: Number(openingQuantity), openingDate: item.openingDate } }
+        : {}),
     });
 
-    return item;
+    return { ...item, warning };
   }
 
   async findAll(query: {
@@ -202,18 +228,149 @@ export class ItemsService {
   }
 
   async update(id: string, dto: UpdateItemDto, actorId?: string) {
-    await this.findOne(id);
+    const before = await this.findOne(id);
     if (dto.code) {
       const byCode = await this.prisma.item.findUnique({ where: { code: dto.code } });
       if (byCode && byCode.id !== id) throw ApiException.duplicateCode('Item code');
     }
-    const item = await this.prisma.item.update({ where: { id }, data: dto });
+
+    const openingTouched =
+      dto.openingQuantity !== undefined ||
+      dto.openingUnitCost !== undefined ||
+      dto.openingDate !== undefined;
+    const openingQuantity = dto.openingQuantity ?? Number(before.openingQuantity ?? 0);
+    if (openingQuantity !== 0 && !(dto.defaultLocationId ?? before.defaultLocationId)) {
+      throw ApiException.invalidTransaction(
+        'Set a default stock location first: opening stock has to be held somewhere.',
+      );
+    }
+
+    const item = await this.prisma.item.update({
+      where: { id },
+      data: {
+        ...dto,
+        ...(dto.openingDate !== undefined
+          ? { openingDate: dto.openingDate ? new Date(dto.openingDate) : null }
+          : {}),
+      },
+    });
+
+    const warning = openingTouched || dto.defaultLocationId !== undefined
+      ? await this.syncOpeningStock(id, actorId)
+      : null;
+
     this.audit.record({
       userId: actorId, action: 'UPDATE', module: 'ITEM', entity: 'Item',
       entityId: id, message: `Item ${item.name} updated`,
-      metadata: { fields: Object.keys(dto) },
+      metadata: { fields: Object.keys(dto), ...(openingTouched ? { openingChanged: true } : {}) },
     });
-    return item;
+    return { ...item, warning };
+  }
+
+  /**
+   * Brings the `OPENING` movement in line with the item's opening columns.
+   *
+   * The columns are what a user edits; this is the movement the rest of the
+   * system reads, because every stock figure is a sum of movements. They are
+   * written together in one transaction so the two cannot disagree.
+   *
+   * Changing the opening is not a normal edit. It is by definition the earliest
+   * movement for the item, so every balance recorded after it and every average
+   * cost derived from it are now stale - hence the re-derivation rather than an
+   * adjustment to the one row that moved. The voucher is cancelled and replaced
+   * for the same reason: a posted voucher is a ledger fact, not a field.
+   *
+   * A missing Inventory or Opening Equity account is reported instead of thrown.
+   * The stock has genuinely been recorded, and refusing to save an item over a
+   * settings gap would lose that; the caller surfaces it as a warning.
+   */
+  private async syncOpeningStock(
+    itemId: string,
+    actorId?: string,
+  ): Promise<string | null> {
+    const item = await this.prisma.item.findUnique({
+      where: { id: itemId },
+      select: {
+        id: true, code: true, name: true, unit: true,
+        openingQuantity: true, openingUnitCost: true, openingDate: true,
+        defaultLocationId: true,
+      },
+    });
+    if (!item) return null;
+
+    const locationId = item.defaultLocationId;
+    const quantity = Number(item.openingQuantity ?? 0);
+    const unitCost = item.openingUnitCost == null ? null : Number(item.openingUnitCost);
+
+    if (quantity === 0 && !unitCost) {
+      // Nothing to hold and nothing to value: drop any movement and voucher a
+      // previous opening left behind, so zeroing the field really does zero it.
+      await this.prisma.runInTransaction(async (tx) => {
+        await tx.inventoryTransaction.deleteMany({
+          where: { itemId, referenceType: OPENING_REFERENCE },
+        });
+      });
+      await this.accounting.syncOpeningStockVoucher(itemId, 0, actorId, item.openingDate);
+      return null;
+    }
+
+    if (!locationId) return null;
+
+    const warning = await this.prisma.runInTransaction(async (tx) => {
+      const existing = await tx.inventoryTransaction.findFirst({
+        where: { itemId, referenceType: OPENING_REFERENCE },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      if (existing) {
+        await tx.inventoryTransaction.update({
+          where: { id: existing.id },
+          data: {
+            locationId,
+            quantityIn: quantity,
+            quantityOut: 0,
+            unitCost,
+            ...(item.openingDate ? { createdAt: new Date(item.openingDate) } : {}),
+          },
+        });
+      } else if (quantity !== 0) {
+        await this.inventory.recordIn(
+          tx,
+          {
+            itemId,
+            locationId,
+            quantity,
+            transactionType: 'OPENING',
+            referenceType: OPENING_REFERENCE,
+            referenceId: itemId,
+            unitCost: unitCost ?? undefined,
+            createdById: actorId,
+            date: item.openingDate,
+          },
+          { affectsCosting: unitCost != null },
+        );
+      }
+
+      if (existing && existing.locationId !== locationId) {
+        await this.inventory.recomputeBalances(tx, itemId, existing.locationId);
+      }
+      await this.inventory.recomputeBalances(tx, itemId, locationId);
+      await this.inventory.recomputeAverageCost(tx, itemId);
+      return null;
+    });
+
+    const value = quantity * (unitCost ?? 0);
+    const result = await this.accounting.syncOpeningStockVoucher(
+      itemId,
+      quantity === 0 ? 0 : value,
+      actorId,
+      item.openingDate,
+    );
+
+    if (result.posted) return warning;
+    return result.reason === 'NO_INVENTORY_ACCOUNT'
+      ? 'Opening stock was saved, but no entry was posted to the ledger: set an Inventory account in Settings > Accounting.'
+      : 'Opening stock was saved, but no entry was posted to the ledger: set an Opening Equity account in Settings > Accounting.';
   }
 
   async remove(id: string, actorId?: string) {

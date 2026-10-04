@@ -16,7 +16,7 @@ import { DeleteWarnDialog } from '@/components/delete-warn-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
-import { dateTime, money } from '@/lib/utils';
+import { dateOnly, dateTime, money } from '@/lib/utils';
 import { useAuth } from '@/context/auth-context';
 import type { Item, Paginated } from '@/lib/types';
 
@@ -53,15 +53,18 @@ export default function ItemsPage() {
   const save = useMutation({
     mutationFn: (payload: Partial<Item>) =>
       editing?.id
-        ? apiFetch(`/items/${editing.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
-        : apiFetch('/items', { method: 'POST', body: JSON.stringify(payload) }),
-    onSuccess: () => {
+        ? apiFetch<Partial<Item> & { warning?: string | null }>(`/items/${editing.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
+        : apiFetch<Partial<Item> & { warning?: string | null }>('/items', { method: 'POST', body: JSON.stringify(payload) }),
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['items'] });
       qc.invalidateQueries({ queryKey: ['flat', 'items'] });
       qc.invalidateQueries({ queryKey: ['items', 'next-code'] });
       setModalOpen(false);
       setEditing(null);
       setForm({});
+      // Opening stock is recorded even when the ledger side could not be, so
+      // this is a warning about the accounts, not a failure of the save.
+      if (res.warning) toast.warning(res.warning);
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -114,6 +117,19 @@ export default function ItemsPage() {
             { key: 'type', header: 'Type', render: (r) => <span className="text-slate-500">{r.itemType?.name ?? '-'}</span> },
             { key: 'brand', header: 'Brand', render: (r) => <span className="text-slate-500">{r.brand?.name ?? '-'}</span> },
             { key: 'unit', header: 'Unit', render: (r) => <span className="text-slate-500">{r.unit || '-'}</span> },
+    { key: 'opening', header: 'Opening', align: 'right', render: (r) => (
+      Number(r.openingQuantity ?? 0) === 0
+        ? <span className="text-slate-400">-</span>
+        : (
+          <span className="text-slate-600">
+            {r.openingQuantity} {r.unit}
+            <span className="block text-xs text-slate-400">
+              {r.openingUnitCost != null ? `@ ${money(r.openingUnitCost)}` : 'no cost'}
+              {r.openingDate ? ` · ${dateOnly(r.openingDate)}` : ''}
+            </span>
+          </span>
+        )
+    ) },
             { key: 'purchasePrice', header: 'Purchase', align: 'right', render: (r) => <span className="text-slate-600">{money(r.purchasePrice)}</span> },
             { key: 'salePrice', header: 'Sale', align: 'right', render: (r) => <span className="font-medium text-teal-700">{money(r.salePrice)}</span> },
             { key: 'status', header: 'Status', render: (r) => <StatusBadge status={r.status} /> },
@@ -194,6 +210,25 @@ export default function ItemsPage() {
               {locationOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
           </Field>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="mb-1 text-sm font-medium text-slate-700">Opening Stock</div>
+            <p className="mb-3 text-xs text-slate-500">
+              Goods you already held before using this system. Saving posts one opening movement at
+              the opening date, so it counts in every stock figure and is dated correctly in the item ledger.
+            </p>
+            <div className="grid grid-cols-3 gap-4">
+              <Field label="Opening Qty">
+                <Input type="number" step="0.01" value={form.openingQuantity ?? ''} onChange={(e) => set('openingQuantity', e.target.value === '' ? 0 : Number(e.target.value))} placeholder="0" />
+              </Field>
+              <Field label="Unit Cost" hint="What that stock was worth. Used for valuation and cost of goods sold.">
+                <Input type="number" step="0.01" value={form.openingUnitCost ?? ''} onChange={(e) => set('openingUnitCost', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="0.00" />
+              </Field>
+              <Field label="Opening Date">
+                <Input type="date" value={form.openingDate ?? ''} onChange={(e) => set('openingDate', e.target.value)} />
+              </Field>
+            </div>
+          </div>
           <Field label="Description">
             <Textarea value={form.description ?? ''} onChange={(e) => set('description', e.target.value)} />
           </Field>
