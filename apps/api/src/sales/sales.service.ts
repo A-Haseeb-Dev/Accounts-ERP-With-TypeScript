@@ -108,30 +108,45 @@ export class SalesService {
     }
     await this.fiscal.assertOpen(sale.saleDate, 'Cannot post a sales invoice');
 
-    const revenueAccountId =
-      (await this.defaultAccounts.resolveAccount('accounting.revenue_account')) ??
-      undefined;
-    const receivableAccountId =
-      sale.customer.mainAccountId ??
-      ((await this.defaultAccounts.resolveAccount('accounting.receivable_account')) ??
-        undefined);
+    // The customer's own account is the receivable side when it has one; the
+    // setting is the fallback for customers that do not.
+    const [revenue, receivable, inventory, costOfSales] = await Promise.all([
+      this.defaultAccounts.resolveAccount('accounting.revenue_account'),
+      this.defaultAccounts.resolveAccount('accounting.receivable_account'),
+      this.defaultAccounts.resolveAccount('accounting.inventory_account'),
+      this.defaultAccounts.resolveAccount('accounting.cost_of_sales_account'),
+    ]);
+    const revenueAccountId = revenue ?? undefined;
+    const receivableAccountId = sale.customer.mainAccountId ?? receivable ?? undefined;
+    const inventoryAccountId = inventory ?? undefined;
+    const costOfSalesAccountId = costOfSales ?? undefined;
 
-    if (!revenueAccountId || !receivableAccountId) {
+    // Every missing role in one message. The two guards this replaces named
+    // only the first pair and blamed the customer's account link whatever the
+    // fault was, so a posting blocked by an unset Revenue account sent the
+    // reader to the customer record. It also took several attempts to find them
+    // all, each revealing one. A role that resolves to null is unset or points
+    // at an account that no longer exists - both show as blank in Settings, so
+    // both are fixed by choosing the account again.
+    //
+    // The condition tests the accounts themselves rather than `missing.length`
+    // so that reaching the voucher below means each name is a real id.
+    if (!revenueAccountId || !receivableAccountId || !inventoryAccountId || !costOfSalesAccountId) {
+      const missing: string[] = [];
+      if (!revenueAccountId) missing.push('Revenue');
+      if (!receivableAccountId) {
+        missing.push(
+          sale.customer.mainAccountId
+            ? 'Accounts Receivable'
+            : 'Accounts Receivable (or link an account to this customer)',
+        );
+      }
+      if (!inventoryAccountId) missing.push('Inventory / Stock');
+      if (!costOfSalesAccountId) missing.push('Cost of Sales');
       throw ApiException.invalidTransaction(
-        'Customer is not linked to an account and Accounts Receivable is not set in Settings > Accounting.',
-      );
-    }
-
-    const inventoryAccountId =
-      (await this.defaultAccounts.resolveAccount('accounting.inventory_account')) ??
-      undefined;
-    const costOfSalesAccountId =
-      (await this.defaultAccounts.resolveAccount('accounting.cost_of_sales_account')) ??
-      undefined;
-
-    if (!inventoryAccountId || !costOfSalesAccountId) {
-      throw ApiException.invalidTransaction(
-        'Inventory / Stock and Cost of Sales are not set in Settings > Accounting, so the cost of the goods sold cannot be recorded.',
+        `Cannot post this invoice: ${missing.join(', ')} ${
+          missing.length === 1 ? 'account is' : 'accounts are'
+        } not set in Settings > Accounting.`,
       );
     }
 

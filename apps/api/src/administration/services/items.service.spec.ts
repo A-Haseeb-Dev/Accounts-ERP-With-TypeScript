@@ -77,10 +77,19 @@ describe('ItemsService opening stock', () => {
   // `syncOpeningStock` re-reads the item after the write, the way the real
   // service does, so the mock has to carry the update through.
   let row: Record<string, unknown>;
+  // Whether the code under test is inside the transaction. Set by the
+  // transaction mock, read by the write mocks, so a test can tell "written in
+  // the same transaction" from "written next to one" - which is the whole
+  // difference between an item that rolls back and one that does not.
+  let insideTx = false;
   beforeEach(() => {
     b = build();
     row = { ...itemRow };
-    b.prisma.runInTransaction.mockImplementation((fn: (t: unknown) => unknown) => fn(b.prisma));
+    insideTx = false;
+    b.prisma.runInTransaction.mockImplementation((fn: (t: unknown) => unknown) => {
+      insideTx = true;
+      return fn(b.prisma);
+    });
     // `create` looks the code up to reject duplicates; that lookup has to miss.
     b.prisma.item.findUnique.mockImplementation(async (args: never) => {
       const where = (args as { where?: { code?: string; id?: string } }).where ?? {};
@@ -130,6 +139,29 @@ describe('ItemsService opening stock', () => {
     expect((call.date as Date).toISOString()).toContain('2026-01-01');
   });
 
+  it('creates the item and its opening movement in one transaction', async () => {
+    let createSawTx = false;
+    b.prisma.item.create.mockImplementation(async ({ data }: never) => {
+      createSawTx = insideTx;
+      row = { ...(data as object), id: 'item-1' };
+      return row;
+    });
+
+    await b.svc.create({
+      name: 'Cotton Fabric',
+      unit: 'm',
+      defaultLocationId: 'loc-1',
+      openingQuantity: 100,
+      openingUnitCost: 250,
+    } as never);
+
+    expect(createSawTx).toBe(true);
+    expect(b.inventory.recordIn.mock.calls[0][0]).toBe(b.prisma);
+    // One transaction for both writes, not one for the item and one for the
+    // movement: if the movement fails, the item must not survive on its own.
+    expect(b.prisma.runInTransaction).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses opening stock with nowhere to hold it', async () => {
     const message = await messageOf(
       b.svc.create({ name: 'Cotton Fabric', openingQuantity: 50 } as never),
@@ -169,6 +201,13 @@ describe('ItemsService opening stock', () => {
   });
 
   it('clears the movement and the voucher when the opening is zeroed', async () => {
+    b.prisma.inventoryTransaction.findFirst.mockResolvedValue({
+      id: 'open-1',
+      itemId: 'item-1',
+      locationId: 'loc-1',
+      referenceType: 'OPENING_STOCK',
+    });
+
     await b.svc.update('item-1', { openingQuantity: 0, openingUnitCost: 0 } as never);
 
     expect(b.prisma.inventoryTransaction.deleteMany).toHaveBeenCalledWith({
@@ -177,6 +216,26 @@ describe('ItemsService opening stock', () => {
     expect(b.accounting.syncOpeningStockVoucher).toHaveBeenCalledWith(
       'item-1', 0, undefined, itemRow.openingDate,
     );
+  });
+
+  it('re-derives balances and average cost when an opening is zeroed', async () => {
+    // Rows after the opening were costed and balanced against it, so deleting
+    // only the opening would leave them claiming stock that is gone.
+    b.prisma.inventoryTransaction.findFirst.mockResolvedValue({
+      id: 'open-1',
+      itemId: 'item-1',
+      locationId: 'loc-1',
+      referenceType: 'OPENING_STOCK',
+    });
+
+    await b.svc.update('item-1', { openingQuantity: 0, openingUnitCost: 0 } as never);
+
+    expect(b.inventory.recomputeBalances).toHaveBeenCalledWith(
+      b.prisma, 'item-1', 'loc-1',
+    );
+    expect(b.inventory.recomputeAverageCost).toHaveBeenCalledWith(b.prisma, 'item-1');
+    // Vouchers are cancelled rather than deleted, so no ledger value is left.
+    expect(b.prisma.inventoryTransaction.update).not.toHaveBeenCalled();
   });
 
   it('leaves stock alone when the opening was not edited', async () => {

@@ -46,28 +46,33 @@ export class ItemsService {
       );
     }
 
-    const item = await this.prisma.item.create({
-      data: {
-        code,
-        barcode: dto.barcode ?? null,
-        name: dto.name,
-        unit: dto.unit ?? 'pcs',
-        purchasePrice: dto.purchasePrice ?? 0,
-        salePrice: dto.salePrice ?? 0,
-        minStockLevel: dto.minStockLevel ?? 0,
-        openingQuantity,
-        openingUnitCost: dto.openingUnitCost ?? null,
-        openingDate: dto.openingDate ? new Date(dto.openingDate) : null,
-        description: dto.description ?? null,
-        itemTypeId: dto.itemTypeId ?? null,
-        brandId: dto.brandId ?? null,
-        defaultLocationId: dto.defaultLocationId ?? null,
-        status: dto.status ?? 'active',
-      },
-      include: { itemType: true, brand: true, defaultLocation: true },
-    });
+    const { item, warning } = await this.prisma.runInTransaction(async (tx) => {
+      const created = await tx.item.create({
+        data: {
+          code,
+          barcode: dto.barcode ?? null,
+          name: dto.name,
+          unit: dto.unit ?? 'pcs',
+          purchasePrice: dto.purchasePrice ?? 0,
+          salePrice: dto.salePrice ?? 0,
+          minStockLevel: dto.minStockLevel ?? 0,
+          openingQuantity,
+          openingUnitCost: dto.openingUnitCost ?? null,
+          openingDate: dto.openingDate ? new Date(dto.openingDate) : null,
+          description: dto.description ?? null,
+          itemTypeId: dto.itemTypeId ?? null,
+          brandId: dto.brandId ?? null,
+          defaultLocationId: dto.defaultLocationId ?? null,
+          status: dto.status ?? 'active',
+        },
+        include: { itemType: true, brand: true, defaultLocation: true },
+      });
 
-    const warning = await this.syncOpeningStock(item.id, actorId);
+      // Same transaction: an item that exists without its opening movement
+      // would report the stock the form accepted and show nothing at all.
+      const warn = await this.syncOpeningStock(created.id, actorId, tx);
+      return { item: created, warning: warn };
+    });
 
     this.audit.record({
       userId: actorId, action: 'CREATE', module: 'ITEM', entity: 'Item',
@@ -245,19 +250,23 @@ export class ItemsService {
       );
     }
 
-    const item = await this.prisma.item.update({
-      where: { id },
-      data: {
-        ...dto,
-        ...(dto.openingDate !== undefined
-          ? { openingDate: dto.openingDate ? new Date(dto.openingDate) : null }
-          : {}),
-      },
-    });
+    const { item, warning } = await this.prisma.runInTransaction(async (tx) => {
+      const updated = await tx.item.update({
+        where: { id },
+        data: {
+          ...dto,
+          ...(dto.openingDate !== undefined
+            ? { openingDate: dto.openingDate ? new Date(dto.openingDate) : null }
+            : {}),
+        },
+      });
 
-    const warning = openingTouched || dto.defaultLocationId !== undefined
-      ? await this.syncOpeningStock(id, actorId)
-      : null;
+      const warn =
+        openingTouched || dto.defaultLocationId !== undefined
+          ? await this.syncOpeningStock(id, actorId, tx)
+          : null;
+      return { item: updated, warning: warn };
+    });
 
     this.audit.record({
       userId: actorId, action: 'UPDATE', module: 'ITEM', entity: 'Item',
@@ -274,6 +283,11 @@ export class ItemsService {
    * system reads, because every stock figure is a sum of movements. They are
    * written together in one transaction so the two cannot disagree.
    *
+   * The voucher is the exception and stays outside it. It has its own
+   * transaction, and a missing account downgrades to a warning rather than
+   * throwing - letting that rollback a correctly recorded stock movement would
+   * trade a real quantity for a bookkeeping entry the user can redo.
+   *
    * Changing the opening is not a normal edit. It is by definition the earliest
    * movement for the item, so every balance recorded after it and every average
    * cost derived from it are now stale - hence the re-derivation rather than an
@@ -287,8 +301,16 @@ export class ItemsService {
   private async syncOpeningStock(
     itemId: string,
     actorId?: string,
+    outerTx?: any,
   ): Promise<string | null> {
-    const item = await this.prisma.item.findUnique({
+    // When the caller already holds a transaction the movement joins it, and
+    // the re-read has to go through the same connection: outside one it would
+    // not see the item write that is still uncommitted.
+    const db = outerTx ?? this.prisma;
+    const run = <T>(fn: (tx: any) => Promise<T>): Promise<T> =>
+      outerTx ? fn(outerTx) : this.prisma.runInTransaction(fn);
+
+    const item = await db.item.findUnique({
       where: { id: itemId },
       select: {
         id: true, code: true, name: true, unit: true,
@@ -303,12 +325,26 @@ export class ItemsService {
     const unitCost = item.openingUnitCost == null ? null : Number(item.openingUnitCost);
 
     if (quantity === 0 && !unitCost) {
-      // Nothing to hold and nothing to value: drop any movement and voucher a
+      // Nothing to hold and nothing to value: drop the movement and voucher a
       // previous opening left behind, so zeroing the field really does zero it.
-      await this.prisma.runInTransaction(async (tx) => {
+      //
+      // The rows that came after it were balanced and costed against it, so
+      // deleting only the opening would leave them still claiming stock and
+      // value that no longer exists. Same reasoning as an edit, and the same
+      // remedy: re-derive them rather than leave the caches of a sequence that
+      // has since been rewritten.
+      await run(async (tx) => {
+        const existing = await tx.inventoryTransaction.findFirst({
+          where: { itemId, referenceType: OPENING_REFERENCE },
+          orderBy: { createdAt: 'asc' },
+        });
         await tx.inventoryTransaction.deleteMany({
           where: { itemId, referenceType: OPENING_REFERENCE },
         });
+        if (existing?.locationId) {
+          await this.inventory.recomputeBalances(tx, itemId, existing.locationId);
+        }
+        await this.inventory.recomputeAverageCost(tx, itemId);
       });
       await this.accounting.syncOpeningStockVoucher(itemId, 0, actorId, item.openingDate);
       return null;
@@ -316,7 +352,7 @@ export class ItemsService {
 
     if (!locationId) return null;
 
-    const warning = await this.prisma.runInTransaction(async (tx) => {
+    const warning = await run(async (tx) => {
       const existing = await tx.inventoryTransaction.findFirst({
         where: { itemId, referenceType: OPENING_REFERENCE },
         orderBy: { createdAt: 'asc' },

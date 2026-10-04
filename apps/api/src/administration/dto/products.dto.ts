@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  Min,
 } from 'class-validator';
 
 export class CreateItemTypeDto {
@@ -127,10 +128,12 @@ export class CreateItemDto {
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   openingQuantity?: number;
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   openingUnitCost?: number;
 
   @IsOptional()
@@ -194,10 +197,12 @@ export class UpdateItemDto {
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   openingQuantity?: number;
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   openingUnitCost?: number;
 
   @IsOptional()

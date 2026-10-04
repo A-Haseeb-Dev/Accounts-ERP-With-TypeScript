@@ -225,7 +225,7 @@ export default function ItemsPage() {
                 <Input type="number" step="0.01" value={form.openingUnitCost ?? ''} onChange={(e) => set('openingUnitCost', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="0.00" />
               </Field>
               <Field label="Opening Date">
-                <Input type="date" value={form.openingDate ?? ''} onChange={(e) => set('openingDate', e.target.value)} />
+                <Input type="date" value={form.openingDate ? String(form.openingDate).slice(0, 10) : ''} onChange={(e) => set('openingDate', e.target.value)} />
               </Field>
             </div>
           </div>
