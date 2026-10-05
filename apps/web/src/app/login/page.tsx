@@ -4,10 +4,12 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/auth-context';
 import { ApiError } from '@/lib/api';
+import { useBranding } from '@/hooks/use-branding';
 import { Building2, Loader2, Lock, User } from 'lucide-react';
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const { businessName, logoUrl, primaryColor } = useBranding();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -34,11 +36,22 @@ export default function LoginPage() {
 
       <div className="relative w-full max-w-md">
         <div className="mb-8 flex flex-col items-center gap-3">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-teal-700 text-white shadow-lg shadow-teal-900/50">
-            <Building2 className="h-7 w-7" />
-          </div>
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt=""
+              className="h-14 w-14 rounded-2xl object-contain shadow-lg"
+            />
+          ) : (
+            <div
+              className="flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg"
+              style={{ backgroundColor: primaryColor }}
+            >
+              <Building2 className="h-7 w-7" />
+            </div>
+          )}
           <div className="text-center">
-            <h1 className="text-2xl font-bold tracking-tight text-white">HAS ERP</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-white">{businessName}</h1>
             <p className="text-sm text-slate-400">Inventory · Sales · Accounting</p>
           </div>
         </div>

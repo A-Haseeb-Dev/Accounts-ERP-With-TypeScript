@@ -10,6 +10,7 @@ import { useDocumentMutations } from '@/hooks/use-document-mutations';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { DataTable } from '@/components/data-table';
+import { TableExportActions } from '@/components/table-export-actions';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { PageHeader } from '@/components/page-header';
@@ -283,8 +284,18 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
             <option value="posted">Posted</option>
             <option value="cancelled">Cancelled</option>
           </Select>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <TableExportActions
+              permission={permBase}
+              tableId={`${permBase}-list`}
+              filename={`${permBase}-${new Date().toISOString().slice(0, 10)}`}
+              title={`${title}${status ? ` — ${status}` : ''}`}
+              disabled={!data?.total}
+            />
+          </div>
         </div>
 
+        <div id={`${permBase}-list`}>
         <DataTable<TransactionDoc>
           columns={[
             { key: 'number', header: 'Number', render: (r) => <span className="font-mono font-semibold text-slate-800">{r.number}</span> },
@@ -372,6 +383,7 @@ export function DocumentPage({ config }: { config: DocumentConfig }) {
           total={data?.total}
           onPageChange={setPage}
         />
+        </div>
       </Card>
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={`${editId ? `Edit ${title.replace(/s$/, '')}` : `New ${title}`}`} size="xl">

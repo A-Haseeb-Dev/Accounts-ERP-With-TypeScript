@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ApiException } from '../common/exceptions/api.exception';
-import { ImportSettingsDto, UpdateBrandingDto, UpdateSettingsDto } from './dto/system.dto';
+import { ImportSettingsDto, UpdateBrandingDto, UpdatePrintLayoutDto, UpdateSettingsDto } from './dto/system.dto';
 import { FEATURES } from '../features/feature-catalog';
 
 const SETTING_KEYS = [
@@ -67,6 +67,34 @@ const SETTING_KEYS = [
   'accounting.salary_expense_account',
   'accounting.commission_expense_account',
 ];
+
+/**
+ * The print-layout settings, mapped from their DTO field name to the
+ * `system_settings` key they live under. These are editable from the
+ * "Print Layout" screen, which is guarded by its own
+ * `system.print_layout.manage` permission rather than `system.settings.manage`,
+ * so a company can hand out report/invoice layout control separately from the
+ * wider settings screen.
+ */
+const PRINT_LAYOUT_FIELDS: Record<string, string> = {
+  invoiceShowBalance: 'print.invoiceShowBalance',
+  invoiceShowAmountWords: 'print.invoiceShowAmountWords',
+  invoiceShowDate: 'print.invoiceShowDate',
+  reportShowBranding: 'print.reportShowBranding',
+  reportShowLogo: 'print.reportShowLogo',
+  paperSize: 'print.paperSize',
+  printScale: 'print.scale',
+  invoiceTemplate: 'print.invoiceTemplate',
+  fontSize: 'print.fontSize',
+  logoSize: 'print.logoSize',
+  invoiceShowSignatures: 'print.invoiceShowSignatures',
+  invoiceShowPartyContact: 'print.invoiceShowPartyContact',
+  invoiceShowItemCode: 'print.invoiceShowItemCode',
+  invoiceShowDiscountCol: 'print.invoiceShowDiscountCol',
+  invoiceShowTaxCol: 'print.invoiceShowTaxCol',
+  invoiceHeaderAlign: 'print.invoiceHeaderAlign',
+  showPageNumbers: 'print.showPageNumbers',
+};
 
 /** Setting keys whose value must be the id of an existing main account. */
 const ACCOUNT_ID_SETTING_KEYS = SETTING_KEYS.filter((key) => key.startsWith('accounting.'));
@@ -170,23 +198,12 @@ export class SystemService {
     if (dto.defaultStockLocationId !== undefined) map['defaults.stockLocationId'] = dto.defaultStockLocationId;
     if (dto.defaultCustomerId !== undefined) map['defaults.customerId'] = dto.defaultCustomerId;
     if (dto.defaultSupplierId !== undefined) map['defaults.supplierId'] = dto.defaultSupplierId;
-    if (dto.invoiceShowBalance !== undefined) map['print.invoiceShowBalance'] = dto.invoiceShowBalance;
-    if (dto.invoiceShowAmountWords !== undefined) map['print.invoiceShowAmountWords'] = dto.invoiceShowAmountWords;
-    if (dto.invoiceShowDate !== undefined) map['print.invoiceShowDate'] = dto.invoiceShowDate;
-    if (dto.reportShowBranding !== undefined) map['print.reportShowBranding'] = dto.reportShowBranding;
-    if (dto.reportShowLogo !== undefined) map['print.reportShowLogo'] = dto.reportShowLogo;
-    if (dto.paperSize !== undefined) map['print.paperSize'] = dto.paperSize;
-    if (dto.printScale !== undefined) map['print.scale'] = dto.printScale;
-    if (dto.invoiceTemplate !== undefined) map['print.invoiceTemplate'] = dto.invoiceTemplate;
-    if (dto.fontSize !== undefined) map['print.fontSize'] = dto.fontSize;
-    if (dto.logoSize !== undefined) map['print.logoSize'] = dto.logoSize;
-    if (dto.invoiceShowSignatures !== undefined) map['print.invoiceShowSignatures'] = dto.invoiceShowSignatures;
-    if (dto.invoiceShowPartyContact !== undefined) map['print.invoiceShowPartyContact'] = dto.invoiceShowPartyContact;
-    if (dto.invoiceShowItemCode !== undefined) map['print.invoiceShowItemCode'] = dto.invoiceShowItemCode;
-    if (dto.invoiceShowDiscountCol !== undefined) map['print.invoiceShowDiscountCol'] = dto.invoiceShowDiscountCol;
-    if (dto.invoiceShowTaxCol !== undefined) map['print.invoiceShowTaxCol'] = dto.invoiceShowTaxCol;
-    if (dto.invoiceHeaderAlign !== undefined) map['print.invoiceHeaderAlign'] = dto.invoiceHeaderAlign;
-    if (dto.showPageNumbers !== undefined) map['print.showPageNumbers'] = dto.showPageNumbers;
+    // Print-layout keys are shared with the dedicated Print Layout screen, so
+    // they are driven off one map instead of being listed twice.
+    for (const [field, key] of Object.entries(PRINT_LAYOUT_FIELDS)) {
+      const value = (dto as Record<string, unknown>)[field];
+      if (value !== undefined) map[key] = String(value);
+    }
     if (dto.auditRetentionDays !== undefined) map['audit.retention_days'] = dto.auditRetentionDays;
     if (dto.mfaIssuer !== undefined) map['mfa.issuer'] = dto.mfaIssuer;
     if (dto.values) {
@@ -218,6 +235,46 @@ export class SystemService {
       }
     }
 
+    return this.persistSettings(map, actorId, 'SYSTEM_SETTINGS', 'System settings updated');
+  }
+
+  async getPrintLayout() {
+    const rows = await this.prisma.systemSetting.findMany({
+      where: { key: { startsWith: 'print.' } },
+    });
+    const map: Record<string, string> = {};
+    for (const r of rows) map[r.key] = r.value ?? '';
+    return map;
+  }
+
+  async updatePrintLayout(dto: UpdatePrintLayoutDto, actorId?: string) {
+    const map: Record<string, string> = {};
+    for (const [field, key] of Object.entries(PRINT_LAYOUT_FIELDS)) {
+      const value = (dto as Record<string, unknown>)[field];
+      if (value !== undefined) map[key] = String(value);
+    }
+    // Layout blobs are only ever `print.*` keys; ignoring anything else keeps
+    // this endpoint from being a back door to the wider settings screen.
+    for (const key of Object.keys(dto.values ?? {})) {
+      if (key.startsWith('print.')) map[key] = String(dto.values![key] ?? '');
+    }
+    if (Object.keys(map).length === 0) {
+      throw ApiException.validation('No valid print layout settings provided to update');
+    }
+    return this.persistSettings(map, actorId, 'SYSTEM_PRINT_LAYOUT', 'Print layout updated');
+  }
+
+  /**
+   * Writes a pre-built key/value map into system_settings and records a
+   * before/after image in the audit trail. Shared by the settings and
+   * print-layout screens so both persist identically.
+   */
+  private async persistSettings(
+    map: Record<string, string>,
+    actorId: string | undefined,
+    auditModule: string,
+    auditMessage: string,
+  ) {
     // Capture the before-image so the audit trail records exactly what changed.
     const existingRows = await this.prisma.systemSetting.findMany({
       where: { key: { in: Object.keys(map) } },
@@ -239,9 +296,9 @@ export class SystemService {
     this.audit.record({
       userId: actorId,
       action: 'UPDATE',
-      module: 'SYSTEM_SETTINGS',
+      module: auditModule,
       entity: 'SystemSetting',
-      message: `System settings updated (${Object.keys(changes).length} key(s))`,
+      message: `${auditMessage} (${Object.keys(changes).length} key(s))`,
       metadata: { changes },
     });
 

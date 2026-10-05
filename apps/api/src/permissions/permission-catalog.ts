@@ -21,6 +21,7 @@ export const PERMISSION_CATALOG: {
   { name: 'administration.sub-heads.delete', module: 'Administration', action: 'delete' },
 
   { name: 'administration.main-accounts.view', module: 'Administration', action: 'view' },
+  { name: 'administration.main-accounts.export', module: 'Administration', action: 'export', description: 'Export the chart of accounts to Excel' },
   { name: 'administration.main-accounts.create', module: 'Administration', action: 'create' },
   { name: 'administration.main-accounts.update', module: 'Administration', action: 'update' },
   { name: 'administration.main-accounts.delete', module: 'Administration', action: 'delete' },
@@ -37,6 +38,7 @@ export const PERMISSION_CATALOG: {
   { name: 'administration.brands.delete', module: 'Administration', action: 'delete' },
 
   { name: 'administration.items.view', module: 'Administration', action: 'view' },
+  { name: 'administration.items.export', module: 'Administration', action: 'export', description: 'Export items to Excel' },
   { name: 'administration.items.create', module: 'Administration', action: 'create' },
   { name: 'administration.items.update', module: 'Administration', action: 'update' },
   { name: 'administration.items.delete', module: 'Administration', action: 'delete' },
@@ -49,11 +51,13 @@ export const PERMISSION_CATALOG: {
 
   // Administration - parties
   { name: 'administration.customers.view', module: 'Administration', action: 'view' },
+  { name: 'administration.customers.export', module: 'Administration', action: 'export', description: 'Export customers to Excel' },
   { name: 'administration.customers.create', module: 'Administration', action: 'create' },
   { name: 'administration.customers.update', module: 'Administration', action: 'update' },
   { name: 'administration.customers.delete', module: 'Administration', action: 'delete' },
 
   { name: 'administration.suppliers.view', module: 'Administration', action: 'view' },
+  { name: 'administration.suppliers.export', module: 'Administration', action: 'export', description: 'Export suppliers to Excel' },
   { name: 'administration.suppliers.create', module: 'Administration', action: 'create' },
   { name: 'administration.suppliers.update', module: 'Administration', action: 'update' },
   { name: 'administration.suppliers.delete', module: 'Administration', action: 'delete' },
@@ -136,6 +140,7 @@ export const PERMISSION_CATALOG: {
   { name: 'accounts.payments.post', module: 'accounts', action: 'post', description: 'Approve/post a receipt or payment' },
   { name: 'accounts.payments.cancel', module: 'accounts', action: 'cancel' },
   { name: 'accounts.payments.print', module: 'accounts', action: 'print', description: 'Print receipts & payments' },
+  { name: 'accounts.payments.export', module: 'accounts', action: 'export', description: 'Export receipts & payments to Excel' },
 
   // Inventory
   { name: 'inventory.purchase.view', module: 'inventory', action: 'view' },
@@ -147,6 +152,7 @@ export const PERMISSION_CATALOG: {
   { name: 'inventory.purchase.reject', module: 'inventory', action: 'reject', description: 'Reject a submitted purchase back to draft' },
   { name: 'inventory.purchase.cancel', module: 'inventory', action: 'cancel' },
   { name: 'inventory.purchase.print', module: 'inventory', action: 'print', description: 'Print purchase bills' },
+  { name: 'inventory.purchase.export', module: 'inventory', action: 'export', description: 'Export purchases to Excel' },
   { name: 'inventory.purchase-return.view', module: 'inventory', action: 'view' },
   { name: 'inventory.purchase-return.create', module: 'inventory', action: 'create' },
   { name: 'inventory.purchase-return.update', module: 'inventory', action: 'update' },
@@ -156,6 +162,7 @@ export const PERMISSION_CATALOG: {
   { name: 'inventory.purchase-return.reject', module: 'inventory', action: 'reject', description: 'Reject a submitted purchase return back to draft' },
   { name: 'inventory.purchase-return.cancel', module: 'inventory', action: 'cancel' },
   { name: 'inventory.purchase-return.print', module: 'inventory', action: 'print', description: 'Print purchase return bills' },
+  { name: 'inventory.purchase-return.export', module: 'inventory', action: 'export', description: 'Export purchase returns to Excel' },
   { name: 'inventory.transfer.view', module: 'inventory', action: 'view' },
   { name: 'inventory.transfer.create', module: 'inventory', action: 'create' },
   { name: 'inventory.transfer.update', module: 'inventory', action: 'update' },
@@ -165,6 +172,7 @@ export const PERMISSION_CATALOG: {
   { name: 'inventory.transfer.reject', module: 'inventory', action: 'reject', description: 'Reject a submitted transfer back to draft' },
   { name: 'inventory.transfer.cancel', module: 'inventory', action: 'cancel' },
   { name: 'inventory.transfer.print', module: 'inventory', action: 'print', description: 'Print stock transfer slips' },
+  { name: 'inventory.transfer.export', module: 'inventory', action: 'export', description: 'Export stock transfers to Excel' },
 
   // Sales
   { name: 'sales.invoice.view', module: 'sales', action: 'view' },
@@ -176,6 +184,7 @@ export const PERMISSION_CATALOG: {
   { name: 'sales.invoice.reject', module: 'sales', action: 'reject', description: 'Reject a submitted invoice back to draft' },
   { name: 'sales.invoice.cancel', module: 'sales', action: 'cancel' },
   { name: 'sales.invoice.print', module: 'sales', action: 'print', description: 'Print sales invoices' },
+  { name: 'sales.invoice.export', module: 'sales', action: 'export', description: 'Export sales invoices to Excel' },
   { name: 'sales.return.view', module: 'sales', action: 'view' },
   { name: 'sales.return.create', module: 'sales', action: 'create' },
   { name: 'sales.return.update', module: 'sales', action: 'update' },
@@ -185,6 +194,7 @@ export const PERMISSION_CATALOG: {
   { name: 'sales.return.reject', module: 'sales', action: 'reject', description: 'Reject a submitted return back to draft' },
   { name: 'sales.return.cancel', module: 'sales', action: 'cancel' },
   { name: 'sales.return.print', module: 'sales', action: 'print', description: 'Print sales return notes' },
+  { name: 'sales.return.export', module: 'sales', action: 'export', description: 'Export sales returns to Excel' },
 
   // Quotations (non-posting price offers)
   { name: 'sales.quotation.view', module: 'sales', action: 'view', description: 'View quotations' },
@@ -196,6 +206,7 @@ export const PERMISSION_CATALOG: {
   { name: 'sales.quotation.reject', module: 'sales', action: 'reject', description: 'Mark a sent quotation as rejected' },
   { name: 'sales.quotation.convert', module: 'sales', action: 'convert', description: 'Convert an accepted quotation into a sales invoice' },
   { name: 'sales.quotation.print', module: 'sales', action: 'print', description: 'Print quotations' },
+  { name: 'sales.quotation.export', module: 'sales', action: 'export', description: 'Export quotations to Excel' },
 
   // Reports
   { name: 'reports.accounting.view', module: 'reports', action: 'view', description: 'View accounting reports (trial balance, ledgers, journal)' },
@@ -212,4 +223,6 @@ export const PERMISSION_CATALOG: {
   { name: 'system.audit.view', module: 'system', action: 'view', description: 'View the audit trail' },
   { name: 'system.audit.purge', module: 'system', action: 'purge', description: 'Purge old audit logs' },
   { name: 'system.features.manage', module: 'system', action: 'manage', description: 'Toggle company features (Developer role only)' },
+  { name: 'system.print_layout.manage', module: 'system', action: 'manage', description: 'Manage invoice/report print layouts' },
+  { name: 'system.security.manage', module: 'system', action: 'manage', description: 'Manage account security settings (two-factor authentication)' },
 ];

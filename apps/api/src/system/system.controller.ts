@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SystemService } from './system.service';
-import { ImportSettingsDto, UpdateBrandingDto, UpdateSettingsDto } from './dto/system.dto';
+import { ImportSettingsDto, UpdateBrandingDto, UpdatePrintLayoutDto, UpdateSettingsDto } from './dto/system.dto';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -22,6 +22,19 @@ export class SystemController {
   @ApiOperation({ summary: 'Update branding configuration' })
   updateBranding(@Body() dto: UpdateBrandingDto, @CurrentUser() actor: any) {
     return this.service.updateBranding(dto, actor?.id);
+  }
+
+  @Get('print-layout')
+  @ApiOperation({ summary: 'Get invoice/report print layout settings' })
+  getPrintLayout() {
+    return this.service.getPrintLayout();
+  }
+
+  @Patch('print-layout')
+  @Permissions('system.print_layout.manage')
+  @ApiOperation({ summary: 'Update invoice/report print layout settings' })
+  updatePrintLayout(@Body() dto: UpdatePrintLayoutDto, @CurrentUser() actor: any) {
+    return this.service.updatePrintLayout(dto, actor?.id);
   }
 
   @Get('settings')

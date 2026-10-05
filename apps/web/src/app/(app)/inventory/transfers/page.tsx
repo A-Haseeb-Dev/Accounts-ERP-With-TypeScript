@@ -9,6 +9,7 @@ import { useDocumentMutations } from '@/hooks/use-document-mutations';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { DataTable } from '@/components/data-table';
+import { TableExportActions } from '@/components/table-export-actions';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { PageHeader } from '@/components/page-header';
@@ -159,6 +160,14 @@ export default function StockTransfersPage() {
 
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <TableExportActions
+            permission="inventory.transfer"
+            tableId="inventory.transfer-list"
+            filename={`inventory.transfer-${new Date().toISOString().slice(0, 10)}`}
+            title="Stock Transfers"
+          />
+        </div>
           <div className="relative max-w-xs flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search number / location…" className="pl-9" />
@@ -171,6 +180,8 @@ export default function StockTransfersPage() {
             <option value="cancelled">Cancelled</option>
           </Select>
         </div>
+
+        <div id="inventory.transfer-list">
 
         <DataTable<StockTransfer>
           columns={[
@@ -234,6 +245,8 @@ export default function StockTransfersPage() {
           total={data?.total}
           onPageChange={setPage}
         />
+
+        </div>
       </Card>
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingId ? 'Edit Stock Transfer' : 'New Stock Transfer'} size="lg">

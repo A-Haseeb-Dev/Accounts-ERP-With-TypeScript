@@ -92,3 +92,80 @@ describe('SystemService.importSettings', () => {
     });
   });
 });
+
+describe('SystemService print layout', () => {
+  it('reads only the print.* keys', async () => {
+    const { svc, prisma } = buildService();
+    prisma.systemSetting.findMany.mockResolvedValue([
+      { key: 'print.paperSize', value: 'A4' },
+      { key: 'print.layout', value: '{}' },
+    ]);
+
+    const result = await svc.getPrintLayout();
+
+    expect(prisma.systemSetting.findMany).toHaveBeenCalledWith({
+      where: { key: { startsWith: 'print.' } },
+    });
+    expect(result).toEqual({ 'print.paperSize': 'A4', 'print.layout': '{}' });
+  });
+
+  it('maps layout fields onto their print.* keys', async () => {
+    const { svc, prisma } = buildService();
+
+    await svc.updatePrintLayout({ paperSize: 'A5', printScale: '80', invoiceTemplate: 'compact' }, 'u1');
+
+    const written = prisma.systemSetting.upsert.mock.calls.map((c) => c[0].create.key);
+    expect(written).toEqual(
+      expect.arrayContaining(['print.paperSize', 'print.scale', 'print.invoiceTemplate']),
+    );
+    expect(prisma.systemSetting.upsert.mock.calls[0][0].create.value).toBe('A5');
+  });
+
+  it('accepts print.* keys from the free-form map and ignores everything else', async () => {
+    const { svc, prisma } = buildService();
+
+    await svc.updatePrintLayout({
+      values: {
+        'print.layout': '{"blocks":[]}',
+        'print.layoutOverrides': '{}',
+        'print.layouts': '{}',
+        currency: 'USD',
+        'accounting.cash_account': 'acc-1',
+      },
+    });
+
+    const written = prisma.systemSetting.upsert.mock.calls.map((c) => c[0].create.key);
+    expect(written).toEqual(['print.layout', 'print.layoutOverrides', 'print.layouts']);
+  });
+
+  it('rejects a payload that touches no print layout key', async () => {
+    const { svc } = buildService();
+    await expect(svc.updatePrintLayout({ values: { currency: 'USD' } })).rejects.toMatchObject({
+      response: { error: { code: 'VALIDATION_ERROR' } },
+    });
+    await expect(svc.updatePrintLayout({})).rejects.toMatchObject({
+      response: { error: { code: 'VALIDATION_ERROR' } },
+    });
+  });
+
+  it('records the change under its own audit module', async () => {
+    const { svc, audit } = buildService();
+    await svc.updatePrintLayout({ paperSize: 'A4' }, 'u1');
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'UPDATE', module: 'SYSTEM_PRINT_LAYOUT' }),
+    );
+  });
+});
+
+describe('SystemService settings still write print layout keys', () => {
+  it('keeps the shared settings screen able to set print options', async () => {
+    const { svc, prisma } = buildService();
+
+    await svc.updateSettings({ currency: 'PKR', paperSize: 'Letter', reportShowBranding: 'true' });
+
+    const written = prisma.systemSetting.upsert.mock.calls.map((c) => c[0].create.key);
+    expect(written).toEqual(
+      expect.arrayContaining(['currency', 'print.paperSize', 'print.reportShowBranding']),
+    );
+  });
+});

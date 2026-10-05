@@ -14,6 +14,7 @@ import {
 import { useAuth } from '@/context/auth-context';
 import { filterNavigation, NAV_ITEMS } from '@/lib/navigation';
 import { useFeatureFlags } from '@/hooks/use-feature-flags';
+import { useBranding } from '@/hooks/use-branding';
 import { cn, initials } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input, Field } from '@/components/ui/field';
@@ -28,6 +29,7 @@ export function Sidebar({
 }) {
   const { user, logout, can } = useAuth();
   const { disabled } = useFeatureFlags();
+  const { businessName, shortName, logoUrl, primaryColor } = useBranding();
   const pathname = usePathname();
   const isDeveloper = user?.roles?.includes('Developer') ?? false;
 
@@ -61,12 +63,23 @@ export function Sidebar({
         {/* Header */}
         <div className="flex h-16 items-center justify-between border-b border-slate-200 px-4">
           <Link href="/" onClick={close} className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-600 text-white">
-              <Building2 className="h-5 w-5" />
-            </div>
-            <div className="leading-tight">
-              <p className="text-sm font-bold text-slate-900">HAS ERP</p>
-              <p className="text-[11px] text-slate-500">Management System</p>
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt=""
+                className="h-9 w-9 shrink-0 rounded-lg object-contain"
+              />
+            ) : (
+              <div
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white"
+                style={{ backgroundColor: primaryColor }}
+              >
+                <Building2 className="h-5 w-5" />
+              </div>
+            )}
+            <div className="min-w-0 leading-tight">
+              <p className="truncate text-sm font-bold text-slate-900">{businessName}</p>
+              <p className="truncate text-[11px] text-slate-500">{shortName} · ERP</p>
             </div>
           </Link>
 

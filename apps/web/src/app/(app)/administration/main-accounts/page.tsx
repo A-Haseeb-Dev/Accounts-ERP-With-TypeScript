@@ -9,6 +9,7 @@ import { useFlatOptions } from '@/hooks/use-options';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select } from '@/components/ui/field';
 import { DataTable } from '@/components/data-table';
+import { TableExportActions } from '@/components/table-export-actions';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { DeleteWarnDialog } from '@/components/delete-warn-dialog';
@@ -220,6 +221,14 @@ export default function MainAccountsPage() {
 
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <TableExportActions
+            permission="administration.main-accounts"
+            tableId="administration.main-accounts-list"
+            filename={`administration.main-accounts-${new Date().toISOString().slice(0, 10)}`}
+            title="Main Accounts"
+          />
+        </div>
           <div className="relative flex-1 max-w-xs">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search…" className="pl-9" />
@@ -244,6 +253,7 @@ export default function MainAccountsPage() {
           </div>
         </div>
         {view === 'list' ? (
+        <div id="administration.main-accounts-list">
         <DataTable<MainAccount>
           columns={[
             { key: 'code', header: 'Code', render: (r) => <span className="font-mono font-semibold text-slate-800">{r.code}</span> },
@@ -272,6 +282,7 @@ export default function MainAccountsPage() {
           total={data?.total}
           onPageChange={setPage}
         />
+        </div>
         ) : (
         <div className="divide-y divide-slate-100">
           {groupedHeads.length === 0 ? (

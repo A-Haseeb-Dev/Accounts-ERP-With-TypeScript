@@ -121,8 +121,8 @@ export default function PrintLayoutPage() {
   const { options: warehouseOptions } = useFlatOptions('stock-locations');
 
   const { data, isLoading } = useQuery<Settings>({
-    queryKey: ['settings'],
-    queryFn: () => apiFetch('/system/settings'),
+    queryKey: ['print-layout'],
+    queryFn: () => apiFetch('/system/print-layout'),
   });
 
   const [form, setForm] = useState<Settings>({});
@@ -154,8 +154,11 @@ export default function PrintLayoutPage() {
     form[field] ?? (data ? data[FIELDS[field].key] : undefined) ?? FIELDS[field].def;
 
   const save = useMutation({
-    mutationFn: (payload: unknown) => apiFetch('/system/settings', { method: 'PATCH', body: JSON.stringify(payload) }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['settings'] }); },
+    mutationFn: (payload: unknown) => apiFetch('/system/print-layout', { method: 'PATCH', body: JSON.stringify(payload) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['print-layout'] });
+      qc.invalidateQueries({ queryKey: ['settings'] });
+    },
     onError: (e: Error) => setError(e.message),
   });
 

@@ -251,6 +251,107 @@ export class UpdateSettingsDto {
   mfaIssuer?: string;
 }
 
+/**
+ * Print-layout settings only. Kept separate from `UpdateSettingsDto` so the
+ * Print Layout screen can be guarded by `system.print_layout.manage` without
+ * also handing out the wider company-settings controls.
+ */
+export class UpdatePrintLayoutDto {
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  invoiceShowBalance?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  invoiceShowAmountWords?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  invoiceShowDate?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  reportShowBranding?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  reportShowLogo?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(A4|A5|Letter)$/, { message: 'Paper size must be A4, A5 or Letter' })
+  paperSize?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^([5-9][0-9]|100)$/, { message: 'Print scale must be between 50 and 100' })
+  printScale?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(standard|compact|thermal|custom)$/, { message: 'Invoice template must be standard, compact, thermal or custom' })
+  invoiceTemplate?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(small|normal|large)$/, { message: 'Font size must be small, normal or large' })
+  fontSize?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(small|medium|large)$/, { message: 'Logo size must be small, medium or large' })
+  logoSize?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  invoiceShowSignatures?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  invoiceShowPartyContact?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  invoiceShowItemCode?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  invoiceShowDiscountCol?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  invoiceShowTaxCol?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(left|center)$/, { message: 'Header alignment must be left or center' })
+  invoiceHeaderAlign?: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(true|false)$/, { message: 'Must be true or false' })
+  showPageNumbers?: string;
+
+  /**
+   * Free-form layout blobs (`print.layout`, `print.layoutOverrides`,
+   * `print.layouts`). The service only accepts `print.*` keys from this map, so
+   * the endpoint cannot be used to write arbitrary system settings.
+   */
+  @IsObject()
+  @IsOptional()
+  values?: Record<string, string>;
+}
+
 export class ImportSettingsDto {
   @IsOptional()
   version?: number;
