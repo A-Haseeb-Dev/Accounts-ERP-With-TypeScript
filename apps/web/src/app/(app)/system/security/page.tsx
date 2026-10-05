@@ -18,7 +18,7 @@ type EnableResult = { recoveryCodes: string[] };
 export default function SecurityPage() {
   const qc = useQueryClient();
   const { can } = useAuth();
-  const canManage = can('system.settings.manage');
+  const canManage = can('system.security.manage');
 
   const { data: status, isLoading } = useQuery<Status>({
     queryKey: ['two-factor', 'status'],

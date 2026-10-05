@@ -163,6 +163,23 @@ export const flattenNav = (items: NavItem[]): NavItem[] => {
   return out;
 };
 
+/**
+ * The permission a given URL requires, taken from the navigation tree so there
+ * is only one place that maps a page to its permission. Longer hrefs win, so a
+ * nested route such as `/hr/employees/123` resolves against `/hr/employees`.
+ */
+export const permissionForPath = (pathname: string): string | undefined => {
+  const path = pathname.replace(/\/+$/, '') || '/';
+  let best: NavItem | undefined;
+  for (const item of flattenNav(NAV_ITEMS)) {
+    const href = item.href.replace(/\/+$/, '') || '/';
+    if (path === href || path.startsWith(`${href}/`)) {
+      if (!best || href.length > best.href.length) best = item;
+    }
+  }
+  return best?.permission;
+};
+
 export interface NavContext {
   permissions: string[];
   /** Feature codes (== permission names) that the developer has switched off. */

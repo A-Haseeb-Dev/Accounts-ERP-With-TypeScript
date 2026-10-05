@@ -5,13 +5,15 @@ import { useEffect, useState } from 'react';
 import { Menu } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { Sidebar } from '@/components/sidebar';
+import { RequirePermission } from '@/components/require-permission';
 import { PageLoader } from '@/components/ui/spinner';
 import { CurrencyProvider } from '@/components/currency-provider';
 import { IdleLogout } from '@/components/idle-logout';
+import { permissionForPath } from '@/lib/navigation';
 import { initials } from '@/lib/utils';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, can } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -27,6 +29,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
+
+  // Hiding a sidebar link is only navigation — the URL can still be typed. Gate
+  // the rendered route too, using the same permission the sidebar used.
+  const required = permissionForPath(pathname);
+  const body = required && !can(required) ? (
+    <RequirePermission permission={required} label={pathname}>
+      {children}
+    </RequirePermission>
+  ) : (
+    children
+  );
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -64,7 +77,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Content */}
         <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <CurrencyProvider>
-            <div key={pathname}>{children}</div>
+            <div key={pathname}>{body}</div>
           </CurrencyProvider>
           <IdleLogout />
         </main>
