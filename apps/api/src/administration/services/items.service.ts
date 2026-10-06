@@ -427,7 +427,7 @@ export class ItemsService {
   }
 
   private async itemReferences(id: string): Promise<string[]> {
-    const [movements, sales, purchases, salesReturns, purchaseReturns, transfers] =
+    const [movements, sales, purchases, salesReturns, purchaseReturns, transfers, openingCount] =
       await Promise.all([
         this.prisma.inventoryTransaction.count({ where: { itemId: id } }),
         this.prisma.saleItem.count({ where: { itemId: id } }),
@@ -435,9 +435,24 @@ export class ItemsService {
         this.prisma.salesReturnItem.count({ where: { itemId: id } }),
         this.prisma.purchaseReturnItem.count({ where: { itemId: id } }),
         this.prisma.stockTransferItem.count({ where: { itemId: id } }),
+        this.prisma.inventoryTransaction.count({
+          where: {
+            itemId: id,
+            OR: [
+              { referenceType: 'OPENING_STOCK' },
+              { transactionType: 'OPENING_STOCK' },
+              { referenceType: OPENING_REFERENCE },
+              { transactionType: OPENING_REFERENCE },
+            ],
+          },
+        }),
       ]);
     const references: string[] = [];
-    if (movements) references.push(`${movements} inventory movement${movements === 1 ? '' : 's'}`);
+    const nonOpeningMovements = Math.max(0, movements - openingCount);
+    if (nonOpeningMovements) references.push(`${nonOpeningMovements} inventory movement${nonOpeningMovements === 1 ? '' : 's'}`);
+    else if (movements > 0 && openingCount === movements) {
+      // Only opening stock exists; safe to allow deletion after cleanup.
+    }
     if (sales) references.push(`${sales} sale line${sales === 1 ? '' : 's'}`);
     if (purchases) references.push(`${purchases} purchase line${purchases === 1 ? '' : 's'}`);
     if (salesReturns) references.push(`${salesReturns} sales return line${salesReturns === 1 ? '' : 's'}`);
