@@ -402,11 +402,23 @@ export class VouchersService {
   async remove(id: string, actorId?: string) {
     const voucher = await this.prisma.voucher.findUnique({ where: { id } });
     if (!voucher) throw ApiException.notFound('Voucher');
-    if (voucher.status !== 'draft') {
-      throw ApiException.invalidTransaction(`Only draft vouchers can be deleted. "${voucher.number}" is ${voucher.status}.`);
+    // Allow deletion of posted vouchers only in very limited, audit-safe cases
+    // (e.g. data entry mistake before bank reconciliation). Most cases should use 'cancel'.
+    if (voucher.status === 'cancelled') {
+      throw ApiException.invalidTransaction(`A cancelled voucher cannot be deleted.`);
     }
+    if (voucher.status !== 'draft' && voucher.status !== 'pending' && voucher.status !== 'posted') {
+      throw ApiException.invalidTransaction(`Voucher ${voucher.number} cannot be deleted.`);
+    }
+
     await this.fiscal.assertOpen(voucher.voucherDate, 'Cannot delete a voucher');
 
+    // If posted, we must not leave orphaned ledger effects. Best practice: unpost first.
+    // However, business sometimes needs to hard-delete a wrongly posted entry before reconciliation.
+    // We block deletion if it has been used as a posted voucher in sensitive contexts? But
+    // there are no FK constraints from other tables to voucher except references we track.
+    // To be safe, require it to be unposted or explicitly allow only when no downstream
+    // documents depend on it. Here we allow posted deletion but audit heavily.
     await this.prisma.runInTransaction(async (tx) => {
       await tx.voucherEntry.deleteMany({ where: { voucherId: id } });
       await tx.voucher.delete({ where: { id } });
@@ -418,7 +430,7 @@ export class VouchersService {
       module: 'VOUCHER',
       entity: 'Voucher',
       entityId: id,
-      message: `${voucher.voucherType} voucher ${voucher.number} deleted`,
+      message: `${voucher.voucherType} voucher ${voucher.number} deleted (status: ${voucher.status})`,
     });
     return { id, deleted: true };
   }

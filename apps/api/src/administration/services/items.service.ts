@@ -415,6 +415,9 @@ export class ItemsService {
     if (references.length > 0) {
       throw ApiException.deleteBlocked(`Item "${item.name}"`, references);
     }
+    // Delete item only if it's never used anywhere. If you want to allow
+    // deletion after creating vouchers/purchases/sales, the referenced documents
+    // should be corrected first (defense-in-depth).
     await this.prisma.item.delete({ where: { id } });
     this.audit.record({
       userId: actorId, action: 'DELETE', module: 'ITEM', entity: 'Item',
