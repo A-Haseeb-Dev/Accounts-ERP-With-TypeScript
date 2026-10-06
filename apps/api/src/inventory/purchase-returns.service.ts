@@ -350,27 +350,44 @@ export class PurchaseReturnsService {
     });
     return updated;
   }
-
   async remove(id: string, actorId?: string) {
-    const pr = await this.prisma.purchaseReturn.findUnique({ where: { id } });
+    const pr = await this.prisma.purchaseReturn.findUnique({ where: { id }, include: { items: true } });
     if (!pr) throw ApiException.notFound('Purchase return');
-    if (pr.status !== 'draft') {
-      throw ApiException.invalidTransaction(
-        `Only draft purchase returns can be deleted. "${pr.number}" is ${pr.status}.`,
-      );
+    if (pr.status === 'cancelled') {
+      throw ApiException.invalidTransaction(`Cancelled purchase returns cannot be deleted.`);
     }
     await this.fiscal.assertOpen(pr.returnDate, 'Cannot delete a purchase return');
 
+    const wasPosted = pr.status === 'posted';
     await this.prisma.runInTransaction(async (tx) => {
+      if (wasPosted) {
+        for (const line of pr.items) {
+          await this.inventory.recordOut(tx, {
+            itemId: line.itemId,
+            locationId: pr.stockLocationId,
+            quantity: Number(line.quantity),
+            transactionType: 'PURCHASE_RETURN_ADJUST',
+            referenceType: 'PurchaseReturn',
+            referenceId: pr.id,
+            unitCost: 0,
+            createdById: actorId,
+          }, { allowNegative: true });
+        }
+        const vouchers = await tx.voucher.findMany({ where: { reference: pr.number } });
+        for (const v of vouchers) {
+          await this.accounting.cancelVoucher(tx, v.id, `Purchase return ${pr.number} deleted`, actorId);
+        }
+      }
       await tx.purchaseReturn.delete({ where: { id } });
     });
+
     this.audit.record({
       userId: actorId,
       action: 'DELETE',
       module: 'PURCHASE_RETURN',
       entity: 'PurchaseReturn',
       entityId: id,
-      message: `Purchase return ${pr.number} deleted`,
+      message: `Purchase return ${pr.number} deleted${wasPosted ? ' (accounting reversed)' : ''}`,
     });
     return { id, deleted: true };
   }

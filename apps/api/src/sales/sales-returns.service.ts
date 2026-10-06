@@ -355,27 +355,45 @@ export class SalesReturnsService {
     });
     return updated;
   }
-
   async remove(id: string, actorId?: string) {
-    const sr = await this.prisma.salesReturn.findUnique({ where: { id } });
+    const sr = await this.prisma.salesReturn.findUnique({ where: { id }, include: { items: true } });
     if (!sr) throw ApiException.notFound('Sales return');
-    if (sr.status !== 'draft') {
-      throw ApiException.invalidTransaction(
-        `Only draft sales returns can be deleted. "${sr.number}" is ${sr.status}.`,
-      );
+    if (sr.status === 'cancelled') {
+      throw ApiException.invalidTransaction(`Cancelled sales returns cannot be deleted.`);
     }
     await this.fiscal.assertOpen(sr.returnDate, 'Cannot delete a sales return');
 
+    const wasPosted = sr.status === 'posted';
     await this.prisma.runInTransaction(async (tx) => {
+      if (wasPosted) {
+        // Reverse effects: for sales return posted, it reduced stock (OUT) and created voucher; reverse by putting stock back
+        for (const line of sr.items) {
+          await this.inventory.recordIn(tx, {
+            itemId: line.itemId,
+            locationId: sr.stockLocationId,
+            quantity: Number(line.quantity),
+            transactionType: 'SALES_RETURN_ADJUST',
+            referenceType: 'SalesReturn',
+            referenceId: sr.id,
+            unitCost: 0,
+            createdById: actorId,
+          }, { affectsCosting: false });
+        }
+        const vouchers = await tx.voucher.findMany({ where: { reference: sr.number } });
+        for (const v of vouchers) {
+          await this.accounting.cancelVoucher(tx, v.id, `Sales return ${sr.number} deleted`, actorId);
+        }
+      }
       await tx.salesReturn.delete({ where: { id } });
     });
+
     this.audit.record({
       userId: actorId,
       action: 'DELETE',
       module: 'SALES_RETURN',
       entity: 'SalesReturn',
       entityId: id,
-      message: `Sales return ${sr.number} deleted`,
+      message: `Sales return ${sr.number} deleted${wasPosted ? ' (accounting reversed)' : ''}`,
     });
     return { id, deleted: true };
   }
