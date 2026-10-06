@@ -402,8 +402,6 @@ export class VouchersService {
   async remove(id: string, actorId?: string) {
     const voucher = await this.prisma.voucher.findUnique({ where: { id } });
     if (!voucher) throw ApiException.notFound('Voucher');
-    // Allow deletion of posted vouchers only in very limited, audit-safe cases
-    // (e.g. data entry mistake before bank reconciliation). Most cases should use 'cancel'.
     if (voucher.status === 'cancelled') {
       throw ApiException.invalidTransaction(`A cancelled voucher cannot be deleted.`);
     }
@@ -413,13 +411,12 @@ export class VouchersService {
 
     await this.fiscal.assertOpen(voucher.voucherDate, 'Cannot delete a voucher');
 
-    // If posted, we must not leave orphaned ledger effects. Best practice: unpost first.
-    // However, business sometimes needs to hard-delete a wrongly posted entry before reconciliation.
-    // We block deletion if it has been used as a posted voucher in sensitive contexts? But
-    // there are no FK constraints from other tables to voucher except references we track.
-    // To be safe, require it to be unposted or explicitly allow only when no downstream
-    // documents depend on it. Here we allow posted deletion but audit heavily.
+    const wasPosted = voucher.status === 'posted';
     await this.prisma.runInTransaction(async (tx) => {
+      if (wasPosted) {
+        await tx.voucherEntry.deleteMany({ where: { voucherId: id } });
+        await tx.voucher.update({ where: { id }, data: { status: 'draft', postedById: null, postedAt: null } });
+      }
       await tx.voucherEntry.deleteMany({ where: { voucherId: id } });
       await tx.voucher.delete({ where: { id } });
     });
@@ -427,10 +424,10 @@ export class VouchersService {
     this.audit.record({
       userId: actorId,
       action: 'DELETE',
-      module: 'VOUCHER',
+      module: 'ACCOUNTS',
       entity: 'Voucher',
       entityId: id,
-      message: `${voucher.voucherType} voucher ${voucher.number} deleted (status: ${voucher.status})`,
+      message: `Voucher ${voucher.number} deleted (status: ${wasPosted ? 'posted' : voucher.status})`,
     });
     return { id, deleted: true };
   }
