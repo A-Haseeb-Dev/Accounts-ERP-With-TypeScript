@@ -118,6 +118,22 @@ describe('QuotationsService.create', () => {
     prisma.customer.findUnique = vi.fn(async () => null);
     expect(await apiErrorMessage(svc.create(validDto as never))).toMatch(/customer/i);
   });
+
+  it('rejects a header discount that would make the total negative', async () => {
+    // The DTO only bounds `discount` at >= 0. Without a ceiling against the
+    // pre-discount total, `subtotal - discount + tax` goes negative and saves
+    // as a negative document.
+    const { svc, create } = buildService();
+    const msg = await apiErrorMessage(svc.create({ ...validDto, discount: 1500 } as never));
+    expect(msg).toMatch(/discount/i);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('still allows a discount equal to the pre-discount total', async () => {
+    const { svc, create } = buildService();
+    await svc.create({ ...validDto, discount: 1000 } as never);
+    expect(create.mock.calls[0][0].data.grandTotal).toBe(0);
+  });
 });
 
 describe('QuotationsService status flow', () => {

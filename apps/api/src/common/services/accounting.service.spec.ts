@@ -326,6 +326,11 @@ describe('AccountingService.syncOpeningVoucher', () => {
             : null,
       ),
     );
+    // `syncOpeningVoucher` resolves the equity account with `findFirst` so it can
+    // constrain it to the account's own organization; same lookup, different verb.
+    const findFirst = vi.fn().mockImplementation(({ where }: { where: { id?: string } }) =>
+      Promise.resolve(findUnique({ where: { id: where.id as string } })),
+    );
     const tx = {
       voucher: {
         create: voucherCreate,
@@ -355,7 +360,7 @@ describe('AccountingService.syncOpeningVoucher', () => {
       systemSetting: { upsert: vi.fn().mockResolvedValue({}) },
     };
     const prisma = {
-      mainAccount: { findUnique, findFirst: vi.fn().mockResolvedValue(null) },
+      mainAccount: { findUnique, findFirst },
       systemSetting: {
         findFirst: vi.fn().mockResolvedValue(setting ? { id: 's1', value: setting } : null),
         update: settingUpdate,

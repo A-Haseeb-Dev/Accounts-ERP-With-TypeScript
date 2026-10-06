@@ -17,7 +17,13 @@ export class DepartmentsService {
 
   /** Ensures a department's company-feature toggle is enabled before acting on it. */
   private async assertFeatureEnabled(id: string) {
-    const enabled = await this.features.isEnabled(`hr.departments.${id}`);
+    // Scope the switch to the department's own company, so a department of
+    // another company cannot be disabled by (or inherit) this company's toggle.
+    const dept = await this.prisma.department.findUnique({
+      where: { id },
+      select: { organizationId: true },
+    });
+    const enabled = await this.features.isEnabled(`hr.departments.${id}`, dept?.organizationId);
     if (!enabled) throw ApiException.forbidden('This department is disabled for your company');
   }
 

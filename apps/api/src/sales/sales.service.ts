@@ -96,11 +96,29 @@ export class SalesService {
     return sale;
   }
 
-  async post(id: string, actorId?: string) {
-    const sale = await this.prisma.sale.findUnique({
-      where: { id },
-      include: { items: true, customer: true, stockLocation: true },
-    });
+  /**
+   * Posts an invoice: relieves stock, writes the ledger voucher and marks the
+   * document posted.
+   *
+   * `opts.tx` lets a caller that already holds a transaction post inside it.
+   * `update()` needs that: it reverses a posted invoice and re-posts the
+   * corrected one, and doing those as two transactions meant a failure in
+   * between left the invoice as a draft with its stock already returned and its
+   * vouchers already cancelled - a half-applied edit with nothing to show for
+   * it. `opts.sale` is the already-loaded, already-saved header so the posting
+   * sees the corrected values instead of re-reading the pre-edit row.
+   */
+  async post(
+    id: string,
+    actorId?: string,
+    opts: { tx?: any; sale?: any } = {},
+  ) {
+    const sale =
+      opts.sale ??
+      (await this.prisma.sale.findUnique({
+        where: { id },
+        include: { items: true, customer: true, stockLocation: true },
+      }));
     if (!sale) throw ApiException.notFound('Sales invoice');
     if (sale.status === 'posted') return sale;
     if (sale.status === 'cancelled') {
@@ -155,7 +173,7 @@ export class SalesService {
     });
     const allowNegative = negativeSetting?.value === 'true';
 
-    const result = await this.prisma.runInTransaction(async (tx) => {
+    const postBody = async (tx: any) => {
       // 1. Validate and reduce stock for each line, relieving it at the item's
       //    weighted-average cost. The selling price is not a cost basis.
       const itemIds = sale.items.map((l: any) => l.itemId);
@@ -312,8 +330,9 @@ export class SalesService {
         message: `Sales invoice ${sale.number} posted (${sale.grandTotal})`,
       });
       return updated;
-    });
-    return result;
+    };
+
+    return opts.tx ? postBody(opts.tx) : this.prisma.runInTransaction(postBody);
   }
 
   async submit(id: string, actorId?: string) {
@@ -407,7 +426,7 @@ export class SalesService {
         await this.reversePostedEffects(tx, sale, actorId, 'edited');
       }
       await tx.saleItem.deleteMany({ where: { saleId: id } });
-      return tx.sale.update({
+      const saved = await tx.sale.update({
         where: { id },
         data: {
           ...(wasPosted ? { status: 'draft' } : {}),
@@ -439,6 +458,11 @@ export class SalesService {
         },
         include: { items: true, customer: true, stockLocation: true },
       });
+
+      // Re-post inside the same transaction as the reversal above, so a failure
+      // here rolls the reversal back instead of stranding the invoice half
+      // reversed. `saved` carries the corrected header and lines.
+      return wasPosted ? this.post(id, actorId, { tx, sale: saved }) : saved;
     });
 
     this.audit.record({
@@ -449,9 +473,6 @@ export class SalesService {
       entityId: id,
       message: `Sales invoice ${sale.number} updated${wasPosted ? ' and re-posted' : ''}`,
     });
-    if (wasPosted) {
-      return this.post(id, actorId);
-    }
     return updated;
   }
 
@@ -604,6 +625,16 @@ export class SalesService {
     );
     const discount = round2(headerDiscount);
     const tax = round2(headerTax);
+    // A header discount larger than the invoice turns grandTotal negative. The
+    // DTO only bounds `discount` at >= 0, so nothing else stopped it, and the
+    // result saved cleanly as a negative invoice that was then flagged "paid"
+    // and failed to post with a misleading "amounts cannot be negative".
+    const beforeDiscount = round2(subtotal + tax);
+    if (discount > beforeDiscount) {
+      throw ApiException.validation(
+        `The discount (${discount}) cannot exceed the invoice total before discount (${beforeDiscount}).`,
+      );
+    }
     const grandTotal = round2(subtotal - discount + tax);
     return { subtotal, discount, tax, grandTotal };
   }

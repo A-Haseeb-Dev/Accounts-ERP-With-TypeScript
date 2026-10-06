@@ -11,7 +11,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { apiFetch, setTokens, clearTokens } from '@/lib/api';
+import { apiFetch, setTokens, clearTokens, getRefreshToken } from '@/lib/api';
 import { setPendingMfa, getPendingMfa, clearPendingMfa } from '@/lib/mfa';
 import type { SessionUser } from '@/lib/auth-types';
 
@@ -88,8 +88,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [router]);
 
   const logout = useCallback(async () => {
+    const refreshToken = getRefreshToken();
     try {
-      await apiFetch('/auth/logout', { method: 'POST', retryAuth: false });
+      // The refresh token is sent in the body as well as via the cookie: the
+      // API reads the cookie when present, and on a cross-origin call
+      // (development) the cookie is not attached. Without the body the endpoint
+      // cleared cookies but never revoked anything, leaving a stolen refresh
+      // token usable.
+      await apiFetch('/auth/logout', {
+        method: 'POST',
+        body: JSON.stringify(refreshToken ? { refreshToken } : {}),
+        retryAuth: false,
+      });
     } finally {
       clearTokens();
       setUser(null);

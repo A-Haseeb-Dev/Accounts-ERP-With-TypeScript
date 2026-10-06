@@ -25,6 +25,7 @@ export const PERMISSION_CATALOG: {
   { name: 'administration.main-accounts.create', module: 'Administration', action: 'create' },
   { name: 'administration.main-accounts.update', module: 'Administration', action: 'update' },
   { name: 'administration.main-accounts.delete', module: 'Administration', action: 'delete' },
+  { name: 'administration.main-accounts.print', module: 'Administration', action: 'print', description: 'Print main account lists' },
 
   // Administration - products
   { name: 'administration.item-types.view', module: 'Administration', action: 'view' },
@@ -42,6 +43,7 @@ export const PERMISSION_CATALOG: {
   { name: 'administration.items.create', module: 'Administration', action: 'create' },
   { name: 'administration.items.update', module: 'Administration', action: 'update' },
   { name: 'administration.items.delete', module: 'Administration', action: 'delete' },
+  { name: 'administration.items.print', module: 'Administration', action: 'print', description: 'Print item lists' },
   { name: 'administration.items.stock', module: 'Administration', action: 'stock', description: 'View item stock and ledger' },
 
   { name: 'administration.stock-locations.view', module: 'Administration', action: 'view' },
@@ -55,12 +57,14 @@ export const PERMISSION_CATALOG: {
   { name: 'administration.customers.create', module: 'Administration', action: 'create' },
   { name: 'administration.customers.update', module: 'Administration', action: 'update' },
   { name: 'administration.customers.delete', module: 'Administration', action: 'delete' },
+  { name: 'administration.customers.print', module: 'Administration', action: 'print', description: 'Print customer lists' },
 
   { name: 'administration.suppliers.view', module: 'Administration', action: 'view' },
   { name: 'administration.suppliers.export', module: 'Administration', action: 'export', description: 'Export suppliers to Excel' },
   { name: 'administration.suppliers.create', module: 'Administration', action: 'create' },
   { name: 'administration.suppliers.update', module: 'Administration', action: 'update' },
   { name: 'administration.suppliers.delete', module: 'Administration', action: 'delete' },
+  { name: 'administration.suppliers.print', module: 'Administration', action: 'print', description: 'Print supplier lists' },
 
   { name: 'administration.towns.view', module: 'Administration', action: 'view' },
   { name: 'administration.towns.create', module: 'Administration', action: 'create' },

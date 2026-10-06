@@ -456,5 +456,14 @@ function computeTotals(items: any[], headerDiscount?: number, headerTax?: number
   );
   const discount = round2(headerDiscount ?? 0);
   const tax = round2(headerTax ?? 0);
+  // A header discount larger than the return turns grandTotal negative, which
+  // would post a negative debit to the supplier; the DTO only bounds the
+  // discount at >= 0, so nothing else stopped it.
+  const beforeDiscount = round2(subtotal + tax);
+  if (discount > beforeDiscount) {
+    throw ApiException.validation(
+      `The discount (${discount}) cannot exceed the return total before discount (${beforeDiscount}).`,
+    );
+  }
   return { subtotal, discount, tax, grandTotal: round2(subtotal - discount + tax) };
 }

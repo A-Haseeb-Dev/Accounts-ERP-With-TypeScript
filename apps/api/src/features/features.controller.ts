@@ -14,8 +14,8 @@ export class FeaturesController {
 
   @Get()
   @ApiOperation({ summary: 'Get company feature switch states' })
-  getFeatures() {
-    return this.features.getState();
+  getFeatures(@CurrentUser() actor: any) {
+    return this.features.getState(actor?.organizationId);
   }
 
   @Patch()
@@ -27,7 +27,7 @@ export class FeaturesController {
     if (!actor?.roles?.includes('Developer')) {
       throw ApiException.forbidden('Only the Developer role can change company features');
     }
-    return this.features.setEnabled(dto.code, dto.enabled, actor?.id);
+    return this.features.setEnabled(dto.code, dto.enabled, actor?.id, actor?.organizationId);
   }
 
   @Patch('bulk')
@@ -37,6 +37,6 @@ export class FeaturesController {
     if (!actor?.roles?.includes('Developer')) {
       throw ApiException.forbidden('Only the Developer role can change company features');
     }
-    return this.features.setManyEnabled(dto.codes, dto.enabled, actor?.id);
+    return this.features.setManyEnabled(dto.codes, dto.enabled, actor?.id, actor?.organizationId);
   }
 }

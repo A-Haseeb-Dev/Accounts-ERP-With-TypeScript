@@ -19,10 +19,10 @@ function buildService(overrides?: { prisma?: Partial<MockInventoryPrisma> }) {
       update: vi.fn().mockResolvedValue({}),
     },
     item: {
-      findMany: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([{ organizationId: 'org-1' }]),
       // Weighted-average maintenance reads and writes the item's average cost
       // whenever a movement carries a cost.
-      findUnique: vi.fn().mockResolvedValue({ id: 'item-1', averageCost: 0 }),
+      findUnique: vi.fn().mockResolvedValue({ id: 'item-1', organizationId: 'org-1', averageCost: 0 }),
       update: vi.fn().mockResolvedValue({}),
     },
     ...(overrides?.prisma ?? {}),

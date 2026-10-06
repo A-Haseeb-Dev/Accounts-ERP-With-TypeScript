@@ -16,6 +16,14 @@ export interface FeatureFlagState {
 
 const FEATURE_KEY = (code: string) => `features.${code}`;
 
+/**
+ * Fallback organization for a switch that has never been written. Every model
+ * in the schema defaults to the same value, so this matches a freshly seeded
+ * install rather than inventing a new one. Real requests always pass the
+ * caller's organization; this only covers internal callers with no user.
+ */
+const DEFAULT_ORGANIZATION_ID = 'default-org';
+
 /** Feature-code prefix for department toggles. Each department is a company feature. */
 export const DEPARTMENT_FEATURE_PREFIX = 'hr.departments.';
 
@@ -30,10 +38,17 @@ export class FeaturesService {
     private readonly audit: AuditService,
   ) {}
 
-  /** Builds the full feature list with the current switch state (on by default). */
-  async getState(): Promise<FeatureFlagState[]> {
+  /**
+   * Builds the full feature list with the current switch state (on by default).
+   *
+   * Scoped to `organizationId`: `SystemSetting` is unique per (key,
+   * organization), so an unscoped read could return another company's row and
+   * make this company appear to have disabled a feature it never touched.
+   */
+  async getState(organizationId?: string): Promise<FeatureFlagState[]> {
+    const org = organizationId ?? DEFAULT_ORGANIZATION_ID;
     const rows = await this.prisma.systemSetting.findMany({
-      where: { key: { startsWith: 'features.' } },
+      where: { key: { startsWith: 'features.' }, organizationId: org },
     });
     const map = new Map(rows.map((r) => [r.key, r.value ?? '']));
 
@@ -51,7 +66,7 @@ export class FeaturesService {
     // Every department is also a company feature ("Departments" group) so that
     // a client can turn any department on/off and it disappears from the app.
     const departments = await this.prisma.department.findMany({
-      where: { status: 'active' },
+      where: { status: 'active', organizationId: org },
       orderBy: { name: 'asc' },
     });
     for (const dept of departments) {
@@ -71,35 +86,39 @@ export class FeaturesService {
   }
 
   /** Whether a feature is enabled for this company. Disabled features are blocked in the permissions guard. */
-  async isEnabled(code: string): Promise<boolean> {
-    if (isDepartmentFeatureCode(code)) {
-      const row = await this.prisma.systemSetting.findFirst({
-        where: { key: FEATURE_KEY(code) },
-      });
-      return (row?.value ?? 'on') !== 'off';
-    }
-    if (!isKnownFeature(code)) return true;
+  async isEnabled(code: string, organizationId?: string): Promise<boolean> {
+    // An unknown code has no switch to read, so it cannot be "off".
+    if (!isKnownFeature(code) && !isDepartmentFeatureCode(code)) return true;
 
     const row = await this.prisma.systemSetting.findFirst({
-      where: { key: FEATURE_KEY(code) },
+      where: { key: FEATURE_KEY(code), organizationId: organizationId ?? DEFAULT_ORGANIZATION_ID },
     });
     return (row?.value ?? 'on') !== 'off';
   }
 
   /** Turns a feature on/off and records the change in the audit trail. */
-  async setEnabled(code: string, enabled: boolean, actorId?: string): Promise<FeatureFlagState[]> {
+  async setEnabled(
+    code: string,
+    enabled: boolean,
+    actorId?: string,
+    organizationId?: string,
+  ): Promise<FeatureFlagState[]> {
     const label = await this.featureLabel(code);
     if (!label) throw ApiException.notFound('Feature');
 
     const key = FEATURE_KEY(code);
     const to = enabled ? 'on' : 'off';
+    const org = organizationId ?? DEFAULT_ORGANIZATION_ID;
 
-    const existing = await this.prisma.systemSetting.findFirst({ where: { key } });
+    // Read and write the same (key, organization) pair. Looking the key up
+    // unscoped to discover which organization owns it would let this caller's
+    // write land on - or overwrite - another company's row.
+    const existing = await this.prisma.systemSetting.findFirst({ where: { key, organizationId: org } });
     const from = existing?.value ?? 'on';
 
     await this.prisma.systemSetting.upsert({
-      where: { key_organizationId: { key, organizationId: 'default-org' } },
-      create: { key, value: to, organizationId: 'default-org', updatedById: actorId },
+      where: { key_organizationId: { key, organizationId: org } },
+      create: { key, value: to, organizationId: org, updatedById: actorId },
       update: { value: to, updatedById: actorId },
     });
 
@@ -112,7 +131,7 @@ export class FeaturesService {
       metadata: { [key]: { from, to } },
     });
 
-    return this.getState();
+    return this.getState(org);
   }
 
   /** Turns many features on/off in a single transaction (group / bulk switch). */
@@ -120,27 +139,25 @@ export class FeaturesService {
     codes: string[],
     enabled: boolean,
     actorId?: string,
+    organizationId?: string,
   ): Promise<FeatureFlagState[]> {
     const valid = Array.from(new Set(codes)).filter((code) =>
       FEATURES.some((f) => f.code === code) || isDepartmentFeatureCode(code),
     );
-    if (valid.length === 0) return this.getState();
+    const org = organizationId ?? DEFAULT_ORGANIZATION_ID;
+    if (valid.length === 0) return this.getState(org);
 
     const to = enabled ? 'on' : 'off';
 
     await this.prisma.$transaction(
-      valid.map((code) =>
-        this.prisma.systemSetting.upsert({
-          where: { key_organizationId: { key: FEATURE_KEY(code), organizationId: 'default-org' } },
-          create: {
-            key: FEATURE_KEY(code),
-            value: to,
-            organizationId: 'default-org',
-            updatedById: actorId,
-          },
+      valid.map((code) => {
+        const key = FEATURE_KEY(code);
+        return this.prisma.systemSetting.upsert({
+          where: { key_organizationId: { key, organizationId: org } },
+          create: { key, value: to, organizationId: org, updatedById: actorId },
           update: { value: to, updatedById: actorId },
-        }),
-      ),
+        });
+      }),
     );
 
     this.audit.record({
@@ -152,7 +169,7 @@ export class FeaturesService {
       metadata: { codes: valid, to },
     });
 
-    return this.getState();
+    return this.getState(org);
   }
 
   /** Resolve the display label for a static or department feature code. */

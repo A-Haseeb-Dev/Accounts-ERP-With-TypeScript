@@ -315,27 +315,74 @@ export class PaymentsService {
       );
       await this.accounting.postVoucher(tx, voucher.id, actorId);
 
+      // Re-check every allocation against the live outstanding balance *inside*
+      // this transaction. `create()` validated while the document was still
+      // untouched, and the payment is only applied here at post time, so two
+      // pending payments can both pass that check - without this they would
+      // both apply and over-collect the invoice. The compare-and-swap on
+      // amountPaid additionally makes concurrent posts on the same invoice
+      // mutually exclusive rather than both succeeding.
       for (const a of entry.allocations) {
-        const amt = Number(a.allocatedAmount);
+        const amt = round2(Number(a.allocatedAmount));
         if (a.documentType === 'SALE') {
           const sale = await tx.sale.findUnique({ where: { id: a.documentId } });
-          if (sale) {
-            const paid = round2(Number(sale.amountPaid) + amt);
-            const paymentStatus = await this.documentPaymentStatus(tx, 'SALE', sale, paid);
-            await tx.sale.update({
-              where: { id: sale.id },
-              data: { amountPaid: paid, paymentStatus },
-            });
+          if (!sale) continue;
+          const currentPaid = Number(sale.amountPaid);
+          const returned = await tx.salesReturn.aggregate({
+            where: { saleId: sale.id, status: 'posted' },
+            _sum: { grandTotal: true },
+          });
+          const outstanding = round2(
+            Math.max(
+              0,
+              Number(sale.grandTotal) - currentPaid - Number(returned._sum.grandTotal ?? 0),
+            ),
+          );
+          if (amt > outstanding) {
+            throw ApiException.validation(
+              `Allocation ${amt} exceeds outstanding ${outstanding} on invoice ${sale.number}`,
+            );
+          }
+          const paid = round2(currentPaid + amt);
+          const paymentStatus = await this.documentPaymentStatus(tx, 'SALE', sale, paid);
+          const swapped = await tx.sale.updateMany({
+            where: { id: sale.id, amountPaid: currentPaid },
+            data: { amountPaid: paid, paymentStatus },
+          });
+          if (swapped.count === 0) {
+            throw ApiException.invalidTransaction(
+              `Invoice ${sale.number} was paid concurrently. Reload it and try again.`,
+            );
           }
         } else if (a.documentType === 'PURCHASE') {
           const purchase = await tx.purchase.findUnique({ where: { id: a.documentId } });
-          if (purchase) {
-            const paid = round2(Number(purchase.paidAmount) + amt);
-            const payStatus = await this.documentPaymentStatus(tx, 'PURCHASE', purchase, paid);
-            await tx.purchase.update({
-              where: { id: purchase.id },
-              data: { paidAmount: paid, payStatus },
-            });
+          if (!purchase) continue;
+          const currentPaid = Number(purchase.paidAmount);
+          const returned = await tx.purchaseReturn.aggregate({
+            where: { purchaseId: purchase.id, status: 'posted' },
+            _sum: { grandTotal: true },
+          });
+          const outstanding = round2(
+            Math.max(
+              0,
+              Number(purchase.grandTotal) - currentPaid - Number(returned._sum.grandTotal ?? 0),
+            ),
+          );
+          if (amt > outstanding) {
+            throw ApiException.validation(
+              `Allocation ${amt} exceeds outstanding ${outstanding} on purchase ${purchase.number}`,
+            );
+          }
+          const paid = round2(currentPaid + amt);
+          const payStatus = await this.documentPaymentStatus(tx, 'PURCHASE', purchase, paid);
+          const swapped = await tx.purchase.updateMany({
+            where: { id: purchase.id, paidAmount: currentPaid },
+            data: { paidAmount: paid, payStatus },
+          });
+          if (swapped.count === 0) {
+            throw ApiException.invalidTransaction(
+              `Purchase ${purchase.number} was paid concurrently. Reload it and try again.`,
+            );
           }
         }
       }
@@ -562,7 +609,7 @@ export class PaymentsService {
       );
     }
     const pdcAccount = entry.pdcAccountId ?? (await this.defaultAccounts.resolveAccount('accounting.cheque_in_hand_account'));
-    if (!isIssued && !pdcAccount) {
+    if (!pdcAccount) {
       throw ApiException.invalidTransaction(
         'The "Cheque in Hand" account is not set in Settings > Accounting.',
       );
@@ -706,6 +753,30 @@ export class PaymentsService {
       );
     }
 
+    // Endorsing hands the cheque to a different party, so the receivable simply
+    // moves: the party that gave us the cheque is relieved of it and the new
+    // payee picks it up. The original posting credited the giving party and
+    // debited Cheques in Hand, so the correcting entry is
+    //   Dr payee (new party) / Cr original party
+    // Crediting only Cheques in Hand - as this used to - would forgive the
+    // original party's balance entirely and invent a receivable for the payee.
+    const originalAccount = await this.resolvePartyAccount(entry);
+    if (!originalAccount) {
+      throw ApiException.invalidTransaction(
+        'The party that gave this cheque is not linked to an account and the control account is not set in Settings > Accounting.',
+      );
+    }
+    if (payeeAccount === originalAccount) {
+      throw ApiException.validation(
+        'This cheque is already owed by that party - there is nothing to endorse.',
+      );
+    }
+    if (entry.allocations.length > 0) {
+      throw ApiException.invalidTransaction(
+        'This cheque is allocated to documents. Remove the allocation before endorsing it to another party.',
+      );
+    }
+
     const amount = Number(entry.amount);
     const result = await this.prisma.runInTransaction(async (tx) => {
       const voucher = await this.accounting.createVoucher(
@@ -722,9 +793,9 @@ export class PaymentsService {
               narration: `Cheque endorsed ${entry.number} - ${party.name}`,
             },
             {
-              mainAccountId: pdcAccount,
+              mainAccountId: originalAccount,
               credit: amount,
-              narration: `Endorse ${entry.number} - ${entry.partyName}`,
+              narration: `Endorsed away by ${entry.partyName}`,
             },
           ],
           createdById: actorId,
@@ -986,6 +1057,15 @@ export class PaymentsService {
     }
 
     if (dto.paymentDate !== undefined) {
+      // The money is already in the bank ledger via the clearing voucher, which
+      // reverseAndRepost does NOT touch (it only reverses the original posting).
+      // Re-booking on a new date would duplicate the cash and leave the customer
+      // with a phantom credit, so the date is locked once cleared.
+      if (bankLocked) {
+        throw ApiException.invalidTransaction(
+          'This cheque has been cleared into the bank; the payment date can no longer be changed',
+        );
+      }
       data.paymentDate = new Date(dto.paymentDate);
     }
 
@@ -1312,18 +1392,7 @@ export class PaymentsService {
     const subHead =
       (await this.prisma.subHead.findFirst({ where: { name: 'PDCS' } })) ??
       (await this.prisma.subHead.findFirst({ where: { name: 'Current Assets' } }));
-    const count = await this.prisma.mainAccount.count({
-      where: { code: { startsWith: 'PDC-' } },
-    });
-    const account = await this.prisma.mainAccount.create({
-      data: {
-        code: `PDC-${String(count + 1).padStart(3, '0')}`,
-        name: `PDC ${party.name}`,
-        accountType: 'ASSET',
-        subHeadId: subHead?.id ?? null,
-        status: 'active',
-      },
-    });
+    const account = await this.createSequentialAccount('PDC', `PDC ${party.name}`, 'ASSET', subHead?.id ?? null);
     if (dto.partyType === 'CUSTOMER') {
       await this.prisma.customer.update({
         where: { id: dto.partyId },
@@ -1347,20 +1416,51 @@ export class PaymentsService {
       if (account && account.status === 'active') return account;
     }
 
-    const subHead =
-      (await this.prisma.subHead.findFirst({ where: { name: 'Current Liabilities' } })) ?? null;
-    const count = await this.prisma.mainAccount.count({
-      where: { code: { startsWith: 'CI-' } },
-    });
-    return this.prisma.mainAccount.create({
-      data: {
-        code: `CI-${String(count + 1).padStart(3, '0')}`,
-        name: 'Cheques Issued',
-        accountType: 'LIABILITY',
-        subHeadId: subHead?.id ?? null,
-        status: 'active',
-      },
-    });
+    const subHead = (await this.prisma.subHead.findFirst({
+      where: { name: 'Current Liabilities' },
+    }))?.id ?? null;
+    return this.createSequentialAccount('CI', 'Cheques Issued', 'LIABILITY', subHead);
+  }
+
+  /**
+   * Creates a main account under a generated `PREFIX-NNN` code.
+   *
+   * The obvious implementation - count the existing codes, then insert
+   * `count + 1` - is a lost update: two cheques booked at the same moment for
+   * two different parties both read the same count, both compute the same code,
+   * and the loser's insert fails on the unique constraint with a raw 500.
+   * Retrying on that specific conflict re-reads the count and lands on the next
+   * free code instead. The race is inherent to generating codes from a count,
+   * so the retry - not a transaction - is the fix.
+   */
+  private async createSequentialAccount(
+    prefix: string,
+    name: string,
+    accountType: string,
+    subHeadId: string | null,
+  ) {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const count = await this.prisma.mainAccount.count({
+        where: { code: { startsWith: `${prefix}-` } },
+      });
+      try {
+        return await this.prisma.mainAccount.create({
+          data: {
+            code: `${prefix}-${String(count + 1).padStart(3, '0')}`,
+            name,
+            accountType: accountType as any,
+            subHeadId,
+            status: 'active',
+          },
+        });
+      } catch (error) {
+        const isCollision =
+          error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+        if (!isCollision || attempt === 9) throw error;
+      }
+    }
+    // Unreachable: the loop either returns or rethrows.
+    throw ApiException.invalidTransaction(`Unable to allocate a unique ${prefix} account code.`);
   }
 }
 

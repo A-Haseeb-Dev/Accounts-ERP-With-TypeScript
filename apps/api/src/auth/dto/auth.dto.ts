@@ -17,6 +17,18 @@ export class RefreshDto {
   refreshToken?: string;
 }
 
+/**
+ * Logout accepts the refresh token in the body as well as from the cookie. The
+ * cookie is the preferred path, but a cross-origin call (the API on its own
+ * port in development) does not attach it, and without the body fallback
+ * logout cleared the browser cookies while leaving the token itself valid.
+ */
+export class LogoutDto {
+  @IsString()
+  @IsOptional()
+  refreshToken?: string;
+}
+
 export class TwoFactorSetupDto {
   @IsString()
   @IsNotEmpty({ message: 'Password is required to set up two-factor authentication' })

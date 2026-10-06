@@ -486,6 +486,14 @@ export class PurchasesService {
     );
     const discount = round2(headerDiscount);
     const tax = round2(headerTax);
+    // A header discount larger than the document turns grandTotal negative; the
+    // DTO only bounds `discount` at >= 0, so nothing else stopped it.
+    const beforeDiscount = round2(subtotal + tax);
+    if (discount > beforeDiscount) {
+      throw ApiException.validation(
+        `The discount (${discount}) cannot exceed the document total before discount (${beforeDiscount}).`,
+      );
+    }
     const grandTotal = round2(subtotal - discount + tax);
     return { subtotal, discount, tax, grandTotal };
   }

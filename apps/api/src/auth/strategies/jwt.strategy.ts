@@ -27,6 +27,13 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   async validate(payload: JwtPayload) {
+    // The MFA challenge token is signed with the SAME secret as the access token
+    // so it must never be usable as one. Without this check a password-only
+    // login (2FA enabled) yields a working bearer token, bypassing 2FA.
+    if ((payload as unknown as Record<string, unknown>).purpose) {
+      throw new UnauthorizedException('Two-factor challenge token cannot be used to authenticate');
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: payload.id },
       include: {

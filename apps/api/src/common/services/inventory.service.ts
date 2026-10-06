@@ -5,20 +5,57 @@ import { PrismaService } from '../../prisma/prisma.service';
  * Inventory engine - records every movement in the inventory transaction
  * ledger and computes running balances per item+location.
  */
+
+/**
+ * Matches the schema default for `InventoryTransaction.organizationId`, used
+ * only when an item row cannot be read.
+ */
+const DEFAULT_ORGANIZATION_ID = 'default-org';
 @Injectable()
 export class InventoryService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Reads current available quantity for an item at a location.
+   *
+   * Scoped to the item's organization. `InventoryTransaction.organizationId`
+   * defaults to `default-org` and nothing stamps the caller's company onto a
+   * movement, so an unfiltered aggregate would sum every company's movements
+   * for a shared item id as soon as the install had more than one.
    */
   async getBalance(itemId: string, locationId: string, tx?: any): Promise<number> {
     const client = tx ?? this.prisma;
+    const orgScope = await this.orgScopeFor(client, itemId);
     const agg = await client.inventoryTransaction.aggregate({
-      where: { itemId, locationId },
+      where: { itemId, locationId, ...orgScope },
       _sum: { quantityIn: true, quantityOut: true },
     });
     return Number(agg._sum.quantityIn ?? 0) - Number(agg._sum.quantityOut ?? 0);
+  }
+
+  /** The organization an item belongs to, used to scope its movement ledger. */
+  private async orgScopeFor(client: any, itemId: string): Promise<{ organizationId?: string }> {
+    const item = await client.item.findUnique({
+      where: { id: itemId },
+      select: { organizationId: true },
+    });
+    return item?.organizationId ? { organizationId: item.organizationId } : {};
+  }
+
+  /** Same, for a batch of items: narrows to the organizations they belong to. */
+  private async orgScopeForItems(
+    client: any,
+    itemIds: string[],
+  ): Promise<{ organizationId?: { in: string[] } }> {
+    if (!itemIds.length) return {};
+    const items = await client.item.findMany({
+      where: { id: { in: itemIds } },
+      select: { organizationId: true },
+    });
+    const orgs = Array.from(
+      new Set<string>(items.map((i: any) => i.organizationId as string).filter(Boolean)),
+    );
+    return orgs.length ? { organizationId: { in: orgs } } : {};
   }
 
   /**
@@ -27,8 +64,9 @@ export class InventoryService {
    */
   async totalOnHand(itemId: string, tx?: any): Promise<number> {
     const client = tx ?? this.prisma;
+    const orgScope = await this.orgScopeFor(client, itemId);
     const agg = await client.inventoryTransaction.aggregate({
-      where: { itemId },
+      where: { itemId, ...orgScope },
       _sum: { quantityIn: true, quantityOut: true },
     });
     return Number(agg._sum.quantityIn ?? 0) - Number(agg._sum.quantityOut ?? 0);
@@ -40,9 +78,10 @@ export class InventoryService {
     tx?: any,
   ): Promise<Map<string, number>> {
     const client = tx ?? this.prisma;
+    const orgScope = await this.orgScopeForItems(client, itemIds);
     const agg = await client.inventoryTransaction.groupBy({
       by: ['itemId'],
-      where: { itemId: { in: itemIds }, locationId },
+      where: { itemId: { in: itemIds }, locationId, ...orgScope },
       _sum: { quantityIn: true, quantityOut: true },
     });
     const map = new Map<string, number>();
@@ -93,6 +132,9 @@ export class InventoryService {
       data: {
         itemId: input.itemId,
         locationId: input.locationId,
+        // Stamp the owning company on the movement so the reads that scope by
+        // the item's organization cannot see another company's rows.
+        organizationId: await this.orgIdFor(tx, input.itemId),
         transactionType: input.transactionType,
         referenceType: input.referenceType ?? null,
         referenceId: input.referenceId ?? null,
@@ -173,6 +215,7 @@ export class InventoryService {
       data: {
         itemId: input.itemId,
         locationId: input.locationId,
+        organizationId: await this.orgIdFor(tx, input.itemId),
         transactionType: input.transactionType,
         referenceType: input.referenceType ?? null,
         referenceId: input.referenceId ?? null,
@@ -184,6 +227,19 @@ export class InventoryService {
       },
     });
     return balance;
+  }
+
+  /**
+   * The owning company for a movement, taken from the item so writes and the
+   * organization-scoped reads agree. Falls back to the schema default, which is
+   * what an unseeded row would have carried anyway.
+   */
+  private async orgIdFor(client: any, itemId: string): Promise<string> {
+    const item = await client.item.findUnique({
+      where: { id: itemId },
+      select: { organizationId: true },
+    });
+    return item?.organizationId ?? DEFAULT_ORGANIZATION_ID;
   }
 
   /**
@@ -228,7 +284,7 @@ export class InventoryService {
    */
   async recomputeBalances(tx: any, itemId: string, locationId: string): Promise<void> {
     const rows = await tx.inventoryTransaction.findMany({
-      where: { itemId, locationId },
+      where: { itemId, locationId, ...(await this.orgScopeFor(tx, itemId)) },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       select: { id: true, quantityIn: true, quantityOut: true, balance: true },
     });
@@ -256,7 +312,7 @@ export class InventoryService {
    */
   async recomputeAverageCost(tx: any, itemId: string): Promise<void> {
     const rows = await tx.inventoryTransaction.findMany({
-      where: { itemId },
+      where: { itemId, ...(await this.orgScopeFor(tx, itemId)) },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       select: { quantityIn: true, quantityOut: true, unitCost: true },
     });

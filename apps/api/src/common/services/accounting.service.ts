@@ -53,14 +53,15 @@ export class AccountingService {
     input: CreateVoucherInput,
     number: string,
   ): Promise<any> {
-    this.assertBalanced(input.entries);
+    // Every entry is stored at the same 2dp the header totals are reported at.
+    // Storing raw values while reporting rounded totals let a voucher print
+    // 10.01 in the header while its rows summed to 10.005, so the trial balance
+    // and the voucher itself disagreed by a paisa.
+    const entries = this.normalizeEntries(input.entries);
+    this.assertBalanced(entries);
 
-    const totalDebit = round2(
-      input.entries.reduce((s, e) => s + Number(e.debit ?? 0), 0),
-    );
-    const totalCredit = round2(
-      input.entries.reduce((s, e) => s + Number(e.credit ?? 0), 0),
-    );
+    const totalDebit = round2(entries.reduce((s, e) => s + (e.debit ?? 0), 0));
+    const totalCredit = round2(entries.reduce((s, e) => s + (e.credit ?? 0), 0));
 
     const voucher = await tx.voucher.create({
       data: {
@@ -74,7 +75,7 @@ export class AccountingService {
         totalCredit,
         createdById: input.createdById ?? null,
         entries: {
-          create: input.entries.map((e) => ({
+          create: entries.map((e) => ({
             mainAccountId: e.mainAccountId,
             debit: Number(e.debit ?? 0),
             credit: Number(e.credit ?? 0),
@@ -86,6 +87,16 @@ export class AccountingService {
     });
 
     return voucher;
+  }
+
+  /** Rounds each entry's debit/credit to the stored precision. */
+  private normalizeEntries(entries: VoucherEntryInput[]): VoucherEntryInput[] {
+    return entries.map((e) => ({
+      mainAccountId: e.mainAccountId,
+      debit: round2(Number(e.debit ?? 0)),
+      credit: round2(Number(e.credit ?? 0)),
+      narration: e.narration,
+    }));
   }
 
   /**
@@ -199,7 +210,7 @@ export class AccountingService {
         NOT: { reference: { startsWith: 'OB:' } },
       },
     };
-    if (asOf) where.voucher.voucherDate = { lte: asOf };
+    if (asOf) where.voucher.voucherDate = { lte: asOfInclusiveEnd(asOf) };
 
     const agg = await this.prisma.voucherEntry.aggregate({
       where,
@@ -239,7 +250,7 @@ export class AccountingService {
 
     // Resolve before opening the transaction so a missing equity account is
     // reported as a gap rather than failing half way through on a foreign key.
-    const equityAccountId = await this.resolveOpeningEquityId(accountId);
+    const equityAccountId = await this.resolveOpeningEquityId(accountId, account.organizationId);
 
     const result = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.voucher.findFirst({
@@ -323,8 +334,17 @@ export class AccountingService {
       );
       await this.postVoucher(tx, voucher.id, actorId);
       await tx.systemSetting.upsert({
-        where: { key_organizationId: { key: 'accounting.opening_equity_account', organizationId: 'default-org' } },
-        create: { key: 'accounting.opening_equity_account', value: equityAccountId, organizationId: 'default-org' },
+        where: {
+          key_organizationId: {
+            key: 'accounting.opening_equity_account',
+            organizationId: account.organizationId,
+          },
+        },
+        create: {
+          key: 'accounting.opening_equity_account',
+          value: equityAccountId,
+          organizationId: account.organizationId,
+        },
         update: {},
       });
       return { posted: true } as const;
@@ -345,11 +365,12 @@ export class AccountingService {
    * `accountId` is excluded: an opening voucher that hit the same account on
    * both sides would balance on paper while meaning nothing.
    */
-  private async resolveOpeningEquityId(accountId?: string): Promise<string | null> {
+  private async resolveOpeningEquityId(accountId?: string, organizationId?: string): Promise<string | null> {
+    const orgScope = organizationId ? { organizationId } : {};
     const usable = async (id: string | null | undefined) => {
       if (!id || id === accountId) return null;
-      const acc = await this.prisma.mainAccount.findUnique({
-        where: { id },
+      const acc = await this.prisma.mainAccount.findFirst({
+        where: { id, ...orgScope },
         select: { id: true, accountType: true, status: true },
       });
       if (!acc || acc.status !== 'active') return null;
@@ -359,7 +380,7 @@ export class AccountingService {
     };
 
     const setting = await this.prisma.systemSetting.findFirst({
-      where: { key: 'accounting.opening_equity_account' },
+      where: { key: 'accounting.opening_equity_account', ...(organizationId ? { organizationId } : {}) },
       select: { id: true, value: true },
     });
 
@@ -375,14 +396,19 @@ export class AccountingService {
     }
 
     const byName = await this.prisma.mainAccount.findFirst({
-      where: { name: 'Opening Equity', status: 'active' },
+      where: { name: 'Opening Equity', status: 'active', ...orgScope },
       select: { id: true, accountType: true, status: true },
     });
     if (byName && byName.accountType === 'EQUITY' && byName.id !== accountId) return byName.id;
 
     // No configured account, but the chart may still hold usable equity.
     const anyEquity = await this.prisma.mainAccount.findFirst({
-      where: { accountType: 'EQUITY', status: 'active', ...(accountId ? { id: { not: accountId } } : {}) },
+      where: {
+        accountType: 'EQUITY',
+        status: 'active',
+        ...orgScope,
+        ...(accountId ? { id: { not: accountId } } : {}),
+      },
       select: { id: true },
       orderBy: { code: 'asc' },
     });
@@ -411,10 +437,17 @@ export class AccountingService {
   ): Promise<{ posted: boolean; reason?: string }> {
     const value = round2(Number(amount ?? 0));
 
+    // Read outside the transaction so the equity account is resolved for the
+    // item's own company rather than whichever one happened to be configured.
+    const item = await this.prisma.item.findUnique({
+      where: { id: itemId },
+      select: { code: true, name: true, organizationId: true },
+    });
+
     const inventoryAccountId = await this.defaultAccounts.resolveAccount(
       'accounting.inventory_account',
     );
-    const equityAccountId = await this.resolveOpeningEquityId();
+    const equityAccountId = await this.resolveOpeningEquityId(undefined, item?.organizationId);
 
     const result = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.voucher.findFirst({
@@ -466,17 +499,17 @@ export class AccountingService {
         );
       }
 
-      const item = await this.prisma.item.findUnique({
+      const item_ = item ?? (await this.prisma.item.findUnique({
         where: { id: itemId },
-        select: { code: true, name: true },
-      });
+        select: { code: true, name: true, organizationId: true },
+      }));
 
       const voucher = await this.createVoucher(
         tx,
         {
           voucherType: 'JOURNAL',
           voucherDate: openingDay,
-          description: `Opening stock - ${item?.name ?? itemId}${item?.code ? ` (${item.code})` : ''}`,
+          description: `Opening stock - ${item_?.name ?? itemId}${item_?.code ? ` (${item_.code})` : ''}`,
           reference: `OBS:${itemId}`,
           entries: [
             { mainAccountId: inventoryAccountId, debit: value, narration: 'Opening stock' },
@@ -496,4 +529,25 @@ export class AccountingService {
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Widens an "as of" bound to the end of that day, but only when it looks like a
+ * bare date. A caller passing `new Date('2026-10-05')` means midnight UTC, and
+ * `lte` against that silently drops every entry later the same day - the exact
+ * trap `common/utils/date-filter.ts` exists to avoid for the list endpoints.
+ * A caller that passed a real timestamp keeps it, so "as of now" stays exact.
+ */
+function asOfInclusiveEnd(asOf: Date): Date {
+  if (
+    asOf.getUTCHours() === 0 &&
+    asOf.getUTCMinutes() === 0 &&
+    asOf.getUTCSeconds() === 0 &&
+    asOf.getUTCMilliseconds() === 0
+  ) {
+    return new Date(
+      Date.UTC(asOf.getUTCFullYear(), asOf.getUTCMonth(), asOf.getUTCDate(), 23, 59, 59, 999),
+    );
+  }
+  return asOf;
 }

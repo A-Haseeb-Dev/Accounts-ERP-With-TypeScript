@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import {
   LoginDto,
   RefreshDto,
+  LogoutDto,
   TwoFactorDisableDto,
   TwoFactorEnableDto,
   TwoFactorSetupDto,
@@ -150,8 +151,14 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Logout and clear auth cookies, revoking all refresh tokens' })
-  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const refreshToken = (req.cookies?.refresh_token as string | undefined) ?? undefined;
+  async logout(
+    @Body() dto: LogoutDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    // Cookie first, body as the cross-origin fallback - see LogoutDto.
+    const refreshToken =
+      (req.cookies?.refresh_token as string | undefined) ?? dto?.refreshToken ?? undefined;
     if (refreshToken) {
       await this.authService.revokeByRefreshToken(refreshToken);
     }

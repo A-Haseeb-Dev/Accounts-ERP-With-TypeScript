@@ -42,6 +42,11 @@ function buildService(overrides?: {
   paymentEntry?: { findUnique?: ReturnType<typeof vi.fn>; update?: ReturnType<typeof vi.fn> };
   bankAccount?: { findUnique?: ReturnType<typeof vi.fn> };
   supplier?: { findUnique?: ReturnType<typeof vi.fn> };
+  customer?: { findUnique?: ReturnType<typeof vi.fn> };
+  sale?: { findUnique?: ReturnType<typeof vi.fn>; updateMany?: ReturnType<typeof vi.fn> };
+  salesReturn?: { aggregate?: ReturnType<typeof vi.fn> };
+  purchase?: { findUnique?: ReturnType<typeof vi.fn>; updateMany?: ReturnType<typeof vi.fn> };
+  purchaseReturn?: { aggregate?: ReturnType<typeof vi.fn> };
   mainAccount?: { findUnique?: ReturnType<typeof vi.fn> };
 }) {
   const paymentEntry = {
@@ -66,7 +71,31 @@ function buildService(overrides?: {
     paymentEntry,
     bankAccount: { ...bankAccount, ...(overrides?.bankAccount ?? {}) },
     supplier,
+    customer: {
+      findUnique: vi
+        .fn()
+        .mockResolvedValue({ id: 'cust-2', name: 'Endorsee Ltd', mainAccountId: 'ar-1' }),
+      ...(overrides?.customer ?? {}),
+    },
     mainAccount,
+    sale: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      ...(overrides?.sale ?? {}),
+    },
+    salesReturn: {
+      aggregate: vi.fn().mockResolvedValue({ _sum: { grandTotal: 0 } }),
+      ...(overrides?.salesReturn ?? {}),
+    },
+    purchase: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      ...(overrides?.purchase ?? {}),
+    },
+    purchaseReturn: {
+      aggregate: vi.fn().mockResolvedValue({ _sum: { grandTotal: 0 } }),
+      ...(overrides?.purchaseReturn ?? {}),
+    },
     runInTransaction: vi.fn((fn: (tx: unknown) => unknown) => fn(prisma)),
     voucher: {
       findUnique: vi.fn().mockResolvedValue({
@@ -194,6 +223,21 @@ describe('PaymentsService.updateCheque', () => {
       svc.updateCheque('cheque-1', { amount: 2000 } as EditChequeDto, 'actor'),
     );
     expect(msg.toLowerCase()).toContain('cleared');
+  });
+
+  it('rejects payment date changes once the cheque has been cleared into the bank', async () => {
+    // The bank statement line is keyed off paymentDate, so moving a cleared
+    // cheque to a different date silently reassigns it to another statement row.
+    const { svc, prisma } = buildService();
+    prisma.paymentEntry.findUnique.mockResolvedValue(
+      baseEntry({ status: 'posted', chequeStatus: 'CLEARED', voucherId: 'voucher-1' }),
+    );
+
+    const msg = await apiErrorMessage(
+      svc.updateCheque('cheque-1', { paymentDate: '2026-09-11T10:00:00Z' } as EditChequeDto, 'actor'),
+    );
+    expect(msg.toLowerCase()).toContain('bank');
+    expect(prisma.paymentEntry.update).not.toHaveBeenCalled();
   });
 
   it('rejects a bounced cheque edit', async () => {
@@ -496,6 +540,177 @@ describe('PaymentsService document status net of returns', () => {
     );
     expect(purchase.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ payStatus: 'paid' }) }),
+    );
+  });
+});
+describe('PaymentsService.endorse', () => {
+  const inHandCheque = (overrides: Record<string, unknown> = {}) =>
+    baseEntry({
+      status: 'posted',
+      chequeStatus: 'IN_HAND',
+      voucherId: 'voucher-1',
+      pdcAccountId: 'pdc-1',
+      partyType: 'SUPPLIER',
+      partyId: 'supplier-1',
+      allocations: [],
+      ...overrides,
+    });
+
+  const supplierWithAccount = () =>
+    ({
+      supplier: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValue({ id: 'supplier-1', name: 'Test Supplier', mainAccountId: 'ap-1' }),
+      },
+    }) as never;
+
+  it('moves the receivable from the giving party to the payee', async () => {
+    const { svc, prisma, accounting } = buildService(supplierWithAccount());
+    prisma.paymentEntry.findUnique.mockResolvedValue(inHandCheque());
+
+    await svc.endorse(
+      'cheque-1',
+      { partyType: 'CUSTOMER', partyId: 'cust-2' } as never,
+      'actor',
+    );
+
+    expect(accounting.createVoucher).toHaveBeenCalledTimes(1);
+    const entries = accounting.createVoucher.mock.calls[0][1].entries as Array<{
+      mainAccountId: string;
+      debit?: number;
+      credit?: number;
+    }>;
+    // Dr payee / Cr original party. Crediting Cheques in Hand here would have
+    // forgiven the original party's balance and invented a receivable.
+    expect(entries).toEqual([
+      expect.objectContaining({ mainAccountId: 'ar-1', debit: 1000 }),
+      expect.objectContaining({ mainAccountId: 'ap-1', credit: 1000 }),
+    ]);
+    expect(entries.map((e) => e.mainAccountId)).not.toContain('pdc-1');
+  });
+
+  it('refuses to endorse to the party that already owes the cheque', async () => {
+    const { svc, prisma, accounting } = buildService({
+      ...(supplierWithAccount() as Record<string, unknown>),
+      customer: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValue({ id: 'cust-2', name: 'Same Party', mainAccountId: 'ap-1' }),
+      },
+    } as never);
+    prisma.paymentEntry.findUnique.mockResolvedValue(inHandCheque());
+
+    const msg = await apiErrorMessage(
+      svc.endorse('cheque-1', { partyType: 'CUSTOMER', partyId: 'cust-2' } as never, 'actor'),
+    );
+    expect(msg.toLowerCase()).toContain('nothing to endorse');
+    expect(accounting.createVoucher).not.toHaveBeenCalled();
+  });
+
+  it('refuses to endorse a cheque that is already allocated', async () => {
+    const { svc, prisma, accounting } = buildService(supplierWithAccount());
+    prisma.paymentEntry.findUnique.mockResolvedValue(
+      inHandCheque({ allocations: [{ id: 'alloc-1', amount: 1000 }] }),
+    );
+
+    const msg = await apiErrorMessage(
+      svc.endorse('cheque-1', { partyType: 'CUSTOMER', partyId: 'cust-2' } as never, 'actor'),
+    );
+    expect(msg.toLowerCase()).toContain('allocated');
+    expect(accounting.createVoucher).not.toHaveBeenCalled();
+  });
+
+  it('refuses to endorse a cheque that is not in hand', async () => {
+    const { svc, prisma, accounting } = buildService(supplierWithAccount());
+    prisma.paymentEntry.findUnique.mockResolvedValue(inHandCheque({ chequeStatus: 'DEPOSITED' }));
+
+    const msg = await apiErrorMessage(
+      svc.endorse('cheque-1', { partyType: 'CUSTOMER', partyId: 'cust-2' } as never, 'actor'),
+    );
+    expect(msg.toLowerCase()).toContain('in hand');
+    expect(accounting.createVoucher).not.toHaveBeenCalled();
+  });
+});
+
+describe('PaymentsService.post allocation guard', () => {
+  const receipt = (allocations: Array<Record<string, unknown>>) =>
+    baseEntry({
+      paymentType: 'RECEIPT',
+      method: 'TRANSFER',
+      status: 'pending',
+      chequeDate: null,
+      partyType: 'CUSTOMER',
+      partyId: 'cust-1',
+      mainAccountId: 'cash',
+      amount: 1000,
+      allocations,
+    });
+
+  const withSupplier = {
+    supplier: {
+      findUnique: vi
+        .fn()
+        .mockResolvedValue({ id: 'cust-1', name: 'Test Supplier', mainAccountId: 'ar-1' }),
+    },
+  };
+
+  function buildDocMocks(sale: Record<string, unknown> | null, swapCount: number) {
+    return {
+      sale: {
+        findUnique: vi.fn().mockResolvedValue(sale),
+        updateMany: vi.fn().mockResolvedValue({ count: swapCount }),
+      },
+      salesReturn: { aggregate: vi.fn().mockResolvedValue({ _sum: { grandTotal: 0 } }) },
+      purchase: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      purchaseReturn: { aggregate: vi.fn().mockResolvedValue({ _sum: { grandTotal: 0 } }) },
+    };
+  }
+
+  it('rejects an allocation larger than the invoice outstanding at post time', async () => {
+    const docs = buildDocMocks({ id: 'sale-1', number: 'INV-1', grandTotal: 1000, amountPaid: 800 }, 0);
+    const { svc, prisma } = buildService({ ...withSupplier, ...docs } as never);
+    prisma.paymentEntry.findUnique.mockResolvedValue(
+      receipt([{ documentType: 'SALE', documentId: 'sale-1', allocatedAmount: 500 }]),
+    );
+
+    const msg = await apiErrorMessage(svc.post('cheque-1', 'actor'));
+    expect(msg).toMatch(/exceeds outstanding 200/);
+    expect(docs.sale.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('fails the post when the invoice changed underneath the allocation', async () => {
+    // The compare-and-swap on amountPaid: a sibling post committed first, so the
+    // row no longer matches what this allocation was validated against. It must
+    // abort rather than overwrite the other post's amount.
+    const docs = buildDocMocks({ id: 'sale-1', number: 'INV-1', grandTotal: 1000, amountPaid: 0 }, 0);
+    const { svc, prisma } = buildService({ ...withSupplier, ...docs } as never);
+    prisma.paymentEntry.findUnique.mockResolvedValue(
+      receipt([{ documentType: 'SALE', documentId: 'sale-1', allocatedAmount: 500 }]),
+    );
+
+    const msg = await apiErrorMessage(svc.post('cheque-1', 'actor'));
+    expect(msg).toMatch(/paid concurrently/);
+    expect(docs.sale.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'sale-1', amountPaid: 0 } }),
+    );
+  });
+
+  it('applies the allocation and marks the invoice partial when the swap wins', async () => {
+    const docs = buildDocMocks({ id: 'sale-1', number: 'INV-1', grandTotal: 1000, amountPaid: 0 }, 1);
+    const { svc, prisma } = buildService({ ...withSupplier, ...docs } as never);
+    prisma.paymentEntry.findUnique.mockResolvedValue(
+      receipt([{ documentType: 'SALE', documentId: 'sale-1', allocatedAmount: 500 }]),
+    );
+
+    await svc.post('cheque-1', 'actor');
+    expect(docs.sale.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ amountPaid: 500, paymentStatus: 'partial' }),
+      }),
     );
   });
 });

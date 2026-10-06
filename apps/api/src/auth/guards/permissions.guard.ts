@@ -47,24 +47,26 @@ export class PermissionsGuard implements CanActivate {
       throw ApiException.unauthorized();
     }
 
-    // Developer role bypasses all permission checks.
-    const isDeveloper = await this.isDeveloperRole(user.id);
-    if (isDeveloper) {
-      return true;
-    }
-
-    // Company feature switches: if any required permission belongs to a feature
-    // that the developer has switched off for this company, deny the route to
-    // everyone except the Developer role (checked above).
+    // Feature switches are evaluated before the Developer bypass, so a
+    // disabled module is unreachable through the API as well as hidden in the
+    // UI. See the note at the feature check below.
     const featureCodes = new Set<string>();
     for (const perm of required) {
       const feature = featureForPermission(perm);
       if (feature) featureCodes.add(feature);
     }
     for (const code of featureCodes) {
-      if (!(await this.features.isEnabled(code))) {
+      if (!(await this.features.isEnabled(code, user.organizationId))) {
         throw ApiException.forbidden(`The "${code}" feature is disabled for this company`);
       }
+    }
+
+    // The Developer role is the escape hatch for company-wide configuration and
+    // data repair, so it outranks role permissions - but not a feature the
+    // company has switched off.
+    const isDeveloper = await this.isDeveloperRole(user.id);
+    if (isDeveloper) {
+      return true;
     }
 
     const permissions = await this.prisma.rolePermission.findMany({

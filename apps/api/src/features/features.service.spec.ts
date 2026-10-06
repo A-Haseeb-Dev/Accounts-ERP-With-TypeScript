@@ -86,6 +86,22 @@ describe('FeaturesService.isEnabled', () => {
     prisma.systemSetting.findFirst.mockResolvedValue(null);
     await expect(svc.isEnabled('hr.departments.dept-2')).resolves.toBe(true);
   });
+
+  it('scopes the lookup to the caller company', async () => {
+    // `SystemSetting` is unique per (key, organization), so an unscoped read
+    // could match a sibling company's row and disable access for this one.
+    const { svc, prisma } = buildService();
+    await svc.isEnabled('sales.invoice.view', 'org-2');
+    expect(prisma.systemSetting.findFirst).toHaveBeenCalledWith({
+      where: { key: 'features.sales.invoice.view', organizationId: 'org-2' },
+    });
+  });
+
+  it('does not read the database at all for an unknown code', async () => {
+    const { svc, prisma } = buildService();
+    await expect(svc.isEnabled('nonsense')).resolves.toBe(true);
+    expect(prisma.systemSetting.findFirst).not.toHaveBeenCalled();
+  });
 });
 
 describe('FeaturesService.setEnabled', () => {
@@ -145,5 +161,34 @@ describe('FeaturesService.setEnabled', () => {
         message: 'Feature "Warehouse — Department" disabled for this company',
       }),
     );
+  });
+
+  it('writes into the caller company, not the schema default', async () => {
+    const { svc, prisma } = buildService();
+    await svc.setEnabled('sales.invoice.view', false, 'u1', 'org-2');
+
+    expect(prisma.systemSetting.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          key_organizationId: {
+            key: 'features.sales.invoice.view',
+            organizationId: 'org-2',
+          },
+        },
+        create: expect.objectContaining({ organizationId: 'org-2' }),
+      }),
+    );
+  });
+
+  it('bulk-writes every switch under the caller company', async () => {
+    const { svc, prisma } = buildService({
+      $transaction: vi.fn((ops: Array<Promise<unknown>>) => Promise.all(ops)),
+    });
+    await svc.setManyEnabled(['sales.invoice.view', 'accounts.vouchers.view'], false, 'u1', 'org-2');
+
+    expect(prisma.systemSetting.upsert).toHaveBeenCalledTimes(2);
+    for (const call of prisma.systemSetting.upsert.mock.calls) {
+      expect(call[0].where.key_organizationId.organizationId).toBe('org-2');
+    }
   });
 });
