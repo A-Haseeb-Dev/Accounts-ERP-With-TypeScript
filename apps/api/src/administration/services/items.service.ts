@@ -444,6 +444,8 @@ export class ItemsService {
             ],
           },
         });
+      } else if (movements > 0) {
+        await tx.inventoryTransaction.deleteMany({ where: { itemId: id } });
       }
       await tx.item.delete({ where: { id } });
     });
