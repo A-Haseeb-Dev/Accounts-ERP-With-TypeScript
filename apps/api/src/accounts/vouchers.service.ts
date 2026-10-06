@@ -402,17 +402,88 @@ export class VouchersService {
   async remove(id: string, actorId?: string) {
     const voucher = await this.prisma.voucher.findUnique({ where: { id } });
     if (!voucher) throw ApiException.notFound('Voucher');
-    if (voucher.status === 'cancelled') {
-      throw ApiException.invalidTransaction(`A cancelled voucher cannot be deleted.`);
-    }
-    if (voucher.status !== 'draft' && voucher.status !== 'pending' && voucher.status !== 'posted') {
-      throw ApiException.invalidTransaction(`Voucher ${voucher.number} cannot be deleted.`);
-    }
-
     await this.fiscal.assertOpen(voucher.voucherDate, 'Cannot delete a voucher');
 
     const wasPosted = voucher.status === 'posted';
     await this.prisma.runInTransaction(async (tx) => {
+      // A voucher booked from a receipt / payment (or a deposit / bounce /
+      // endorse leg) must not outlive its source entry. Reverse any posted
+      // payment that points at this voucher or shares its reference, then
+      // delete the voucher itself.
+      const payments = await tx.paymentEntry.findMany({
+        where: {
+          OR: [
+            { voucherId: id },
+            ...(voucher.reference ? [{ number: voucher.reference }] : []),
+          ],
+          status: 'posted',
+        },
+        include: { allocations: true },
+      });
+      for (const p of payments) {
+        for (const a of p.allocations) {
+          const amt = round2(Number(a.allocatedAmount ?? 0));
+          if (amt <= 0) continue;
+          if (a.documentType === 'SALE') {
+            const sale = await tx.sale.findUnique({ where: { id: a.documentId } });
+            if (!sale) continue;
+            const paid = round2(Math.max(0, Number(sale.amountPaid) - amt));
+            const returned = await tx.salesReturn.aggregate({
+              where: { saleId: sale.id, status: 'posted' },
+              _sum: { grandTotal: true },
+            });
+            const due = round2(Number(sale.grandTotal) - Number(returned._sum.grandTotal ?? 0));
+            const paymentStatus = due <= 0 ? 'paid' : paid >= due ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+            await tx.sale.update({
+              where: { id: sale.id },
+              data: { amountPaid: paid, paymentStatus },
+            });
+          } else if (a.documentType === 'PURCHASE') {
+            const purchase = await tx.purchase.findUnique({ where: { id: a.documentId } });
+            if (!purchase) continue;
+            const paid = round2(Math.max(0, Number(purchase.paidAmount) - amt));
+            const returned = await tx.purchaseReturn.aggregate({
+              where: { purchaseId: purchase.id, status: 'posted' },
+              _sum: { grandTotal: true },
+            });
+            const due = round2(Number(purchase.grandTotal) - Number(returned._sum.grandTotal ?? 0));
+            const payStatus = due <= 0 ? 'paid' : paid >= due ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+            await tx.purchase.update({
+              where: { id: purchase.id },
+              data: { paidAmount: paid, payStatus },
+            });
+          }
+        }
+        await tx.paymentAllocation.deleteMany({ where: { paymentEntryId: p.id } });
+        await tx.paymentEntry.update({
+          where: { id: p.id },
+          data: {
+            status: 'cancelled',
+            voucherId: null,
+            cancelledById: actorId ?? null,
+            cancelledAt: new Date(),
+            cancelReason: `Voucher ${voucher.number} deleted`,
+          },
+        });
+      }
+
+      // Also cancel any sibling vouchers booked under the same reference
+      // (deposit / bounce / endorse legs of a payment) so nothing dangling
+      // remains in the ledger.
+      if (voucher.reference) {
+        const siblings = await tx.voucher.findMany({
+          where: { reference: voucher.reference, id: { not: id }, status: { not: 'cancelled' } },
+        });
+        for (const s of siblings) {
+          await this.accounting.cancelVoucher(
+            tx,
+            s.id,
+            `Voucher ${voucher.number} deleted`,
+            actorId,
+          );
+        }
+      }
+
       if (wasPosted) {
         await tx.voucherEntry.deleteMany({ where: { voucherId: id } });
         await tx.voucher.update({ where: { id }, data: { status: 'draft', postedById: null, postedAt: null } });

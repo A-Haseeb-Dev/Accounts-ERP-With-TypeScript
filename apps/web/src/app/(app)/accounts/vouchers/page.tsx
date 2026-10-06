@@ -264,9 +264,6 @@ export default function VouchersPage() {
                       {canSubmit && (
                         <button onClick={() => submit.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-indigo-50 hover:text-indigo-700" title="Submit for approval"><Send className="h-4 w-4" /></button>
                       )}
-                      {canDelete && (
-                        <button onClick={() => { setDeleteTarget(r); setDeleteError(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>
-                      )}
                       {canPost && (
                         <button onClick={() => post.mutate(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-700" title="Post"><CheckCircle2 className="h-4 w-4" /></button>
                       )}
@@ -274,6 +271,9 @@ export default function VouchersPage() {
                         <button onClick={() => { setCancelTarget(r); setCancelReason(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Cancel"><XCircle className="h-4 w-4" /></button>
                       )}
                     </>
+                  )}
+                  {canDelete && (
+                    <button onClick={() => { setDeleteTarget(r); setDeleteError(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete"><Trash2 className="h-4 w-4" /></button>
                   )}
                   {r.status === 'pending' && (
                     <>
@@ -448,7 +448,11 @@ export default function VouchersPage() {
         open={!!deleteTarget}
         danger
         title="Delete Voucher"
-        message={`Delete voucher "${deleteTarget?.number ?? ''}"? This permanently removes the draft and its entries and cannot be undone.`}
+        message={
+          deleteTarget?.status === 'posted'
+            ? `Delete "${deleteTarget?.number ?? ''}"? Its effect is removed from the ledger, any linked receipt / payment is reversed, and the voucher is permanently deleted.`
+            : `Delete voucher "${deleteTarget?.number ?? ''}"? This permanently removes it and its entries and cannot be undone.`
+        }
         confirmLabel="Delete voucher"
         loading={remove.isPending}
         onCancel={() => setDeleteTarget(null)}

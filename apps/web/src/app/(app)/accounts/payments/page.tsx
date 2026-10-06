@@ -2,9 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Eye, Landmark, Pencil, Plus, RefreshCcw, Search, ShieldCheck, XCircle } from 'lucide-react';
+import { ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Eye, Landmark, Pencil, Plus, RefreshCcw, Search, ShieldCheck, Trash2, XCircle } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
-import { createPayment, postPayment, cancelPayment, depositCheque, bounceCheque, endorseCheque, updatePayment, fetchOpenInvoices, fetchNextPaymentNumber } from '@/lib/accounts-api';
+import { createPayment, postPayment, cancelPayment, deletePayment, depositCheque, bounceCheque, endorseCheque, updatePayment, fetchOpenInvoices, fetchNextPaymentNumber } from '@/lib/accounts-api';
 import type { EditChequePayload, PaymentPayload } from '@/lib/accounts-api';
 import { useFlatOptions } from '@/hooks/use-options';
 import { Button } from '@/components/ui/button';
@@ -45,6 +45,7 @@ export default function PaymentsPage() {
   const canPost = can('accounts.payments.post');
   const canCancel = can('accounts.payments.cancel');
   const canUpdate = can('accounts.payments.update');
+  const canDelete = can('accounts.payments.delete');
   const { options: accountOptions, data: accountsData } = useFlatOptions<FlatAccount>('main-accounts');
   const { options: customerOptions } = useFlatOptions('customers');
   const { options: supplierOptions } = useFlatOptions('suppliers');
@@ -75,6 +76,8 @@ export default function PaymentsPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<PaymentEntry | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<PaymentEntry | null>(null);
+  const [deleteError, setDeleteError] = useState('');
 
   const [editEntry, setEditEntry] = useState<PaymentEntry | null>(null);
   const [editForm, setEditForm] = useState<EditChequePayload>({});
@@ -182,6 +185,22 @@ export default function PaymentsPage() {
       toast.success('Payment entry cancelled');
     },
     onError: (e: Error) => toast.error(e.message || 'Could not cancel payment entry'),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => deletePayment(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payments'] });
+      qc.invalidateQueries({ queryKey: ['cheques'] });
+      qc.invalidateQueries({ queryKey: ['cashbook'] });
+      setDeleteTarget(null);
+      setDeleteError('');
+      toast.success('Payment entry deleted');
+    },
+    onError: (e: Error) => {
+      setDeleteError(e.message);
+      toast.error(e.message || 'Could not delete payment entry');
+    },
   });
 
   const deposit = useMutation({
@@ -512,6 +531,11 @@ export default function PaymentsPage() {
                         <RefreshCcw className="h-4 w-4" />
                       </button>
                     </>
+                  )}
+                  {canDelete && (
+                    <button onClick={() => { setDeleteTarget(r); setDeleteError(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete entry">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   )}
                 </div>
               ),
@@ -885,6 +909,25 @@ export default function PaymentsPage() {
             <Textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Optional reason" />
           </Field>
         </div>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        danger
+        title="Delete payment entry"
+        message={
+          deleteTarget?.status === 'posted'
+            ? `Delete "${deleteTarget?.number ?? ''}"? This reverses the ledger effect, re-opens any allocated invoices / bills, cancels the linked vouchers and permanently removes the entry.`
+            : `Delete "${deleteTarget?.number ?? ''}"? This permanently removes the entry and cannot be undone.`
+        }
+        confirmLabel="Delete entry"
+        loading={remove.isPending}
+        onCancel={() => { setDeleteTarget(null); setDeleteError(''); }}
+        onConfirm={() => deleteTarget?.id && remove.mutate(deleteTarget.id)}
+      >
+        {deleteError && (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{deleteError}</div>
+        )}
       </ConfirmDialog>
 
       <ConfirmDialog

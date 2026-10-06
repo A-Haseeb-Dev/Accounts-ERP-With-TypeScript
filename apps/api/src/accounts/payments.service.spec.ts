@@ -699,7 +699,7 @@ describe('PaymentsService.post allocation guard', () => {
     );
   });
 
-  it('applies the allocation and marks the invoice partial when the swap wins', async () => {
+it('applies the allocation and marks the invoice partial when the swap wins', async () => {
     const docs = buildDocMocks({ id: 'sale-1', number: 'INV-1', grandTotal: 1000, amountPaid: 0 }, 1);
     const { svc, prisma } = buildService({ ...withSupplier, ...docs } as never);
     prisma.paymentEntry.findUnique.mockResolvedValue(
@@ -712,5 +712,70 @@ describe('PaymentsService.post allocation guard', () => {
         data: expect.objectContaining({ amountPaid: 500, paymentStatus: 'partial' }),
       }),
     );
+  });
+});
+
+describe('PaymentsService.remove', () => {
+  it('hard-deletes a pending entry without touching the ledger', async () => {
+    const { svc, prisma } = buildService();
+    const p = prisma as unknown as {
+      paymentEntry: { findUnique: ReturnType<typeof vi.fn>; delete: ReturnType<typeof vi.fn> };
+      voucher: { findMany: ReturnType<typeof vi.fn> };
+      paymentAllocation: { deleteMany: ReturnType<typeof vi.fn> };
+    };
+    p.paymentEntry.findUnique.mockResolvedValue(baseEntry({ status: 'pending' }));
+    p.voucher.findMany = vi.fn().mockResolvedValue([]);
+    p.paymentAllocation = { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) };
+    p.paymentEntry.delete = vi.fn().mockResolvedValue({ id: 'cheque-1' });
+
+    const result = await svc.remove('cheque-1', 'actor');
+    expect(result.deleted).toBe(true);
+    expect(p.paymentEntry.delete).toHaveBeenCalledWith({ where: { id: 'cheque-1' } });
+    expect(p.voucher.findMany).not.toHaveBeenCalled();
+  });
+
+  it('reverses allocations and cancels the linked vouchers on a posted payment', async () => {
+    const sale = { id: 'sale-1', grandTotal: 1000, amountPaid: 800 };
+    const { svc, prisma, accounting } = buildService({
+      sale: {
+        findUnique: vi.fn().mockResolvedValue(sale),
+        update: vi.fn().mockResolvedValue(sale),
+      },
+      salesReturn: { aggregate: vi.fn().mockResolvedValue({ _sum: { grandTotal: 0 } }) },
+      purchase: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        update: vi.fn().mockResolvedValue(null),
+      },
+      purchaseReturn: { aggregate: vi.fn().mockResolvedValue({ _sum: { grandTotal: 0 } }) },
+    } as never);
+    const p = prisma as unknown as {
+      paymentEntry: { findUnique: ReturnType<typeof vi.fn>; delete: ReturnType<typeof vi.fn> };
+      voucher: { findMany: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+      paymentAllocation: { deleteMany: ReturnType<typeof vi.fn> };
+      sale: { update: ReturnType<typeof vi.fn> };
+    };
+    const acc = accounting as unknown as { cancelVoucher: ReturnType<typeof vi.fn> };
+    p.paymentEntry.findUnique.mockResolvedValue(
+      baseEntry({
+        status: 'posted',
+        chequeStatus: 'CLEARED',
+        voucherId: 'voucher-1',
+        allocations: [{ documentType: 'SALE', documentId: 'sale-1', allocatedAmount: 500 }],
+      }),
+    );
+    p.voucher.findMany = vi.fn().mockResolvedValue([{ id: 'voucher-1' }, { id: 'rv-2' }]);
+    p.paymentAllocation = { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) };
+    p.paymentEntry.delete = vi.fn().mockResolvedValue({ id: 'cheque-1' });
+    acc.cancelVoucher = vi.fn().mockResolvedValue({ status: 'cancelled' });
+
+    const result = await svc.remove('cheque-1', 'actor');
+
+    expect(result.deleted).toBe(true);
+    expect(acc.cancelVoucher).toHaveBeenCalledTimes(2);
+    expect(p.paymentAllocation.deleteMany).toHaveBeenCalledWith({ where: { paymentEntryId: 'cheque-1' } });
+    expect(p.paymentEntry.delete).toHaveBeenCalledWith({ where: { id: 'cheque-1' } });
+    const saleUpdate = p.sale.update.mock.calls[0][0] as { data: { amountPaid: number; paymentStatus: string } };
+    expect(saleUpdate.data.amountPaid).toBe(300);
+    expect(saleUpdate.data.paymentStatus).toBe('partial');
   });
 });

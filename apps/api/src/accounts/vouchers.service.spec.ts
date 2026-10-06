@@ -284,6 +284,66 @@ describe('VouchersService.cancel', () => {
   });
 });
 
+describe('VouchersService.remove', () => {
+  function removePrisma(voucher: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+    const tx = {
+      voucher: {
+        findUnique: vi.fn().mockResolvedValue(voucher),
+        findMany: vi.fn().mockResolvedValue([]),
+        delete: vi.fn().mockResolvedValue({ id: 'v1' }),
+        update: vi.fn().mockResolvedValue({ ...voucher, status: 'draft' }),
+      },
+      voucherEntry: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      paymentEntry: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
+      paymentAllocation: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      sale: { findUnique: vi.fn(), update: vi.fn() },
+      purchase: { findUnique: vi.fn(), update: vi.fn() },
+      salesReturn: { aggregate: vi.fn().mockResolvedValue({ _sum: { grandTotal: 0 } }) },
+      purchaseReturn: { aggregate: vi.fn().mockResolvedValue({ _sum: { grandTotal: 0 } }) },
+      ...extra,
+    };
+    const runTx = async (fn: (t: unknown) => unknown) => fn(tx);
+    const prisma = {
+      ...tx,
+      runInTransaction: vi.fn(runTx),
+      $transaction: vi.fn(runTx),
+    };
+    const { svc } = buildService({ prisma });
+    return { svc, tx };
+  }
+
+  it('deletes a cancelled voucher (any state)', async () => {
+    const { svc, tx } = removePrisma({ id: 'v1', number: 'JV-1', status: 'cancelled', voucherDate: new Date(), reference: null, description: 'x', voucherType: 'JOURNAL' });
+    const result = await svc.remove('v1', 'u1');
+    expect(result.deleted).toBe(true);
+    expect(tx.voucher.delete).toHaveBeenCalledWith({ where: { id: 'v1' } });
+  });
+
+  it('reverses a linked posted payment before deleting a posted voucher', async () => {
+    const posted = { id: 'v1', number: 'RV-1', status: 'posted', voucherDate: new Date(), reference: 'PN-000001', description: 'x', voucherType: 'DEBIT' };
+    const { svc, tx } = removePrisma(posted, {
+      paymentEntry: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'pe-1',
+            allocations: [{ documentType: 'SALE', documentId: 'sale-1', allocatedAmount: 500 }],
+          },
+        ]),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      sale: { findUnique: vi.fn().mockResolvedValue({ id: 'sale-1', grandTotal: 1000, amountPaid: 700 }), update: vi.fn().mockResolvedValue({}) },
+    });
+    const result = await svc.remove('v1', 'u1');
+    expect(result.deleted).toBe(true);
+    const saleUpdate = (tx.sale.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(saleUpdate.data.amountPaid).toBe(200);
+    expect(tx.paymentEntry.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'cancelled', voucherId: null }) }),
+    );
+    expect(tx.voucher.delete).toHaveBeenCalledWith({ where: { id: 'v1' } });
+  });
+});
+
 describe('VouchersService.cashBook', () => {
   function cashBookPrisma(entries: unknown[] = []) {
     return {

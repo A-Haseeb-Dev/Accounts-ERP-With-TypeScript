@@ -75,6 +75,13 @@ export class PaymentsController {
     return this.service.cancel(id, dto.reason, actor?.id);
   }
 
+  @Delete(':id')
+  @Permissions('accounts.payments.delete')
+  @ApiOperation({ summary: 'Delete a receipt/payment entry in any state (posted entries are reversed first)' })
+  remove(@Param('id') id: string, @CurrentUser() actor: any) {
+    return this.service.remove(id, actor?.id);
+  }
+
   @Post(':id/deposit')
   @Permissions('accounts.payments.post')
   @ApiOperation({ summary: 'Clear a cheque in hand into the bank account' })

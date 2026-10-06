@@ -2,9 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { ArrowLeftRight, ArrowDownCircle, ArrowUpCircle, Eye, Landmark, Pencil, RefreshCcw, Search } from 'lucide-react';
+import { ArrowLeftRight, ArrowDownCircle, ArrowUpCircle, Eye, Landmark, Pencil, RefreshCcw, Search, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
-import { depositCheque, bounceCheque, endorseCheque, editCheque, type EditChequePayload } from '@/lib/accounts-api';
+import { depositCheque, bounceCheque, endorseCheque, editCheque, deletePayment, type EditChequePayload } from '@/lib/accounts-api';
 import { Button } from '@/components/ui/button';
 import { Input, Select, Field, Textarea } from '@/components/ui/field';
 import { DataTable } from '@/components/data-table';
@@ -51,6 +51,7 @@ export default function ChequesRegisterPage() {
   const { can } = useAuth();
   const canPost = can('accounts.payments.post');
   const canUpdate = can('accounts.payments.update');
+  const canDelete = can('accounts.payments.delete');
 
   const [search, setSearch] = useState('');
   const [chequeStatus, setChequeStatus] = useState('');
@@ -72,6 +73,9 @@ export default function ChequesRegisterPage() {
   const [depositTarget, setDepositTarget] = useState<PaymentEntry | null>(null);
   const [depositBankId, setDepositBankId] = useState('');
   const [depositError, setDepositError] = useState('');
+
+  const [deleteTarget, setDeleteTarget] = useState<PaymentEntry | null>(null);
+  const [deleteError, setDeleteError] = useState('');
 
   const { options: customerOptions } = useFlatOptions('customers');
   const { options: supplierOptions } = useFlatOptions('suppliers');
@@ -143,6 +147,22 @@ export default function ChequesRegisterPage() {
       toast.success('Cheque endorsed to party');
     },
     onError: (e: Error) => toast.error(e.message || 'Could not endorse cheque'),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => deletePayment(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cheques'] });
+      qc.invalidateQueries({ queryKey: ['payments'] });
+      qc.invalidateQueries({ queryKey: ['cashbook'] });
+      setDeleteTarget(null);
+      setDeleteError('');
+      toast.success('Cheque entry deleted');
+    },
+    onError: (e: Error) => {
+      setDeleteError(e.message);
+      toast.error(e.message || 'Could not delete cheque entry');
+    },
   });
 
   const saveEdit = async (e: React.FormEvent) => {
@@ -316,6 +336,11 @@ export default function ChequesRegisterPage() {
                         <RefreshCcw className="h-4 w-4" />
                       </button>
                     </>
+                  )}
+                  {canDelete && (
+                    <button onClick={() => { setDeleteTarget(r); setDeleteError(''); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete cheque entry">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   )}
                 </div>
               ),
@@ -505,6 +530,25 @@ export default function ChequesRegisterPage() {
             <Textarea value={bounceReason} onChange={(e) => setBounceReason(e.target.value)} placeholder="e.g. insufficient funds" />
           </Field>
         </div>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        danger
+        title="Delete cheque entry"
+        message={
+          deleteTarget?.status === 'posted'
+            ? `Delete "${deleteTarget?.number ?? ''}"? This reverses the ledger effect, re-opens any allocated documents, cancels the linked vouchers and permanently removes the entry.`
+            : `Delete "${deleteTarget?.number ?? ''}"? This permanently removes the cheque entry and cannot be undone.`
+        }
+        confirmLabel="Delete entry"
+        loading={remove.isPending}
+        onCancel={() => { setDeleteTarget(null); setDeleteError(''); }}
+        onConfirm={() => deleteTarget?.id && remove.mutate(deleteTarget.id)}
+      >
+        {deleteError && (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{deleteError}</div>
+        )}
       </ConfirmDialog>
 
       <ConfirmDialog

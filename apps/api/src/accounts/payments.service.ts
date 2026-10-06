@@ -856,6 +856,92 @@ export class PaymentsService {
   }
 
   /**
+   * Deletes a receipt / payment entry in any state.
+   *
+   *  - pending / cancelled  → hard delete (no ledger effect yet).
+   *  - posted               → allocations are reversed on the linked invoices /
+   *                           bills, every voucher booked for this entry is
+   *                           cancelled (post / deposit / bounce / endorse),
+   *                           then the entry itself is removed.
+   */
+  async remove(id: string, actorId?: string) {
+    const entry = await this.prisma.paymentEntry.findUnique({
+      where: { id },
+      include: { allocations: true },
+    });
+    if (!entry) throw ApiException.notFound('Payment entry');
+    await this.fiscal.assertOpen(entry.paymentDate, 'Cannot delete a payment entry');
+
+    const wasPosted = entry.status === 'posted';
+    await this.prisma.runInTransaction(async (tx) => {
+      if (wasPosted) {
+        await this.reverseAllocations(tx, entry.allocations);
+        // Cancel every voucher booked against this entry number (the original
+        // posting plus any deposit / bounce / endorse vouchers that share the
+        // same reference) so the ledger is left clean.
+        const vouchers = await tx.voucher.findMany({
+          where: {
+            OR: [
+              { id: entry.voucherId ?? undefined },
+              { reference: entry.number },
+            ],
+          },
+        });
+        for (const v of vouchers) {
+          await this.accounting.cancelVoucher(
+            tx,
+            v.id,
+            `Payment ${entry.number} deleted`,
+            actorId,
+          );
+        }
+      }
+      await tx.paymentAllocation.deleteMany({ where: { paymentEntryId: id } });
+      await tx.paymentEntry.delete({ where: { id } });
+    });
+
+    this.audit.record({
+      userId: actorId,
+      action: 'DELETE',
+      module: 'PAYMENT',
+      entity: 'PaymentEntry',
+      entityId: id,
+      message: `Payment ${entry.number} deleted${wasPosted ? ' (accounting reversed)' : ''}`,
+    });
+    return { id, deleted: true };
+  }
+
+  /** Re-opens the invoices / bills a posted payment was allocated against. */
+  private async reverseAllocations(
+    tx: Prisma.TransactionClient,
+    allocations: { documentType: string; documentId: string; allocatedAmount: unknown }[],
+  ) {
+    for (const a of allocations) {
+      const amt = round2(Number(a.allocatedAmount ?? 0));
+      if (amt <= 0) continue;
+      if (a.documentType === 'SALE') {
+        const sale = await tx.sale.findUnique({ where: { id: a.documentId } });
+        if (!sale) continue;
+        const paid = round2(Math.max(0, Number(sale.amountPaid) - amt));
+        const paymentStatus = await this.documentPaymentStatus(tx, 'SALE', sale, paid);
+        await tx.sale.update({
+          where: { id: sale.id },
+          data: { amountPaid: paid, paymentStatus },
+        });
+      } else if (a.documentType === 'PURCHASE') {
+        const purchase = await tx.purchase.findUnique({ where: { id: a.documentId } });
+        if (!purchase) continue;
+        const paid = round2(Math.max(0, Number(purchase.paidAmount) - amt));
+        const payStatus = await this.documentPaymentStatus(tx, 'PURCHASE', purchase, paid);
+        await tx.purchase.update({
+          where: { id: purchase.id },
+          data: { paidAmount: paid, payStatus },
+        });
+      }
+    }
+  }
+
+  /**
    * Correct a mistake on a cheque entry. Every field is editable — party, cash /
    * bank account, PDC holding account, cheque number/date, bank, amount, payment
    * date, reference and narration.

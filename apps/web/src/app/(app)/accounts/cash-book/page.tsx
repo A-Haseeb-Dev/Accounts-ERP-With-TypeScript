@@ -1,14 +1,18 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Eye } from 'lucide-react';
+import { Eye, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
+import { deleteVoucher } from '@/lib/accounts-api';
+import { useAuth } from '@/context/auth-context';
 import { Field, Input, Select } from '@/components/ui/field';
 import { DataTable } from '@/components/data-table';
 import { Modal } from '@/components/ui/modal';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
+import { toast } from 'sonner';
 import { money } from '@/lib/utils';
 import type { CashBookRow, Paginated, Voucher, VoucherEntry } from '@/lib/types';
 
@@ -23,11 +27,16 @@ interface CashBookGroup {
 }
 
 export default function CashBookPage() {
+  const qc = useQueryClient();
+  const { can } = useAuth();
+  const canDelete = can('accounts.vouchers.delete');
   const [mode, setMode] = useState<'chronological' | 'byMonth'>('chronological');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [deleteTarget, setDeleteTarget] = useState<CashBookRow | null>(null);
+  const [deleteError, setDeleteError] = useState('');
 
   const { data, isLoading } = useQuery<Paginated<CashBookRow> & { totalRunning?: number }>({
     queryKey: ['cashbook', mode, page, from, to, search],
@@ -75,6 +84,27 @@ export default function CashBookPage() {
     queryFn: () => apiFetch(`/vouchers/${detailId}`),
     enabled: !!detailId,
   });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteVoucher(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cashbook'] });
+      qc.invalidateQueries({ queryKey: ['vouchers'] });
+      qc.invalidateQueries({ queryKey: ['payments'] });
+      setDeleteTarget(null);
+      setDeleteError('');
+      toast.success('Voucher deleted from cash book');
+    },
+    onError: (e: Error) => {
+      setDeleteError(e.message);
+      toast.error(e.message || 'Could not delete voucher');
+    },
+  });
+
+  const openDelete = (r: CashBookRow) => {
+    setDeleteError('');
+    setDeleteTarget(r);
+  };
 
   return (
     <div>
@@ -151,6 +181,11 @@ export default function CashBookPage() {
               render: (r) => (
                 <div className="flex items-center gap-0.5">
                   <button onClick={() => { const id = voucherIdOf(r); if (id) setDetailId(id); }} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="View voucher"><Eye className="h-4 w-4" /></button>
+                  {canDelete && voucherIdOf(r) && (
+                    <button onClick={() => openDelete(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete voucher">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               ),
             },
@@ -173,6 +208,27 @@ export default function CashBookPage() {
       </Card>
 
       <VoucherDetailModal open={!!detailId} loading={detailLoading} detail={detail} onClose={() => setDetailId(null)} />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        danger
+        title="Delete voucher from cash book"
+        message={
+          `Delete voucher "${deleteTarget?.voucher?.number ?? ''}" (${deleteTarget?.reference ?? 'no reference'})? ` +
+          `This reverses any linked receipt / payment, removes the entry from the ledger and cannot be undone.`
+        }
+        confirmLabel="Delete voucher"
+        loading={remove.isPending}
+        onCancel={() => { setDeleteTarget(null); setDeleteError(''); }}
+        onConfirm={() => {
+          const id = deleteTarget ? voucherIdOf(deleteTarget) : null;
+          if (id) remove.mutate(id);
+        }}
+      >
+        {deleteError && (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{deleteError}</div>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }
