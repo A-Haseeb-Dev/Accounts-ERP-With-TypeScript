@@ -415,10 +415,38 @@ export class ItemsService {
     if (references.length > 0) {
       throw ApiException.deleteBlocked(`Item "${item.name}"`, references);
     }
-    // Delete item only if it's never used anywhere. If you want to allow
-    // deletion after creating vouchers/purchases/sales, the referenced documents
-    // should be corrected first (defense-in-depth).
-    await this.prisma.item.delete({ where: { id } });
+    // Delete item. If it only had opening stock movements, remove them first
+    // to satisfy FK constraints (InventoryTransaction -> Item has RESTRICT).
+    const [movements, openingCount] = await Promise.all([
+      this.prisma.inventoryTransaction.count({ where: { itemId: id } }),
+      this.prisma.inventoryTransaction.count({
+        where: {
+          itemId: id,
+          OR: [
+            { referenceType: 'OPENING_STOCK' },
+            { transactionType: 'OPENING_STOCK' },
+            { referenceType: OPENING_REFERENCE },
+            { transactionType: OPENING_REFERENCE },
+          ],
+        },
+      }),
+    ]);
+    await this.prisma.$transaction(async (tx) => {
+      if (movements > 0 && openingCount === movements) {
+        await tx.inventoryTransaction.deleteMany({
+          where: {
+            itemId: id,
+            OR: [
+              { referenceType: 'OPENING_STOCK' },
+              { transactionType: 'OPENING_STOCK' },
+              { referenceType: OPENING_REFERENCE },
+              { transactionType: OPENING_REFERENCE },
+            ],
+          },
+        });
+      }
+      await tx.item.delete({ where: { id } });
+    });
     this.audit.record({
       userId: actorId, action: 'DELETE', module: 'ITEM', entity: 'Item',
       entityId: id, message: `Item ${item.name} deleted`,
