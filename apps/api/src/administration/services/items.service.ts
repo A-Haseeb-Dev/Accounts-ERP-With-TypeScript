@@ -411,12 +411,45 @@ export class ItemsService {
 
   async remove(id: string, actorId?: string) {
     const item = await this.findItem(id);
-    const references = await this.itemReferences(id);
-    if (references.length > 0) {
-      throw ApiException.deleteBlocked(`Item "${item.name}"`, references);
+    const [_movements, sales, purchases, salesReturns, purchaseReturns, transfers, _openingCount] =
+      await Promise.all([
+        this.prisma.inventoryTransaction.count({ where: { itemId: id } }),
+        this.prisma.saleItem.count({ where: { itemId: id } }),
+        this.prisma.purchaseItem.count({ where: { itemId: id } }),
+        this.prisma.salesReturnItem.count({ where: { itemId: id } }),
+        this.prisma.purchaseReturnItem.count({ where: { itemId: id } }),
+        this.prisma.stockTransferItem.count({ where: { itemId: id } }),
+        this.prisma.inventoryTransaction.count({
+          where: {
+            itemId: id,
+            OR: [
+              { referenceType: 'OPENING_STOCK' },
+              { transactionType: 'OPENING_STOCK' },
+              { referenceType: OPENING_REFERENCE },
+              { transactionType: OPENING_REFERENCE },
+            ],
+          },
+        }),
+      ]);
+    // If there are no business-document references, delete all inventory movements for this item
+    // (opening or otherwise) inside a transaction and then delete the item.
+    const hasBusinessRefs =
+      (sales ?? 0) > 0 ||
+      (purchases ?? 0) > 0 ||
+      (salesReturns ?? 0) > 0 ||
+      (purchaseReturns ?? 0) > 0 ||
+      (transfers ?? 0) > 0;
+
+    if (hasBusinessRefs) {
+      const refs: string[] = [];
+      if (sales) refs.push(`${sales} sale line${sales === 1 ? '' : 's'}`);
+      if (purchases) refs.push(`${purchases} purchase line${purchases === 1 ? '' : 's'}`);
+      if (salesReturns) refs.push(`${salesReturns} sales return line${salesReturns === 1 ? '' : 's'}`);
+      if (purchaseReturns) refs.push(`${purchaseReturns} purchase return line${purchaseReturns === 1 ? '' : 's'}`);
+      if (transfers) refs.push(`${transfers} transfer line${transfers === 1 ? '' : 's'}`);
+      throw ApiException.deleteBlocked(`Item "${item.name}"`, refs);
     }
-    // Delete all inventory transactions for this item first (opening or others) if any,
-    // then delete the item. This avoids FK constraint failures.
+
     await this.prisma.$transaction(async (tx) => {
       const movementCount = await tx.inventoryTransaction.count({ where: { itemId: id } });
       if (movementCount > 0) {
@@ -454,8 +487,16 @@ export class ItemsService {
       ]);
     const references: string[] = [];
     const nonOpeningMovements = Math.max(0, movements - openingCount);
-    if (nonOpeningMovements > 0) references.push(`${nonOpeningMovements} inventory movement${nonOpeningMovements === 1 ? '' : 's'}`);
-    // If only opening movements exist, we can safely delete them on removal.
+    const hasBusinessRefs =
+      (sales ?? 0) > 0 ||
+      (purchases ?? 0) > 0 ||
+      (salesReturns ?? 0) > 0 ||
+      (purchaseReturns ?? 0) > 0 ||
+      (transfers ?? 0) > 0;
+    if (nonOpeningMovements > 0 && hasBusinessRefs) {
+      references.push(`${nonOpeningMovements} inventory movement${nonOpeningMovements === 1 ? '' : 's'}`);
+    }
+    // If only opening movements exist, or only movements exist with no business refs, we can safely delete them on removal.
     if (sales) references.push(`${sales} sale line${sales === 1 ? '' : 's'}`);
     if (purchases) references.push(`${purchases} purchase line${purchases === 1 ? '' : 's'}`);
     if (salesReturns) references.push(`${salesReturns} sales return line${salesReturns === 1 ? '' : 's'}`);
