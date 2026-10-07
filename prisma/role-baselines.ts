@@ -95,7 +95,8 @@ export const ROLE_BASELINES: RoleBaseline[] = [
       'accounts.vouchers.view', 'accounts.cashbook.view', 'accounts.payments.view',
       'reports.accounting.view', 'reports.inventory.view', 'reports.sales.view', 'reports.purchase.view', 'reports.hr.view',
       'system.audit.view',
-      'users.view', 'roles.view', 'permissions.view',
+      'system.terms.manage',
+      'users.view', 'roles.view', 'permissions.view', 'permissions.manage',
     ],
   },
 ];

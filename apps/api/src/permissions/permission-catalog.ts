@@ -124,6 +124,7 @@ export const PERMISSION_CATALOG: {
   { name: 'roles.view', module: 'roles', action: 'view' },
   { name: 'roles.manage', module: 'roles', action: 'manage' },
   { name: 'permissions.view', module: 'permissions', action: 'view' },
+  { name: 'permissions.manage', module: 'permissions', action: 'manage' },
 
   // Accounting
   { name: 'accounts.vouchers.view', module: 'accounts', action: 'view' },
@@ -229,4 +230,5 @@ export const PERMISSION_CATALOG: {
   { name: 'system.features.manage', module: 'system', action: 'manage', description: 'Toggle company features (Developer role only)' },
   { name: 'system.print_layout.manage', module: 'system', action: 'manage', description: 'Manage invoice/report print layouts' },
   { name: 'system.security.manage', module: 'system', action: 'manage', description: 'Manage account security settings (two-factor authentication)' },
+  { name: 'system.terms.manage', module: 'system', action: 'manage', description: 'Manage terms & conditions' },
 ];

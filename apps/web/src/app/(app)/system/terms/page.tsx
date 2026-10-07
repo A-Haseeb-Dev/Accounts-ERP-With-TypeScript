@@ -17,7 +17,7 @@ const DEFAULT_TITLE = 'Terms & Conditions';
 export default function TermsPage() {
   const qc = useQueryClient();
   const { can } = useAuth();
-  const canManage = can('system.settings.manage');
+  const canManage = can('system.terms.manage') || can('system.settings.manage');
 
   const { data, isLoading } = useQuery<Settings>({
     queryKey: ['settings'],
