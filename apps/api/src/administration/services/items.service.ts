@@ -415,36 +415,11 @@ export class ItemsService {
     if (references.length > 0) {
       throw ApiException.deleteBlocked(`Item "${item.name}"`, references);
     }
-    // Delete item. If it only had opening stock movements, remove them first
-    // to satisfy FK constraints (InventoryTransaction -> Item has RESTRICT).
-    const [movements, openingCount] = await Promise.all([
-      this.prisma.inventoryTransaction.count({ where: { itemId: id } }),
-      this.prisma.inventoryTransaction.count({
-        where: {
-          itemId: id,
-          OR: [
-            { referenceType: 'OPENING_STOCK' },
-            { transactionType: 'OPENING_STOCK' },
-            { referenceType: OPENING_REFERENCE },
-            { transactionType: OPENING_REFERENCE },
-          ],
-        },
-      }),
-    ]);
+    // Delete all inventory transactions for this item first (opening or others) if any,
+    // then delete the item. This avoids FK constraint failures.
     await this.prisma.$transaction(async (tx) => {
-      if (movements > 0 && openingCount === movements) {
-        await tx.inventoryTransaction.deleteMany({
-          where: {
-            itemId: id,
-            OR: [
-              { referenceType: 'OPENING_STOCK' },
-              { transactionType: 'OPENING_STOCK' },
-              { referenceType: OPENING_REFERENCE },
-              { transactionType: OPENING_REFERENCE },
-            ],
-          },
-        });
-      } else if (movements > 0) {
+      const movementCount = await tx.inventoryTransaction.count({ where: { itemId: id } });
+      if (movementCount > 0) {
         await tx.inventoryTransaction.deleteMany({ where: { itemId: id } });
       }
       await tx.item.delete({ where: { id } });
@@ -479,10 +454,8 @@ export class ItemsService {
       ]);
     const references: string[] = [];
     const nonOpeningMovements = Math.max(0, movements - openingCount);
-    if (nonOpeningMovements) references.push(`${nonOpeningMovements} inventory movement${nonOpeningMovements === 1 ? '' : 's'}`);
-    else if (movements > 0 && openingCount === movements) {
-      // Only opening stock exists; safe to allow deletion after cleanup.
-    }
+    if (nonOpeningMovements > 0) references.push(`${nonOpeningMovements} inventory movement${nonOpeningMovements === 1 ? '' : 's'}`);
+    // If only opening movements exist, we can safely delete them on removal.
     if (sales) references.push(`${sales} sale line${sales === 1 ? '' : 's'}`);
     if (purchases) references.push(`${purchases} purchase line${purchases === 1 ? '' : 's'}`);
     if (salesReturns) references.push(`${salesReturns} sales return line${salesReturns === 1 ? '' : 's'}`);
