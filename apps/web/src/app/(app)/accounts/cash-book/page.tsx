@@ -331,20 +331,6 @@ export default function CashBookPage() {
 
       <Modal open={formOpen} onClose={() => setFormOpen(false)} title="Cash Book — Direct Entry" size="lg">
         <form onSubmit={submitForm} className="space-y-4">
-          <div className="rounded-xl border border-teal-100 bg-teal-50/60 px-4 py-3 text-xs text-slate-700">
-            <p className="text-sm font-semibold text-slate-800">How to fill this entry</p>
-            <ul className="mt-1.5 space-y-1">
-              <li>
-                <span className="font-semibold text-teal-700">Money In (receipt):</span> cash aaya hai — Cash account ki line mein <span className="font-semibold">Debit</span> mein amount likhein, doosri line par jis account se aaya wo <span className="font-semibold">Credit</span> karein.
-              </li>
-              <li>
-                <span className="font-semibold text-red-600">Money Out (payment):</span> cash gaya hai — Cash account ki line mein <span className="font-semibold">Credit</span> mein amount likhein, doosri line par jis par kharch hua wo <span className="font-semibold">Debit</span> karein.
-              </li>
-              <li><span className="font-semibold">Rule:</span> Total Debit hamesha Total Credit ke barabar hona chahiye (double entry).</li>
-              <li>Cash account pehli line par pehle se bhari hui hai — sirf Debit ya Credit mein number daalein.</li>
-            </ul>
-          </div>
-
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Field label="Date" required>
               <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} required />
@@ -369,7 +355,7 @@ export default function CashBookPage() {
 
           {cashAccountId ? (
             <p className="text-xs text-slate-400">
-              Cash account is pre-filled on the first line — adjust the debit / credit side as needed.
+              Cash account is pre-filled on the first line.
               {canPost ? ' Saving posts the entry straight to the cash book.' : ' Saved as a draft — post it from Vouchers to show it here.'}
             </p>
           ) : (
@@ -379,17 +365,20 @@ export default function CashBookPage() {
           )}
 
           <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <p className="text-sm font-medium text-slate-700">Accounting Entries</p>
-              <p className="text-xs text-slate-400">Debit = Money In · Credit = Money Out (for the cash account)</p>
-            </div>
+            <p className="mb-1.5 text-sm font-medium text-slate-700">Accounting Entries</p>
             <div className="overflow-hidden rounded-lg border border-slate-200">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                     <th className="px-3 py-2">Account</th>
-                    <th className="w-32 px-3 py-2 text-right">Debit (In)</th>
-                    <th className="w-32 px-3 py-2 text-right">Credit (Out)</th>
+                    <th className="w-32 px-3 py-2 text-right">
+                      Debit
+                      <span className="block text-[10px] font-normal normal-case text-teal-600">Money In (cash aaya)</span>
+                    </th>
+                    <th className="w-32 px-3 py-2 text-right">
+                      Credit
+                      <span className="block text-[10px] font-normal normal-case text-red-600">Money Out (cash gaya)</span>
+                    </th>
                     <th className="px-3 py-2">Narration</th>
                     <th className="w-10 px-3 py-2"></th>
                   </tr>
