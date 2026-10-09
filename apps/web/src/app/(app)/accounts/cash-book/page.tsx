@@ -2,11 +2,14 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Eye, Trash2 } from 'lucide-react';
+import { CheckCircle2, Eye, Plus, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
-import { deleteVoucher } from '@/lib/accounts-api';
+import { createVoucher, deleteVoucher } from '@/lib/accounts-api';
+import type { VoucherPayload } from '@/lib/accounts-api';
 import { useAuth } from '@/context/auth-context';
-import { Field, Input, Select } from '@/components/ui/field';
+import { useAccountingAccounts } from '@/hooks/use-options';
+import { Button } from '@/components/ui/button';
+import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { DataTable } from '@/components/data-table';
 import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/confirm-dialog';
@@ -14,7 +17,7 @@ import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { money } from '@/lib/utils';
-import type { CashBookRow, Paginated, Voucher, VoucherEntry } from '@/lib/types';
+import type { CashBookRow, Paginated, Voucher, VoucherEntry, VoucherType } from '@/lib/types';
 
 interface CashBookGroup {
   month: string;
@@ -26,10 +29,23 @@ interface CashBookGroup {
   closing: number;
 }
 
+interface Entry {
+  key: string;
+  mainAccountId: string;
+  debit: number;
+  credit: number;
+  narration?: string;
+}
+
+const newKey = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
+
 export default function CashBookPage() {
   const qc = useQueryClient();
   const { can } = useAuth();
+  const canCreate = can('accounts.vouchers.create');
+  const canPost = can('accounts.vouchers.post');
   const canDelete = can('accounts.vouchers.delete');
+  const { options: accountOptions } = useAccountingAccounts();
   const [mode, setMode] = useState<'chronological' | 'byMonth'>('chronological');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -37,6 +53,21 @@ export default function CashBookPage() {
   const [page, setPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<CashBookRow | null>(null);
   const [deleteError, setDeleteError] = useState('');
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [formDate, setFormDate] = useState('');
+  const [formType, setFormType] = useState<VoucherType>('JOURNAL');
+  const [formReference, setFormReference] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [formEntries, setFormEntries] = useState<Entry[]>([]);
+  const [formError, setFormError] = useState('');
+
+  const { data: settings } = useQuery<Record<string, string>>({
+    queryKey: ['settings'],
+    queryFn: () => apiFetch('/system/settings'),
+    staleTime: 5 * 60 * 1000,
+  });
+  const cashAccountId = settings?.['accounting.cash_account'] ?? '';
 
   const { data, isLoading } = useQuery<Paginated<CashBookRow> & { totalRunning?: number }>({
     queryKey: ['cashbook', mode, page, from, to, search],
@@ -106,9 +137,98 @@ export default function CashBookPage() {
     setDeleteTarget(r);
   };
 
+  const { data: nextNumber } = useQuery<string>({
+    queryKey: ['vouchers', 'next-number', formType],
+    queryFn: () => apiFetch<{ number: string }>(`/vouchers/next-number?voucherType=${formType}`).then((r) => r.number),
+    enabled: formOpen,
+    staleTime: 0,
+  });
+
+  const createEntry = useMutation({
+    mutationFn: async (payload: VoucherPayload) => {
+      const voucher = await createVoucher(payload);
+      // The cash book only lists posted vouchers, so a direct entry would be
+      // invisible until someone posts it from the Vouchers screen. Post it
+      // right away when the user holds the posting permission.
+      if (canPost) await apiFetch(`/vouchers/${voucher.id}/post`, { method: 'POST' });
+      return voucher;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cashbook'] });
+      qc.invalidateQueries({ queryKey: ['vouchers'] });
+      qc.invalidateQueries({ queryKey: ['payments'] });
+      qc.invalidateQueries({ queryKey: ['vouchers', 'next-number'] });
+      setFormOpen(false);
+      toast.success(canPost ? 'Direct entry posted to the cash book' : 'Direct entry saved as a draft');
+    },
+    onError: (e: Error) => {
+      setFormError(e.message);
+      toast.error(e.message || 'Could not create direct entry');
+    },
+  });
+
+  const openForm = () => {
+    setFormDate(new Date().toISOString().slice(0, 10));
+    setFormType('JOURNAL');
+    setFormReference('');
+    setFormDescription('');
+    setFormEntries([
+      { key: newKey(), mainAccountId: cashAccountId, debit: 0, credit: 0 },
+      { key: newKey(), mainAccountId: '', debit: 0, credit: 0 },
+    ]);
+    setFormError('');
+    setFormOpen(true);
+  };
+
+  const addEntry = () => setFormEntries((es) => [...es, { key: newKey(), mainAccountId: '', debit: 0, credit: 0 }]);
+  const updateEntry = (key: string, patch: Partial<Entry>) =>
+    setFormEntries((es) => es.map((en) => (en.key === key ? { ...en, ...patch } : en)));
+  const removeEntry = (key: string) => setFormEntries((es) => es.filter((en) => en.key !== key));
+
+  const formTotalDebit = formEntries.reduce((s, e) => s + Number(e.debit || 0), 0);
+  const formTotalCredit = formEntries.reduce((s, e) => s + Number(e.credit || 0), 0);
+  const formBalanced = Math.abs(formTotalDebit - formTotalCredit) < 0.01 && formTotalDebit > 0;
+
+  const submitForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
+    if (formEntries.filter((en) => en.mainAccountId).length < 2) {
+      setFormError('A direct entry needs at least two accounts (one debit, one credit).');
+      return;
+    }
+    if (!formBalanced) {
+      setFormError(`Entries don't balance: debit ${money(formTotalDebit)} vs credit ${money(formTotalCredit)}.`);
+      return;
+    }
+    createEntry.mutate({
+      voucherType: formType,
+      voucherDate: formDate,
+      reference: formReference || undefined,
+      description: formDescription || undefined,
+      entries: formEntries
+        .filter((en) => en.mainAccountId)
+        .map((en) => ({
+          mainAccountId: en.mainAccountId,
+          debit: Number(en.debit) || 0,
+          credit: Number(en.credit) || 0,
+          narration: en.narration || undefined,
+        })),
+    });
+  };
+
   return (
     <div>
-      <PageHeader title="Cash Book" description="Chronological cash account activity and running balance." />
+      <PageHeader
+        title="Cash Book"
+        description="Chronological cash account activity and running balance."
+        actions={
+          canCreate ? (
+            <Button onClick={openForm}>
+              <Plus className="h-4 w-4" /> Direct Entry
+            </Button>
+          ) : null
+        }
+      />
 
       <Card>
         <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 px-4 py-3">
@@ -208,6 +328,109 @@ export default function CashBookPage() {
       </Card>
 
       <VoucherDetailModal open={!!detailId} loading={detailLoading} detail={detail} onClose={() => setDetailId(null)} />
+
+      <Modal open={formOpen} onClose={() => setFormOpen(false)} title="Cash Book — Direct Entry" size="lg">
+        <form onSubmit={submitForm} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <Field label="Date" required>
+              <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} required />
+            </Field>
+            <Field label="Type" required>
+              <Select value={formType} onChange={(e) => setFormType(e.target.value as VoucherType)}>
+                <option value="JOURNAL">Journal</option>
+                <option value="CREDIT">Credit Note</option>
+                <option value="DEBIT">Debit Note</option>
+              </Select>
+            </Field>
+            <Field label="Number">
+              <Input value={nextNumber ?? ''} disabled className="font-mono" title="Auto-generated on save" />
+            </Field>
+            <Field label="Reference">
+              <Input value={formReference} onChange={(e) => setFormReference(e.target.value)} placeholder="optional" />
+            </Field>
+          </div>
+          <Field label="Description">
+            <Textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)} />
+          </Field>
+
+          {cashAccountId ? (
+            <p className="text-xs text-slate-400">
+              Cash account is pre-filled on the first line — adjust the debit / credit side as needed.
+              {canPost ? ' Saving posts the entry straight to the cash book.' : ' Saved as a draft — post it from Vouchers to show it here.'}
+            </p>
+          ) : (
+            <p className="text-xs text-amber-600">
+              No default cash account set (Settings › Accounting). Set one so the cash book and this form use it.
+            </p>
+          )}
+
+          <div>
+            <p className="mb-1.5 text-sm font-medium text-slate-700">Accounting Entries</p>
+            <div className="overflow-hidden rounded-lg border border-slate-200">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                    <th className="px-3 py-2">Account</th>
+                    <th className="w-32 px-3 py-2 text-right">Debit</th>
+                    <th className="w-32 px-3 py-2 text-right">Credit</th>
+                    <th className="px-3 py-2">Narration</th>
+                    <th className="w-10 px-3 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {formEntries.map((en) => (
+                    <tr key={en.key} className="border-b border-slate-100 last:border-0">
+                      <td className="px-3 py-1.5">
+                        <Select value={en.mainAccountId} onChange={(e) => updateEntry(en.key, { mainAccountId: e.target.value })} className="min-w-[160px]">
+                          <option value="">Select account…</option>
+                          {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </Select>
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <Input type="number" min={0} step="0.01" value={en.debit ? String(en.debit) : ''} onChange={(e) => updateEntry(en.key, { debit: Number(e.target.value) || 0, credit: 0 })} className="text-right" placeholder="0" />
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <Input type="number" min={0} step="0.01" value={en.credit ? String(en.credit) : ''} onChange={(e) => updateEntry(en.key, { credit: Number(e.target.value) || 0, debit: 0 })} className="text-right" placeholder="0" />
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <Input value={en.narration ?? ''} onChange={(e) => updateEntry(en.key, { narration: e.target.value })} placeholder="optional" />
+                      </td>
+                      <td className="px-3 py-1.5 text-center">
+                        <button type="button" onClick={() => removeEntry(en.key)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                      </td>
+                    </tr>
+                  ))}
+                  {formEntries.length === 0 && (
+                    <tr><td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-400">Add at least two entries (one debit, one credit).</td></tr>
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-slate-200 bg-slate-50 font-medium text-slate-800">
+                    <td className="px-3 py-2 text-xs font-semibold uppercase text-slate-500">Totals</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{money(formTotalDebit)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{money(formTotalCredit)}</td>
+                    <td className="px-3 py-2 text-right text-xs" colSpan={2}>
+                      <span className={formBalanced ? 'font-medium text-teal-600' : 'font-semibold text-red-600'}>
+                        {formBalanced ? 'Balanced' : `Off by ${money(Math.abs(formTotalDebit - formTotalCredit))}`}
+                      </span>
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <Button type="button" variant="secondary" size="sm" onClick={addEntry} className="mt-2"><Plus className="h-4 w-4" /> Add entry</Button>
+          </div>
+
+          {formError && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{formError}</div>}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
+            <Button type="submit" loading={createEntry.isPending} disabled={!formBalanced}>
+              <CheckCircle2 className="h-4 w-4" /> Save entry
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       <ConfirmDialog
         open={!!deleteTarget}
