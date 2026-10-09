@@ -55,12 +55,18 @@ export default function CashBookPage() {
   const [deleteError, setDeleteError] = useState('');
 
   const [formOpen, setFormOpen] = useState(false);
+  const [formMode, setFormMode] = useState<'easy' | 'advanced'>('easy');
   const [formDate, setFormDate] = useState('');
   const [formType, setFormType] = useState<VoucherType>('JOURNAL');
   const [formReference, setFormReference] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [formEntries, setFormEntries] = useState<Entry[]>([]);
   const [formError, setFormError] = useState('');
+
+  const [inDirection, setInDirection] = useState<'IN' | 'OUT'>('IN');
+  const [inAmount, setInAmount] = useState(0);
+  const [inAccountId, setInAccountId] = useState('');
+  const [inCashAccountId, setInCashAccountId] = useState('');
 
   const { data: settings } = useQuery<Record<string, string>>({
     queryKey: ['settings'],
@@ -168,6 +174,7 @@ export default function CashBookPage() {
   });
 
   const openForm = () => {
+    setFormMode('easy');
     setFormDate(new Date().toISOString().slice(0, 10));
     setFormType('JOURNAL');
     setFormReference('');
@@ -176,6 +183,10 @@ export default function CashBookPage() {
       { key: newKey(), mainAccountId: cashAccountId, debit: 0, credit: 0 },
       { key: newKey(), mainAccountId: '', debit: 0, credit: 0 },
     ]);
+    setInDirection('IN');
+    setInAmount(0);
+    setInAccountId('');
+    setInCashAccountId(cashAccountId);
     setFormError('');
     setFormOpen(true);
   };
@@ -189,9 +200,49 @@ export default function CashBookPage() {
   const formTotalCredit = formEntries.reduce((s, e) => s + Number(e.credit || 0), 0);
   const formBalanced = Math.abs(formTotalDebit - formTotalCredit) < 0.01 && formTotalDebit > 0;
 
+  const easyCashId = inCashAccountId || cashAccountId;
+  const easyAmount = Number(inAmount) || 0;
+  const easyValid = !!easyCashId && !!inAccountId && easyAmount > 0;
+  const easyCashLabel = accountOptions.find((o) => o.value === easyCashId)?.label ?? 'Cash / Bank';
+  const easyOtherLabel = accountOptions.find((o) => o.value === inAccountId)?.label ?? (inDirection === 'IN' ? 'Source account' : 'Expense account');
+
   const submitForm = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
+
+    if (formMode === 'easy') {
+      if (!easyCashId) {
+        setFormError('Select the cash / bank account.');
+        return;
+      }
+      if (!inAccountId) {
+        setFormError(inDirection === 'IN' ? 'Select where the money came from.' : 'Select where the money was spent.');
+        return;
+      }
+      if (easyAmount <= 0) {
+        setFormError('Enter an amount greater than zero.');
+        return;
+      }
+      const entries =
+        inDirection === 'IN'
+          ? [
+              { mainAccountId: easyCashId, debit: easyAmount, credit: 0, narration: formDescription || undefined },
+              { mainAccountId: inAccountId, debit: 0, credit: easyAmount, narration: formDescription || undefined },
+            ]
+          : [
+              { mainAccountId: inAccountId, debit: easyAmount, credit: 0, narration: formDescription || undefined },
+              { mainAccountId: easyCashId, debit: 0, credit: easyAmount, narration: formDescription || undefined },
+            ];
+      createEntry.mutate({
+        voucherType: formType,
+        voucherDate: formDate,
+        reference: formReference || undefined,
+        description: formDescription || undefined,
+        entries,
+      });
+      return;
+    }
+
     if (formEntries.filter((en) => en.mainAccountId).length < 2) {
       setFormError('A direct entry needs at least two accounts (one debit, one credit).');
       return;
@@ -331,6 +382,28 @@ export default function CashBookPage() {
 
       <Modal open={formOpen} onClose={() => setFormOpen(false)} title="Cash Book — Direct Entry" size="lg">
         <form onSubmit={submitForm} className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+              <button
+                type="button"
+                onClick={() => setFormMode('easy')}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${formMode === 'easy' ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Easy (Money In / Out)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormMode('advanced')}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${formMode === 'advanced' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Advanced (Dr / Cr)
+              </button>
+            </div>
+            <span className="text-xs text-slate-400">
+              {formMode === 'easy' ? 'Sirf amount aur account — entry khud ban jayegi.' : 'Puri double-entry khud likhein.'}
+            </span>
+          </div>
+
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Field label="Date" required>
               <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} required />
@@ -353,85 +426,133 @@ export default function CashBookPage() {
             <Textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)} />
           </Field>
 
-          {cashAccountId ? (
-            <p className="text-xs text-slate-400">
-              Cash account is pre-filled on the first line.
-              {canPost ? ' Saving posts the entry straight to the cash book.' : ' Saved as a draft — post it from Vouchers to show it here.'}
-            </p>
-          ) : (
-            <p className="text-xs text-amber-600">
-              No default cash account set (Settings › Accounting). Set one so the cash book and this form use it.
-            </p>
-          )}
+          {formMode === 'easy' ? (
+            <div className="space-y-4">
+              <div>
+                <p className="mb-1.5 text-sm font-medium text-slate-700">Paisa aa raha hai ya ja raha hai?</p>
+                <div className="inline-flex rounded-lg border border-slate-200 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setInDirection('IN')}
+                    className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${inDirection === 'IN' ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    Money In (cash aaya)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInDirection('OUT')}
+                    className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${inDirection === 'OUT' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    Money Out (cash gaya)
+                  </button>
+                </div>
+              </div>
 
-          <div>
-            <p className="mb-1.5 text-sm font-medium text-slate-700">Accounting Entries</p>
-            <div className="overflow-hidden rounded-lg border border-slate-200">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                    <th className="px-3 py-2">Account</th>
-                    <th className="w-32 px-3 py-2 text-right">
-                      Debit
-                      <span className="block text-[10px] font-normal normal-case text-teal-600">Money In (cash aaya)</span>
-                    </th>
-                    <th className="w-32 px-3 py-2 text-right">
-                      Credit
-                      <span className="block text-[10px] font-normal normal-case text-red-600">Money Out (cash gaya)</span>
-                    </th>
-                    <th className="px-3 py-2">Narration</th>
-                    <th className="w-10 px-3 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {formEntries.map((en) => (
-                    <tr key={en.key} className="border-b border-slate-100 last:border-0">
-                      <td className="px-3 py-1.5">
-                        <Select value={en.mainAccountId} onChange={(e) => updateEntry(en.key, { mainAccountId: e.target.value })} className="min-w-[160px]">
-                          <option value="">Select account…</option>
-                          {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        </Select>
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <Input type="number" min={0} step="0.01" value={en.debit ? String(en.debit) : ''} onChange={(e) => updateEntry(en.key, { debit: Number(e.target.value) || 0, credit: 0 })} className="text-right" placeholder="0" title="Debit — money in" />
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <Input type="number" min={0} step="0.01" value={en.credit ? String(en.credit) : ''} onChange={(e) => updateEntry(en.key, { credit: Number(e.target.value) || 0, debit: 0 })} className="text-right" placeholder="0" title="Credit — money out" />
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <Input value={en.narration ?? ''} onChange={(e) => updateEntry(en.key, { narration: e.target.value })} placeholder="optional" />
-                      </td>
-                      <td className="px-3 py-1.5 text-center">
-                        <button type="button" onClick={() => removeEntry(en.key)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Field label={inDirection === 'IN' ? 'Cash / Bank account (jisme aaya)' : 'Cash / Bank account (jisse gaya)'} required>
+                  <Select value={easyCashId} onChange={(e) => setInCashAccountId(e.target.value)}>
+                    <option value="">Select account…</option>
+                    {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </Select>
+                </Field>
+                <Field label={inDirection === 'IN' ? 'Received from (kahan se aaya)' : 'Paid to / Spent on (kis par kharch)'} required>
+                  <Select value={inAccountId} onChange={(e) => setInAccountId(e.target.value)}>
+                    <option value="">Select account…</option>
+                    {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </Select>
+                </Field>
+                <Field label={`Amount${inDirection === 'IN' ? ' (jo aaya)' : ' (jo gaya)'}`} required>
+                  <Input type="number" min={0} step="0.01" value={inAmount ? String(inAmount) : ''} onChange={(e) => setInAmount(Number(e.target.value) || 0)} className="text-right" placeholder="0.00" />
+                </Field>
+              </div>
+
+              {easyValid && (
+                <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  Entry banegi: <span className="font-semibold text-teal-700">Dr</span> {inDirection === 'IN' ? easyCashLabel : easyOtherLabel}
+                  {' · '}
+                  <span className="font-semibold text-red-600">Cr</span> {inDirection === 'IN' ? easyOtherLabel : easyCashLabel}
+                  {' · '}{money(easyAmount)}
+                </p>
+              )}
+
+              {!cashAccountId && (
+                <p className="text-xs text-amber-600">No default cash account set (Settings › Accounting). Pick the cash / bank account above so the cash book uses it.</p>
+              )}
+            </div>
+          ) : (
+            <div>
+              <p className="mb-1.5 text-sm font-medium text-slate-700">Accounting Entries</p>
+              <div className="overflow-hidden rounded-lg border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                      <th className="px-3 py-2">Account</th>
+                      <th className="w-32 px-3 py-2 text-right">
+                        Debit
+                        <span className="block text-[10px] font-normal normal-case text-teal-600">Money In (cash aaya)</span>
+                      </th>
+                      <th className="w-32 px-3 py-2 text-right">
+                        Credit
+                        <span className="block text-[10px] font-normal normal-case text-red-600">Money Out (cash gaya)</span>
+                      </th>
+                      <th className="px-3 py-2">Narration</th>
+                      <th className="w-10 px-3 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {formEntries.map((en) => (
+                      <tr key={en.key} className="border-b border-slate-100 last:border-0">
+                        <td className="px-3 py-1.5">
+                          <Select value={en.mainAccountId} onChange={(e) => updateEntry(en.key, { mainAccountId: e.target.value })} className="min-w-[160px]">
+                            <option value="">Select account…</option>
+                            {accountOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                          </Select>
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <Input type="number" min={0} step="0.01" value={en.debit ? String(en.debit) : ''} onChange={(e) => updateEntry(en.key, { debit: Number(e.target.value) || 0, credit: 0 })} className="text-right" placeholder="0" title="Debit — money in" />
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <Input type="number" min={0} step="0.01" value={en.credit ? String(en.credit) : ''} onChange={(e) => updateEntry(en.key, { credit: Number(e.target.value) || 0, debit: 0 })} className="text-right" placeholder="0" title="Credit — money out" />
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <Input value={en.narration ?? ''} onChange={(e) => updateEntry(en.key, { narration: e.target.value })} placeholder="optional" />
+                        </td>
+                        <td className="px-3 py-1.5 text-center">
+                          <button type="button" onClick={() => removeEntry(en.key)} className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                        </td>
+                      </tr>
+                    ))}
+                    {formEntries.length === 0 && (
+                      <tr><td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-400">Add at least two entries (one debit, one credit).</td></tr>
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-slate-200 bg-slate-50 font-medium text-slate-800">
+                      <td className="px-3 py-2 text-xs font-semibold uppercase text-slate-500">Totals</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{money(formTotalDebit)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{money(formTotalCredit)}</td>
+                      <td className="px-3 py-2 text-right text-xs" colSpan={2}>
+                        <span className={formBalanced ? 'font-medium text-teal-600' : 'font-semibold text-red-600'}>
+                          {formBalanced ? 'Balanced — ready to save' : `Off by ${money(Math.abs(formTotalDebit - formTotalCredit))} — amounts must match`}
+                        </span>
                       </td>
                     </tr>
-                  ))}
-                  {formEntries.length === 0 && (
-                    <tr><td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-400">Add at least two entries (one debit, one credit).</td></tr>
-                  )}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-slate-200 bg-slate-50 font-medium text-slate-800">
-                    <td className="px-3 py-2 text-xs font-semibold uppercase text-slate-500">Totals</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{money(formTotalDebit)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{money(formTotalCredit)}</td>
-                    <td className="px-3 py-2 text-right text-xs" colSpan={2}>
-                      <span className={formBalanced ? 'font-medium text-teal-600' : 'font-semibold text-red-600'}>
-                        {formBalanced ? 'Balanced — ready to save' : `Off by ${money(Math.abs(formTotalDebit - formTotalCredit))} — amounts must match`}
-                      </span>
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
+                  </tfoot>
+                </table>
+              </div>
+              <Button type="button" variant="secondary" size="sm" onClick={addEntry} className="mt-2"><Plus className="h-4 w-4" /> Add entry</Button>
             </div>
-            <Button type="button" variant="secondary" size="sm" onClick={addEntry} className="mt-2"><Plus className="h-4 w-4" /> Add entry</Button>
-          </div>
+          )}
+
+          <p className="text-xs text-slate-400">
+            {canPost ? 'Saving posts the entry straight to the cash book.' : 'Saved as a draft — post it from Vouchers to show it here.'}
+          </p>
 
           {formError && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{formError}</div>}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
-            <Button type="submit" loading={createEntry.isPending} disabled={!formBalanced}>
+            <Button type="submit" loading={createEntry.isPending} disabled={formMode === 'easy' ? !easyValid : !formBalanced}>
               <CheckCircle2 className="h-4 w-4" /> Save entry
             </Button>
           </div>
