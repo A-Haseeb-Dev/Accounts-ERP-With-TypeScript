@@ -337,9 +337,9 @@ export default function CashBookPage() {
             </Field>
             <Field label="Type" required hint="Journal = normal entry">
               <Select value={formType} onChange={(e) => setFormType(e.target.value as VoucherType)}>
-                <option value="JOURNAL">Journal</option>
-                <option value="CREDIT">Credit Note</option>
-                <option value="DEBIT">Debit Note</option>
+                <option value="JOURNAL">Journal (normal entry)</option>
+                <option value="CREDIT">Credit Note (money out / payment)</option>
+                <option value="DEBIT">Debit Note (money in / receipt)</option>
               </Select>
             </Field>
             <Field label="Number">
