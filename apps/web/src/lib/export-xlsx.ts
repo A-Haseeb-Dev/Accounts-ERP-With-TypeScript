@@ -59,6 +59,7 @@ function readTable(table: HTMLTableElement): TableData {
 
   const rows: (string | number)[][] = [];
   table.querySelectorAll('tbody tr').forEach((tr) => {
+    if (tr.hasAttribute('data-export-exclude')) return;
     const cells: (string | number)[] = [];
     tr.querySelectorAll('td, th').forEach((td) => {
       const text = (td.textContent ?? '').replace(/\s+/g, ' ').trim();

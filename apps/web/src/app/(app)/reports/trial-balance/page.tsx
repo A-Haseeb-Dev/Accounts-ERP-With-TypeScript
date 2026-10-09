@@ -211,8 +211,13 @@ export default function TrialBalancePage() {
             <tbody>
               {allRows.map((r) => {
                 const net = (r.debit ?? 0) - (r.credit ?? 0);
+                const shownNet = r.balance ?? net;
                 return (
-                  <tr key={r.accountId ?? r.code} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                  <tr
+                    key={r.accountId ?? r.code}
+                    data-export-exclude={Math.abs(shownNet) < 0.005 ? '' : undefined}
+                    className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
+                  >
                     {cols.isVisible('code') && <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.code}</td>}
                     {cols.isVisible('account') && <td className="px-4 py-2 text-slate-700">{r.name}</td>}
                     {cols.isVisible('head') && <td className="px-4 py-2 text-xs text-slate-500">{r.head ?? r.subHead ?? ''}</td>}
@@ -254,16 +259,23 @@ function TBGroupRows({ group }: { group: TBGroup }) {
           {group.headName && <span className="ml-2 text-xs text-slate-400">· {group.headName}</span>}
         </td>
       </tr>
-      {group.rows.map((r) => (
-        <tr key={r.accountId ?? r.code} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-          <td className="px-4 py-2 font-mono text-slate-600">{r.code}</td>
-          <td className="px-4 py-2 font-medium text-slate-800">{r.name}</td>
-          <td className="px-4 py-2"><Badge tone="slate">{r.accountType ?? ''}</Badge></td>
-          <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.debit ?? 0)}</td>
-          <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.credit ?? 0)}</td>
-          <td className={`px-4 py-2 text-right tabular-nums font-medium ${(r.balance ?? (r.debit ?? 0) - (r.credit ?? 0)) >= 0 ? 'text-teal-600' : 'text-red-600'}`}>{money(r.balance ?? (r.debit ?? 0) - (r.credit ?? 0))}</td>
-        </tr>
-      ))}
+      {group.rows.map((r) => {
+        const rowNet = r.balance ?? (r.debit ?? 0) - (r.credit ?? 0);
+        return (
+          <tr
+            key={r.accountId ?? r.code}
+            data-export-exclude={Math.abs(rowNet) < 0.005 ? '' : undefined}
+            className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
+          >
+            <td className="px-4 py-2 font-mono text-slate-600">{r.code}</td>
+            <td className="px-4 py-2 font-medium text-slate-800">{r.name}</td>
+            <td className="px-4 py-2"><Badge tone="slate">{r.accountType ?? ''}</Badge></td>
+            <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.debit ?? 0)}</td>
+            <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.credit ?? 0)}</td>
+            <td className={`px-4 py-2 text-right tabular-nums font-medium ${rowNet >= 0 ? 'text-teal-600' : 'text-red-600'}`}>{money(rowNet)}</td>
+          </tr>
+        );
+      })}
       {group.rows.length >= 1 && (
         <tr className="border-b border-slate-200 bg-slate-50 text-[13px] font-semibold text-slate-700">
           <td className="px-4 py-1.5" colSpan={3}>Sub-total</td>

@@ -59,6 +59,10 @@ export function printElement(id: string, title?: string, overlay?: string): void
   printable.style.width = '100%';
   printable.style.height = 'auto';
 
+  // Rows flagged with data-export-exclude (e.g. zero-balance accounts on the
+  // trial balance) are dropped from every printed output but stay on screen.
+  printable.querySelectorAll('[data-export-exclude]').forEach((el) => el.remove());
+
   let bodyHTML = printable.outerHTML;
   if (title && !isCustom) {
     bodyHTML = `<div style="text-align:center;font-size:16px;font-weight:700;margin:8px 24px 12px;">${escapeHtml(title)}</div>${bodyHTML}`;
@@ -153,6 +157,7 @@ export async function downloadTablePDF(id: string, filename: string, title?: str
 
   const body: string[][] = [];
   table.querySelectorAll('tbody tr').forEach((tr) => {
+    if (tr.hasAttribute('data-export-exclude')) return;
     const cells: string[] = [];
     tr.querySelectorAll('td, th').forEach((td) => cells.push((td.textContent ?? '').replace(/\s+/g, ' ').trim()));
     if (cells.length) body.push(cells);
