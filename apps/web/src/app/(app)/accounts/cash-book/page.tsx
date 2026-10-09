@@ -331,11 +331,25 @@ export default function CashBookPage() {
 
       <Modal open={formOpen} onClose={() => setFormOpen(false)} title="Cash Book — Direct Entry" size="lg">
         <form onSubmit={submitForm} className="space-y-4">
+          <div className="rounded-xl border border-teal-100 bg-teal-50/60 px-4 py-3 text-xs text-slate-700">
+            <p className="text-sm font-semibold text-slate-800">How to fill this entry</p>
+            <ul className="mt-1.5 space-y-1">
+              <li>
+                <span className="font-semibold text-teal-700">Money In (receipt):</span> cash aaya hai — Cash account ki line mein <span className="font-semibold">Debit</span> mein amount likhein, doosri line par jis account se aaya wo <span className="font-semibold">Credit</span> karein.
+              </li>
+              <li>
+                <span className="font-semibold text-red-600">Money Out (payment):</span> cash gaya hai — Cash account ki line mein <span className="font-semibold">Credit</span> mein amount likhein, doosri line par jis par kharch hua wo <span className="font-semibold">Debit</span> karein.
+              </li>
+              <li><span className="font-semibold">Rule:</span> Total Debit hamesha Total Credit ke barabar hona chahiye (double entry).</li>
+              <li>Cash account pehli line par pehle se bhari hui hai — sirf Debit ya Credit mein number daalein.</li>
+            </ul>
+          </div>
+
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Field label="Date" required>
               <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} required />
             </Field>
-            <Field label="Type" required>
+            <Field label="Type" required hint="Journal = normal entry">
               <Select value={formType} onChange={(e) => setFormType(e.target.value as VoucherType)}>
                 <option value="JOURNAL">Journal</option>
                 <option value="CREDIT">Credit Note</option>
@@ -365,14 +379,17 @@ export default function CashBookPage() {
           )}
 
           <div>
-            <p className="mb-1.5 text-sm font-medium text-slate-700">Accounting Entries</p>
+            <div className="mb-1.5 flex items-center justify-between">
+              <p className="text-sm font-medium text-slate-700">Accounting Entries</p>
+              <p className="text-xs text-slate-400">Debit = Money In · Credit = Money Out (for the cash account)</p>
+            </div>
             <div className="overflow-hidden rounded-lg border border-slate-200">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                     <th className="px-3 py-2">Account</th>
-                    <th className="w-32 px-3 py-2 text-right">Debit</th>
-                    <th className="w-32 px-3 py-2 text-right">Credit</th>
+                    <th className="w-32 px-3 py-2 text-right">Debit (In)</th>
+                    <th className="w-32 px-3 py-2 text-right">Credit (Out)</th>
                     <th className="px-3 py-2">Narration</th>
                     <th className="w-10 px-3 py-2"></th>
                   </tr>
@@ -387,10 +404,10 @@ export default function CashBookPage() {
                         </Select>
                       </td>
                       <td className="px-3 py-1.5">
-                        <Input type="number" min={0} step="0.01" value={en.debit ? String(en.debit) : ''} onChange={(e) => updateEntry(en.key, { debit: Number(e.target.value) || 0, credit: 0 })} className="text-right" placeholder="0" />
+                        <Input type="number" min={0} step="0.01" value={en.debit ? String(en.debit) : ''} onChange={(e) => updateEntry(en.key, { debit: Number(e.target.value) || 0, credit: 0 })} className="text-right" placeholder="0" title="Debit — money in" />
                       </td>
                       <td className="px-3 py-1.5">
-                        <Input type="number" min={0} step="0.01" value={en.credit ? String(en.credit) : ''} onChange={(e) => updateEntry(en.key, { credit: Number(e.target.value) || 0, debit: 0 })} className="text-right" placeholder="0" />
+                        <Input type="number" min={0} step="0.01" value={en.credit ? String(en.credit) : ''} onChange={(e) => updateEntry(en.key, { credit: Number(e.target.value) || 0, debit: 0 })} className="text-right" placeholder="0" title="Credit — money out" />
                       </td>
                       <td className="px-3 py-1.5">
                         <Input value={en.narration ?? ''} onChange={(e) => updateEntry(en.key, { narration: e.target.value })} placeholder="optional" />
@@ -411,7 +428,7 @@ export default function CashBookPage() {
                     <td className="px-3 py-2 text-right tabular-nums">{money(formTotalCredit)}</td>
                     <td className="px-3 py-2 text-right text-xs" colSpan={2}>
                       <span className={formBalanced ? 'font-medium text-teal-600' : 'font-semibold text-red-600'}>
-                        {formBalanced ? 'Balanced' : `Off by ${money(Math.abs(formTotalDebit - formTotalCredit))}`}
+                        {formBalanced ? 'Balanced — ready to save' : `Off by ${money(Math.abs(formTotalDebit - formTotalCredit))} — amounts must match`}
                       </span>
                     </td>
                   </tr>
