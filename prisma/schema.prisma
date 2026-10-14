@@ -246,6 +246,7 @@ model MainAccount {
   pdcSuppliers   Supplier[]      @relation("PartyPdcAccount")
   pdcPaymentEntries PaymentEntry[] @relation("PaymentPdcAccount")
   salaryExpenseDepartments Department[] @relation("DepartmentSalaryExpenseAccount")
+  payrollFundingRuns PayrollRun[] @relation("PayrollRunFundingAccount")
 
   @@unique([code, organizationId])
   @@index([organizationId])
@@ -1225,6 +1226,9 @@ model PayrollRun {
   status         String   @default("draft") // draft | posted | cancelled
   voucherId      String?
   disbursementVoucherId String?
+  /// Account the run's salaries are funded from. The run can only be generated
+  /// (and posted) while this account holds enough to cover the total net pay.
+  fundingAccountId String?
   paidAt         DateTime?
   note           String?
   postedById     String?
@@ -1235,12 +1239,14 @@ model PayrollRun {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization? @relation(fields: [organizationId], references: [id])
-  items        PayrollItem[]
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  fundingAccount MainAccount?  @relation("PayrollRunFundingAccount", fields: [fundingAccountId], references: [id], onDelete: SetNull)
+  items          PayrollItem[]
 
   @@unique([number, organizationId])
   @@index([periodYear, periodMonth])
   @@index([status])
+  @@index([fundingAccountId])
 }
 
 model PayrollItem {

@@ -36,9 +36,13 @@ function buildService(items: Record<string, unknown>[]) {
       })),
     }),
   };
+  const mainAccount = {
+    findFirst: vi.fn().mockResolvedValue({ id: 'fund-1', code: 'FUND', name: 'Salary Fund' }),
+  };
   const prisma = {
     payrollItem,
     payrollRun,
+    mainAccount,
     $transaction: vi.fn((fn: (tx: unknown) => unknown) =>
       fn({ payrollItem, payrollRun }),
     ),
@@ -48,6 +52,7 @@ function buildService(items: Record<string, unknown>[]) {
   const accounting = {
     createVoucher: vi.fn(async (_tx: unknown, _input: { entries: unknown[] }) => ({ id: 'v-1', status: 'draft' })),
     postVoucher: vi.fn(async () => ({ status: 'posted' })),
+    accountBalance: vi.fn().mockResolvedValue(1_000_000),
   };
   const defaultAccounts = { resolveAccount: vi.fn().mockResolvedValue('acc-1') };
   const svc = new PayrollService(
@@ -57,7 +62,7 @@ function buildService(items: Record<string, unknown>[]) {
     accounting as never,
     defaultAccounts as never,
   );
-  return { svc, prisma, payrollItem, payrollRun, accounting };
+  return { svc, prisma, payrollItem, payrollRun, accounting, mainAccount, defaultAccounts };
 }
 
 const line = (id: string, gross: number, deduction = 0) => ({
@@ -173,5 +178,58 @@ describe('PayrollService posting uses item-derived totals', () => {
     const data = payrollRun.update.mock.calls[0][0].data as Record<string, number>;
     expect(data.totalGross).toBe(3000);
     expect(data.totalNet).toBe(3000);
+  });
+});
+
+describe('PayrollService funding account guard', () => {
+  it('refuses to post when the funding account cannot cover the net pay', async () => {
+    const items = [line('i1', 1000), line('i2', 2000)];
+    const { svc, prisma, accounting } = buildService(items);
+    (accounting.accountBalance as ReturnType<typeof vi.fn>).mockResolvedValue(1000);
+    (prisma.payrollRun.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'run-1',
+      number: 'PR-0001',
+      periodMonth: 9,
+      periodYear: 2026,
+      payDate: new Date('2026-09-30T00:00:00Z'),
+      status: 'draft',
+      totalGross: 3000,
+      totalDeduction: 0,
+      totalNet: 3000,
+      fundingAccountId: 'fund-1',
+      items: items.map((i) => ({
+        ...i,
+        employee: { id: i.employeeId, fullName: `Emp ${i.employeeId}`, mainAccountId: null, department: null },
+      })),
+    });
+
+    const err: any = await svc.post('run-1', 'u1').then(() => null, (e) => e);
+    expect(err?.getResponse?.().error?.message).toMatch(/Not enough balance/);
+    expect(accounting.createVoucher).not.toHaveBeenCalled();
+  });
+
+  it('refuses to post when no funding account is configured', async () => {
+    const items = [line('i1', 1000)];
+    const { svc, prisma, defaultAccounts } = buildService(items);
+    (defaultAccounts.resolveAccount as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (prisma.payrollRun.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'run-1',
+      number: 'PR-0001',
+      periodMonth: 9,
+      periodYear: 2026,
+      payDate: new Date('2026-09-30T00:00:00Z'),
+      status: 'draft',
+      totalGross: 1000,
+      totalDeduction: 0,
+      totalNet: 1000,
+      fundingAccountId: null,
+      items: items.map((i) => ({
+        ...i,
+        employee: { id: i.employeeId, fullName: `Emp ${i.employeeId}`, mainAccountId: null, department: null },
+      })),
+    });
+
+    const err: any = await svc.post('run-1', 'u1').then(() => null, (e) => e);
+    expect(err?.getResponse?.().error?.message).toMatch(/No payroll funding account/);
   });
 });

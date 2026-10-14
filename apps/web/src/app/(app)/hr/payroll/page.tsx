@@ -69,6 +69,7 @@ export default function PayrollPage() {
   const canExport = can('hr.payroll.export');
 
   const { options: bankOptions } = useFlatOptions('banks');
+  const { options: fundingOptions } = useFlatOptions('main-accounts');
 
   const year = new Date().getFullYear();
   const monthNow = new Date().getMonth() + 1;
@@ -89,6 +90,7 @@ export default function PayrollPage() {
   const [genYear, setGenYear] = useState(year);
   const [payDate, setPayDate] = useState('');
   const [note, setNote] = useState('');
+  const [fundingAccountId, setFundingAccountId] = useState('');
   const [genError, setGenError] = useState('');
 
   const { data: runs, isLoading } = useQuery<Paginated<PayrollRun>>({
@@ -399,6 +401,7 @@ export default function PayrollPage() {
               periodYear: genYear,
               payDate: payDate || undefined,
               note: note || undefined,
+              fundingAccountId: fundingAccountId || undefined,
             });
           }}
           className="space-y-4"
@@ -417,6 +420,17 @@ export default function PayrollPage() {
           </div>
           <Field label="Pay Date">
             <Input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
+          </Field>
+          <Field
+            label="Funding Account"
+            hint="Salaries are only generated while this account holds enough to cover the total net pay. Leave blank to use the configured default."
+          >
+            <Select value={fundingAccountId} onChange={(e) => setFundingAccountId(e.target.value)}>
+              <option value="">Use configured default</option>
+              {fundingOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </Select>
           </Field>
           <Field label="Note">
             <Textarea value={note} onChange={(e) => setNote(e.target.value)} />
@@ -446,6 +460,7 @@ export default function PayrollPage() {
                 </span>
               )}
               <span className="text-slate-600">Created {dateOnly(detail.createdAt)}</span>
+              {detail.fundingAccountName && <span className="text-slate-600">Funded from: {detail.fundingAccountName}</span>}
               {detail.voucherNo && <span className="text-slate-600">Voucher: {detail.voucherNo}</span>}
               <div className="ml-auto flex items-center gap-2">
                 {canExport && detail.status !== 'cancelled' && (

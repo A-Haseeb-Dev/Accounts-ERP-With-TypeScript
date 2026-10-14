@@ -204,6 +204,7 @@ export class GeneratePayrollDto {
   @IsInt() @Min(2000) periodYear: number;
   @IsDateString() @IsOptional() payDate?: string;
   @IsString() @IsOptional() @MaxLength(500) note?: string;
+  @IsString() @IsOptional() fundingAccountId?: string;
 }
 
 export class UpdatePayrollItemDto {

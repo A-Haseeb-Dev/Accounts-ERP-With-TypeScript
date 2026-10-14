@@ -35,6 +35,7 @@ const ACCOUNT_ROLES: { key: string; label: string }[] = [
   { key: 'accounting.cost_of_sales_account', label: 'Cost of Sales' },
   { key: 'accounting.salary_expense_account', label: 'Salary Expense' },
   { key: 'accounting.commission_expense_account', label: 'Commission Expense' },
+  { key: 'accounting.payroll_funding_account', label: 'Payroll Funding Account' },
 ];
 
 export default function SettingsPage() {

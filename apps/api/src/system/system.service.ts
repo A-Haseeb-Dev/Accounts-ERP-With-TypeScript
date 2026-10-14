@@ -66,6 +66,7 @@ const SETTING_KEYS = [
   'accounting.cost_of_sales_account',
   'accounting.salary_expense_account',
   'accounting.commission_expense_account',
+  'accounting.payroll_funding_account',
 ];
 
 /**

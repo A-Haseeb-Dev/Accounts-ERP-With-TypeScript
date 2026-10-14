@@ -35,6 +35,56 @@ export class PayrollService {
     return `${MONTH_NAMES[month - 1]} ${year}`;
   }
 
+  /**
+   * Resolves the account a run's salaries are funded from.
+   *
+   * A run-level choice wins; otherwise the company-wide default set in
+   * Settings > Accounting (`accounting.payroll_funding_account`) applies. An
+   * explicitly chosen account that is missing or inactive is a hard error -
+   * silently falling back to the default would book the run against an account
+   * the operator did not pick.
+   */
+  private async resolveFundingAccount(preferredId?: string | null) {
+    if (preferredId) {
+      const account = await this.prisma.mainAccount.findFirst({
+        where: { id: preferredId, status: 'active' },
+        select: { id: true, code: true, name: true },
+      });
+      if (!account) {
+        throw ApiException.validation('The selected payroll funding account was not found or is inactive.');
+      }
+      return account;
+    }
+    const configuredId = await this.defaultAccounts.resolveAccount('accounting.payroll_funding_account');
+    if (!configuredId) return null;
+    return this.prisma.mainAccount.findFirst({
+      where: { id: configuredId, status: 'active' },
+      select: { id: true, code: true, name: true },
+    });
+  }
+
+  /**
+   * Refuses the run unless the funding account can cover the total net pay.
+   *
+   * This is the guard behind "distribute only as much salary as the account
+   * holds": reaching beyond the balance is stopped here rather than at payment
+   * time, so the operator tops the account up (from another account) first.
+   */
+  private async assertFundingBalance(
+    funding: { id: string; code: string; name: string },
+    totalNet: number,
+  ) {
+    const balance = round2(await this.accounting.accountBalance(funding.id));
+    const required = round2(totalNet);
+    if (required > balance) {
+      throw ApiException.invalidTransaction(
+        `Not enough balance in payroll funding account "${funding.name} (${funding.code})". ` +
+          `Available ${balance.toFixed(2)}, required ${required.toFixed(2)}. ` +
+          'Transfer funds into it or choose another funding account.',
+      );
+    }
+  }
+
   async generate(dto: GeneratePayrollDto, actorId?: string) {
     const { periodMonth, periodYear } = dto;
     if (periodMonth < 1 || periodMonth > 12) {
@@ -121,6 +171,15 @@ export class PayrollService {
       };
     });
 
+    const totalNet = round2(lines.reduce((sum, l) => sum + l.netPay, 0));
+    const funding = await this.resolveFundingAccount(dto.fundingAccountId);
+    if (!funding) {
+      throw ApiException.invalidTransaction(
+        'No payroll funding account is set. Choose one on the Generate Payroll form, or set "Payroll Funding Account" under Settings > Accounting.',
+      );
+    }
+    await this.assertFundingBalance(funding, totalNet);
+
     const run = await this.prisma.$transaction(async (tx) => {
       const number = await this.numbering.next('payroll', 'PAY', tx, 4, { year: false });
       const created = await tx.payrollRun.create({
@@ -130,6 +189,7 @@ export class PayrollService {
           periodYear,
           payDate: dto.payDate ? new Date(dto.payDate) : new Date(),
           note: dto.note ?? null,
+          fundingAccountId: funding.id,
           totalGross: lines.reduce((sum, l) => sum + l.grossPay, 0),
           totalDeduction: lines.reduce((sum, l) => sum + l.totalDeduction, 0),
           totalNet: lines.reduce((sum, l) => sum + l.netPay, 0),
@@ -168,7 +228,10 @@ export class PayrollService {
     const [items, total] = await Promise.all([
       this.prisma.payrollRun.findMany({
         where,
-        include: { _count: { select: { items: true } } },
+        include: {
+          _count: { select: { items: true } },
+          fundingAccount: { select: { id: true, code: true, name: true } },
+        },
         orderBy: [{ periodYear: 'desc' }, { periodMonth: 'desc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -195,6 +258,8 @@ export class PayrollService {
       totalNet: r.totalNet,
       voucherId: r.voucherId,
       voucherNo: r.voucherId ? voucherNumber.get(r.voucherId) ?? null : null,
+      fundingAccountId: r.fundingAccountId,
+      fundingAccountName: r.fundingAccount ? `${r.fundingAccount.code} · ${r.fundingAccount.name}` : null,
       disbursementVoucherId: r.disbursementVoucherId,
       paidAt: r.paidAt,
       createdAt: r.createdAt,
@@ -207,6 +272,7 @@ export class PayrollService {
     const item = await this.prisma.payrollRun.findUnique({
       where: { id },
       include: {
+        fundingAccount: { select: { id: true, code: true, name: true } },
         items: {
           include: { employee: { include: { department: true, designation: true } } },
           orderBy: { employee: { code: 'asc' } },
@@ -325,6 +391,17 @@ export class PayrollService {
     }
 
     const totals = this.itemTotals(run.items);
+
+    // Re-check against the funding account: its balance can move between
+    // generation and posting, and posting is the point of no return.
+    const funding = await this.resolveFundingAccount(run.fundingAccountId);
+    if (!funding) {
+      throw ApiException.invalidTransaction(
+        'No payroll funding account is set. Choose one on the Generate Payroll form, or set "Payroll Funding Account" under Settings > Accounting.',
+      );
+    }
+    await this.assertFundingBalance(funding, totals.net);
+
     const salaryExpenseId = await this.defaultAccounts.resolveAccount('accounting.salary_expense_account');
     const salariesPayableId = await this.defaultAccounts.resolveAccount('accounting.salaries_payable_account');
     const deductionsPayableId = await this.defaultAccounts.resolveAccount('accounting.payroll_deductions_account');

@@ -577,6 +577,8 @@ export interface PayrollRun {
   totalNet: number;
   voucherId?: string;
   voucherNo?: string;
+  fundingAccountId?: string;
+  fundingAccountName?: string;
   disbursementVoucherId?: string;
   paidAt?: string;
   createdById?: string;
