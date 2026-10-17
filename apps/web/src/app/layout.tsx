@@ -3,6 +3,7 @@ import { AuthProvider } from '@/context/auth-context';
 import { Providers } from '@/components/providers';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { BrandingDocumentMeta } from '@/components/branding-document-meta';
+import { PwaRegister } from '@/components/pwa-register';
 import './globals.css';
 
 // These are the values shown until the saved branding loads (or when a company
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           <AuthProvider>
             <BrandingDocumentMeta />
+            <PwaRegister />
             {children}
           </AuthProvider>
         </Providers>
