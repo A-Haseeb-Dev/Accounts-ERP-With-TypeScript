@@ -9,6 +9,11 @@ export class LoginDto {
   @IsString()
   @IsNotEmpty({ message: 'Password is required' })
   password: string;
+
+  /** Optional Cloudflare Turnstile token. Required only after repeated failures. */
+  @IsString()
+  @IsOptional()
+  captchaToken?: string;
 }
 
 export class RefreshDto {

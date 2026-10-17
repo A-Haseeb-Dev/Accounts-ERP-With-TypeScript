@@ -1,11 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/auth-context';
 import { ApiError } from '@/lib/api';
 import { useBranding } from '@/hooks/use-branding';
 import { Building2, Loader2, Lock, User } from 'lucide-react';
+
+declare global {
+  interface Window {
+    turnstile?: { render: (el: unknown, opts: unknown) => string; reset: (id?: string) => void; remove: (id: string) => void };
+  }
+}
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -14,15 +22,66 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [failedCount, setFailedCount] = useState(0);
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [needCaptcha, setNeedCaptcha] = useState(false);
+  const captchaRef = useRef<HTMLDivElement>(null);
+  const widgetIdRef = useRef<string | null>(null);
+
+  // Load the Turnstile script only when CAPTCHA is configured (optional feature).
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY) return;
+    if (document.getElementById('turnstile-script')) return;
+    const script = document.createElement('script');
+    script.id = 'turnstile-script';
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+    script.async = true;
+    script.defer = true;
+    document.body.appendChild(script);
+  }, []);
+
+  // Render the widget when the backend demands it or after repeated failures.
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY || !needCaptcha) return;
+    if (widgetIdRef.current) return;
+
+    const tryRender = (attempt = 0) => {
+      if (!window.turnstile || !captchaRef.current) {
+        if (attempt < 40) setTimeout(() => tryRender(attempt + 1), 250);
+        return;
+      }
+      widgetIdRef.current = window.turnstile.render(captchaRef.current, {
+        sitekey: TURNSTILE_SITE_KEY,
+        callback: (token: string) => setCaptchaToken(token),
+        'expired-callback': () => setCaptchaToken(''),
+      });
+    };
+    tryRender();
+  }, [needCaptcha]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSubmitting(true);
     try {
-      await login(username.trim(), password);
+      await login(username.trim(), password, captchaToken || undefined);
+      setFailedCount(0);
+      setNeedCaptcha(false);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Unable to sign in');
+      const msg = err instanceof ApiError ? err.message : 'Unable to sign in';
+      setError(msg);
+      setFailedCount((c) => c + 1);
+      // Show CAPTCHA when the server demands it or after repeated failures.
+      if (
+        TURNSTILE_SITE_KEY &&
+        (msg.toLowerCase().includes('captcha') || failedCount + 1 >= 5)
+      ) {
+        setNeedCaptcha(true);
+        if (widgetIdRef.current && window.turnstile) {
+          window.turnstile.reset(widgetIdRef.current);
+        }
+      }
+      setCaptchaToken('');
     } finally {
       setSubmitting(false);
     }
@@ -89,6 +148,10 @@ export default function LoginPage() {
                 />
               </div>
             </div>
+
+            {TURNSTILE_SITE_KEY && needCaptcha && (
+              <div ref={captchaRef} className="flex justify-center" />
+            )}
 
             {error && (
               <div className="rounded-lg border border-red-800 bg-red-950/50 px-3 py-2 text-sm text-red-300">

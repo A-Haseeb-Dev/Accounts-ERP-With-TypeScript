@@ -18,7 +18,7 @@ import type { SessionUser } from '@/lib/auth-types';
 interface AuthContextValue {
   user: SessionUser | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string, captchaToken?: string) => Promise<void>;
   verifyMfa: (token: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -46,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refresh().finally(() => setLoading(false));
   }, [refresh]);
 
-  const login = useCallback(async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string, captchaToken?: string) => {
     const res = await apiFetch<{
       accessToken?: string;
       refreshToken?: string;
@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       pendingToken?: string;
     }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, ...(captchaToken ? { captchaToken } : {}) }),
       retryAuth: false,
     });
     if (res.twoFactorRequired && res.pendingToken) {

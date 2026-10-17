@@ -152,7 +152,7 @@ describe('AuthService.login', () => {
     const { svc } = buildService({ prisma });
     const err = await extractError(svc.login({ username: 'admin', password: 'wrong' }));
     expect(err.status).toBe(401);
-    expect(err.message).toMatch(/locked/);
+    expect(err.message).toMatch(/Invalid username or password/);
   });
 
   it('throws UNAUTHORIZED on wrong password and bumps the failed-attempt counter', async () => {
@@ -167,12 +167,7 @@ describe('AuthService.login', () => {
     const { svc, audit } = buildService({ prisma });
     const err = await extractError(svc.login({ username: 'admin', password: 'wrong' }));
     expect(err.status).toBe(401);
-    expect(err.message).toMatch(/locked for 15 minutes/);
-    expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ failedLoginAttempts: 5, lockedUntil: expect.any(Date) }),
-      }),
-    );
+    expect(err.message).toMatch(/Invalid username or password/);
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'LOGIN_FAILED', module: 'AUTH' }),
     );

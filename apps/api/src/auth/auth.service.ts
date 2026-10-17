@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Response } from 'express';
@@ -13,7 +13,38 @@ import { ApiException } from '../common/exceptions/api.exception';
 import { JwtPayload, JwtRefreshPayload, MfaChallengePayload } from './interfaces/jwt-payload.interface';
 import { LoginDto } from './dto/auth.dto';
 
-export const MAX_LOGIN_ATTEMPTS = 5;
+export const MAX_LOGIN_ATTEMPTS = 1000000; // Disabled per request: account lockout removed
+
+/** Failed login attempts tracked per IP (in-memory). Map IP -> attempt count. */
+const ipFailedAttempts = new Map<string, { count: number; lastAt: number }>();
+/** IPs requiring CAPTCHA after this many failures. */
+const IP_CAPTCHA_THRESHOLD = 5;
+/** Cleanup entries older than this. */
+const IP_TRACK_TTL = 15 * 60_000;
+
+function trackFailedLogin(ip: string) {
+  const now = Date.now();
+  const existing = ipFailedAttempts.get(ip);
+  if (!existing || now - existing.lastAt > IP_TRACK_TTL) {
+    ipFailedAttempts.set(ip, { count: 1, lastAt: now });
+  } else {
+    ipFailedAttempts.set(ip, { count: existing.count + 1, lastAt: now });
+  }
+}
+
+function clearFailedLogin(ip: string) {
+  ipFailedAttempts.delete(ip);
+}
+
+function failedLoginCount(ip: string): number {
+  const existing = ipFailedAttempts.get(ip);
+  if (!existing) return 0;
+  if (Date.now() - existing.lastAt > IP_TRACK_TTL) {
+    ipFailedAttempts.delete(ip);
+    return 0;
+  }
+  return existing.count;
+}
 
 @Injectable()
 export class AuthService {
@@ -25,6 +56,23 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto, ipAddress?: string, userAgent?: string) {
+    const ip = ipAddress || 'unknown';
+
+    // Optional CAPTCHA: required only when the same IP has too many failures
+    // and a Turnstile secret is configured. Without a secret this is skipped.
+    const captchaSecret = this.config.get<string>('TURNSTILE_SECRET_KEY');
+    if (captchaSecret && failedLoginCount(ip) >= IP_CAPTCHA_THRESHOLD) {
+      if (!dto.captchaToken) {
+        throw ApiException.unauthorized(
+          'Too many failed attempts. Please complete the security check (CAPTCHA) to continue',
+        );
+      }
+      const captchaOk = await this.verifyCaptcha(dto.captchaToken, ip);
+      if (!captchaOk) {
+        throw ApiException.unauthorized('CAPTCHA verification failed. Please try again');
+      }
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { username: dto.username },
       include: {
@@ -46,29 +94,16 @@ export class AuthService {
       throw ApiException.unauthorized('This account is not active');
     }
 
-    // Brute-force lockout: block the account for 15 minutes after 5 failures.
-    if (user.lockedUntil) {
-      if (user.lockedUntil > new Date()) {
-        const mins = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000);
-        throw ApiException.unauthorized(
-          `Account temporarily locked due to too many failed attempts. Try again in ${mins} minute(s).`,
-        );
-      }
-      // Lock window has expired Ã¢â‚¬â€ give the user a fresh set of attempts.
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { failedLoginAttempts: 0, lockedUntil: null },
-      });
-    }
+    // Brute-force lockout removed.
 
     const valid = await argon2.verify(user.passwordHash, dto.password).catch(() => false);
     if (!valid) {
-      const attempts = user.failedLoginAttempts + 1;
-      const lockedUntil = attempts >= MAX_LOGIN_ATTEMPTS ? new Date(Date.now() + 15 * 60_000) : null;
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { failedLoginAttempts: attempts, lockedUntil: lockedUntil ?? user.lockedUntil },
-      });
+      // Tarpitting: random delay slows brute-force/bot attacks without hurting
+      // normal users.
+      const delayMs = 250 + Math.floor(Math.random() * 350);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+      trackFailedLogin(ip);
 
       this.audit.record({
         userId: user.id,
@@ -76,17 +111,15 @@ export class AuthService {
         module: 'AUTH',
         entity: 'User',
         entityId: user.id,
-        message: `Failed login attempt ${attempts} of ${MAX_LOGIN_ATTEMPTS} for ${user.username}`,
+        message: `Failed login attempt for ${user.username}`,
         ipAddress,
         userAgent,
       });
-
-      throw ApiException.unauthorized(
-        lockedUntil
-          ? `Too many failed attempts. Account locked for 15 minutes.`
-          : 'Invalid username or password',
-      );
+      throw ApiException.unauthorized('Invalid username or password');
     }
+
+    // Successful login: clear the IP failure counter.
+    clearFailedLogin(ip);
 
     await this.prisma.user.update({
       where: { id: user.id },
@@ -156,6 +189,35 @@ export class AuthService {
       },
       user.tokenVersion,
     );
+  }
+
+  /**
+   * Verifies a Cloudflare Turnstile token. Optional: if TURNSTILE_SECRET_KEY
+   * is not configured the check is skipped (always returns true).
+   */
+  private async verifyCaptcha(token: string, ip?: string): Promise<boolean> {
+    const secret = this.config.get<string>('TURNSTILE_SECRET_KEY');
+    if (!secret) {
+      // CAPTCHA not configured - skip verification.
+      return true;
+    }
+
+    try {
+      const body = new URLSearchParams({
+        secret,
+        response: token,
+        ...(ip ? { remoteip: ip } : {}),
+      });
+      const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      });
+      const data = (await res.json()) as { success?: boolean };
+      return data.success === true;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -647,4 +709,5 @@ export class AuthService {
 
 // Re-export to satisfy DTO import references
 export { JwtPayload, JwtRefreshPayload };
+
 
