@@ -268,6 +268,7 @@ export interface Item {
   openingUnitCost?: number;
   openingDate?: string;
   description?: string;
+  image?: string;
   status: AccountStatus;
   itemTypeId?: string;
   brandId?: string;
@@ -766,6 +767,7 @@ export interface StockReportRow {
   itemName: string;
   itemType?: string;
   brand?: string;
+  image?: string;
   quantity?: number;
   stockValue?: number;
 }

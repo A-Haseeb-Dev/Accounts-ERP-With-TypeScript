@@ -60,6 +60,7 @@ export class ItemsService {
           openingUnitCost: dto.openingUnitCost ?? null,
           openingDate: dto.openingDate ? new Date(dto.openingDate) : null,
           description: dto.description ?? null,
+          image: dto.image ?? null,
           itemTypeId: dto.itemTypeId ?? null,
           brandId: dto.brandId ?? null,
           defaultLocationId: dto.defaultLocationId ?? null,

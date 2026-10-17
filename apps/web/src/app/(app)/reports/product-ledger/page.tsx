@@ -41,6 +41,7 @@ interface ProductSummaryRow {
   code: string;
   name: string;
   unit: string;
+  image: string | null;
   itemTypeId: string | null;
   itemType: string;
   brand: string | null;
@@ -169,9 +170,12 @@ export default function ProductLedgerPage() {
             <div id="pl-report" className="overflow-x-auto">
             <ReportPrintHeader title="Product Ledger" />
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2 text-sm">
-              <span className="text-slate-700">
-                <span className="font-semibold text-slate-900">Product Ledger</span>
-                {data?.item?.name && <span className="text-slate-500"> — {data.item.name}</span>}
+              <span className="flex items-center gap-2 text-slate-700">
+                {data?.item?.image && <img src={data.item.image} alt="" className="h-9 w-9 shrink-0 rounded border border-slate-200 object-cover" />}
+                <span>
+                  <span className="font-semibold text-slate-900">Product Ledger</span>
+                  {data?.item?.name && <span className="text-slate-500"> — {data.item.name}</span>}
+                </span>
               </span>
               <span className="text-slate-500">
                 {[
@@ -281,7 +285,12 @@ function ProductGroupRows({ group }: { group: ProductSummaryGroup }) {
       {group.rows.map((r) => (
         <tr key={r.itemId} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
           <td className="px-4 py-2 font-mono text-slate-600">{r.code}</td>
-          <td className="px-4 py-2 font-medium text-slate-800">{r.name}</td>
+          <td className="px-4 py-2 font-medium text-slate-800">
+            <div className="flex items-center gap-2">
+              {r.image && <img src={r.image} alt="" className="h-8 w-8 shrink-0 rounded border border-slate-200 object-cover" />}
+              <span>{r.name}</span>
+            </div>
+          </td>
           <td className="px-4 py-2 text-slate-600">{r.brand ?? '—'}</td>
           <td className="px-4 py-2 text-right tabular-nums text-slate-600">{r.opening}</td>
           <td className="px-4 py-2 text-right tabular-nums text-teal-700">{r.stockIn}</td>

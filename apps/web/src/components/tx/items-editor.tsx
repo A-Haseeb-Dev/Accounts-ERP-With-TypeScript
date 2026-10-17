@@ -105,14 +105,22 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey, defaultPri
                 <tr key={i.key} className="border-b border-slate-100 last:border-0">
                   <td className="px-3 py-1.5 text-slate-400">{idx + 1}</td>
                   <td className="px-3 py-1.5">
-                    <Select
-                      value={i.itemId ?? ''}
-                      onChange={(e) => onPickItem(i.key, e.target.value)}
-                      className="min-w-[180px]"
-                    >
-                      <option value="">Select item…</option>
-                      {itemOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </Select>
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const img = itemOptions.find((o) => o.value === i.itemId)?.image;
+                        return img ? (
+                          <img src={img} alt="" className="h-8 w-8 shrink-0 rounded border border-slate-200 object-cover" />
+                        ) : null;
+                      })()}
+                      <Select
+                        value={i.itemId ?? ''}
+                        onChange={(e) => onPickItem(i.key, e.target.value)}
+                        className="min-w-[180px]"
+                      >
+                        <option value="">Select item…</option>
+                        {itemOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </Select>
+                    </div>
                   </td>
                   <td className="px-3 py-1.5">
                     <Input

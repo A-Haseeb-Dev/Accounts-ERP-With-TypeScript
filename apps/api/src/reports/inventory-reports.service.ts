@@ -90,7 +90,7 @@ export class InventoryReportsService {
     const paginated = rows.slice((page - 1) * pageSize, page * pageSize);
 
     return {
-      item: { id: item.id, code: item.code, name: item.name, unit: item.unit, itemType: item.itemType?.name ?? null, brand: item.brand?.name ?? null },
+      item: { id: item.id, code: item.code, name: item.name, unit: item.unit, image: item.image, itemType: item.itemType?.name ?? null, brand: item.brand?.name ?? null },
       total,
       page,
       pageSize,
@@ -150,6 +150,7 @@ export class InventoryReportsService {
         code: item.code,
         name: item.name,
         unit: item.unit,
+        image: item.image,
         itemTypeId: item.itemTypeId ?? null,
         itemType: typeName,
         brand: item.brand?.name ?? null,
@@ -245,6 +246,7 @@ export class InventoryReportsService {
         itemName: item.name,
         itemId: item.id,
         unit: item.unit,
+        image: item.image,
         itemType: item.itemType?.name ?? null,
         brand: item.brand?.name ?? null,
         quantity: qty,

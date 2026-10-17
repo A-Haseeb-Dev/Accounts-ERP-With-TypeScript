@@ -9,6 +9,7 @@ import { parseDeleteGuard, deleteErrorMessage } from '@/lib/delete-guard';
 import { useFlatOptions } from '@/hooks/use-options';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
+import { ImageUrlField } from '@/components/ui/image-url-field';
 import { DataTable } from '@/components/data-table';
 import { TableExportActions } from '@/components/table-export-actions';
 import { Modal } from '@/components/ui/modal';
@@ -122,6 +123,18 @@ export default function ItemsPage() {
         <div id="administration.items-list">
         <DataTable<Item>
           columns={[
+            {
+              key: 'image', header: '',
+              render: (r) => (
+                <div className="h-10 w-10 overflow-hidden rounded border border-slate-200 bg-slate-50">
+                  {r.image ? (
+                    <img src={r.image} alt={r.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-300">—</div>
+                  )}
+                </div>
+              ),
+            },
             { key: 'code', header: 'Code', render: (r) => <span className="font-mono font-semibold text-slate-800">{r.code}</span> },
             { key: 'name', header: 'Name', render: (r) => <span className="font-medium text-slate-800">{r.name}</span> },
             { key: 'type', header: 'Type', render: (r) => <span className="text-slate-500">{r.itemType?.name ?? '-'}</span> },
@@ -243,6 +256,11 @@ export default function ItemsPage() {
           <Field label="Description">
             <Textarea value={form.description ?? ''} onChange={(e) => set('description', e.target.value)} />
           </Field>
+          <ImageUrlField
+            label="Image"
+            value={form.image ?? ''}
+            onChange={(v) => set('image', v)}
+          />
           <Field label="Status">
             <Select value={form.status ?? 'active'} onChange={(e) => set('status', e.target.value)}>
               <option value="active">Active</option>

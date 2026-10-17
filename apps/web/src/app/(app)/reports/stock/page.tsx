@@ -151,7 +151,14 @@ export default function StockReportPage() {
               {rows.map((r) => (
                 <tr key={r.itemId ?? r.itemCode} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                   {cols.isVisible('code') && <td className="px-4 py-2 font-mono font-semibold text-slate-800">{r.itemCode}</td>}
-                  {cols.isVisible('item') && <td className="px-4 py-2 text-slate-700">{r.itemName}</td>}
+                  {cols.isVisible('item') && (
+                    <td className="px-4 py-2 text-slate-700">
+                      <div className="flex items-center gap-2">
+                        {r.image && <img src={r.image} alt="" className="h-8 w-8 shrink-0 rounded border border-slate-200 object-cover" />}
+                        <span>{r.itemName}</span>
+                      </div>
+                    </td>
+                  )}
                   {cols.isVisible('type') && <td className="px-4 py-2 text-xs text-slate-500">{r.itemType ?? '-'}</td>}
                   {cols.isVisible('brand') && <td className="px-4 py-2 text-xs text-slate-500">{r.brand ?? '-'}</td>}
                   {cols.isVisible('qty') && <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{r.quantity ?? 0}</td>}
@@ -192,7 +199,12 @@ function StockGroupRows({ group }: { group: { key: string; typeName: string; row
       {group.rows.map((r) => (
         <tr key={r.itemId ?? r.itemCode} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
           <td className="px-4 py-2 font-mono text-slate-600">{r.itemCode}</td>
-          <td className="px-4 py-2 font-medium text-slate-800">{r.itemName}</td>
+          <td className="px-4 py-2 font-medium text-slate-800">
+            <div className="flex items-center gap-2">
+              {r.image && <img src={r.image} alt="" className="h-8 w-8 shrink-0 rounded border border-slate-200 object-cover" />}
+              <span>{r.itemName}</span>
+            </div>
+          </td>
           <td className="px-4 py-2 text-xs text-slate-500">{r.brand ?? '-'}</td>
           <td className="px-4 py-2 text-right tabular-nums font-medium text-slate-800">{r.quantity ?? 0}</td>
           <td className="px-4 py-2 text-right tabular-nums text-slate-700">{money(r.stockValue ?? 0)}</td>

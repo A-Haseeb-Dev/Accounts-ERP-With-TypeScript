@@ -116,6 +116,10 @@ export class CreateItemDto {
 
   @IsString()
   @IsOptional()
+  image?: string;
+
+  @IsString()
+  @IsOptional()
   itemTypeId?: string;
 
   @IsString()
@@ -182,6 +186,10 @@ export class UpdateItemDto {
   @IsOptional()
   @MaxLength(200)
   description?: string;
+
+  @IsString()
+  @IsOptional()
+  image?: string;
 
   @IsString()
   @IsOptional()

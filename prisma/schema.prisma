@@ -311,6 +311,10 @@ model Item {
   openingUnitCost  Decimal? @db.Decimal(18, 2)
   openingDate      DateTime?
   description      String?
+  /// Item photo: either an external https URL or an inline base64 data URL,
+  /// same convention as BrandingSetting.logoUrl. Stored as text so it travels
+  /// with JSON bodies without a separate upload endpoint.
+  image            String?
   status           String   @default("active")
   itemTypeId       String?
   brandId          String?

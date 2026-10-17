@@ -6,6 +6,8 @@ import { apiFetch, qs } from '@/lib/api';
 export interface Option {
   value: string;
   label: string;
+  /** Item image (URL or data URL). Only set for item options. */
+  image?: string;
 }
 
 export const FLAT_RESOURCES = [
@@ -55,6 +57,7 @@ interface ItemBrief {
   name: string;
   purchasePrice?: number;
   salePrice?: number;
+  image?: string;
 }
 
 export function useItemOptions(): { options: Option[]; data: ItemBrief[]; isLoading: boolean } {
@@ -69,6 +72,7 @@ export function useItemOptions(): { options: Option[]; data: ItemBrief[]; isLoad
   const options: Option[] = (data ?? []).map((item) => ({
     value: item.id,
     label: `${item.code} · ${item.name}`,
+    image: item.image,
   }));
 
   return { options, data: data ?? [], isLoading };
