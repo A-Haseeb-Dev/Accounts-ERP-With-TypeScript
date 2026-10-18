@@ -26,9 +26,11 @@ async function main() {
 }
 
 async function seedOrganization() {
+  // Create-only on re-runs: the company name/shortName is set by the user in
+  // Settings, so re-running the seed must not push defaults back over it.
   await prisma.organization.upsert({
     where: { code: 'default-org' },
-    update: { name: 'My Company', shortName: 'MY', isActive: true },
+    update: { isActive: true },
     create: { id: 'default-org', code: 'default-org', name: 'My Company', shortName: 'MY', isActive: true },
   });
   console.log('  Organization ready.');
@@ -130,10 +132,12 @@ async function seedSettings() {
     ['inventory.negative_stock', 'false'],
   ];
   for (const [key, value] of settings) {
+    // Create-only as well: currency / date format / timezone are user choices,
+    // and a re-run of the seed must never silently reset them.
     await prisma.systemSetting.upsert({
       where: { key_organizationId: { key, organizationId: 'default-org' } },
       create: { key, value, organizationId: 'default-org' },
-      update: { value },
+      update: {},
     });
   }
   console.log('  Settings ready.');
