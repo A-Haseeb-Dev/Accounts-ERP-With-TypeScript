@@ -711,15 +711,31 @@ export class PayrollService {
     return { id, status: 'cancelled' };
   }
 
+  /**
+   * Deletes a payroll run of any status. For a posted run the accounting
+   * vouchers (payroll + disbursement if paid) are reversed first so the books
+   * stay balanced; a cancelled run's vouchers are already reversed.
+   */
   async remove(id: string, actorId?: string) {
     const run = await this.findOne(id);
-    if (run.status !== 'draft') {
-      throw ApiException.invalidTransaction('Only draft payroll runs can be deleted');
-    }
-    await this.prisma.payrollRun.delete({ where: { id } });
+    const wasPosted = run.status === 'posted';
+
+    await this.prisma.$transaction(async (tx) => {
+      if (wasPosted) {
+        if (run.disbursementVoucherId) {
+          await this.accounting.cancelVoucher(tx, run.disbursementVoucherId, `Payroll ${run.number} deleted`, actorId);
+        }
+        if (run.voucherId) {
+          await this.accounting.cancelVoucher(tx, run.voucherId, `Payroll ${run.number} deleted`, actorId);
+        }
+      }
+      await tx.payrollRun.delete({ where: { id } });
+    });
+
     this.audit.record({
       userId: actorId, action: 'DELETE', module: 'HR', entity: 'Payroll',
-      entityId: id, message: `Payroll ${run.number} deleted`,
+      entityId: id,
+      message: `Payroll ${run.number} deleted${wasPosted ? ' (accounting reversed)' : ''}`,
     });
     return { id, deleted: true };
   }

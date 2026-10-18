@@ -185,7 +185,7 @@ export default function LeavesPage() {
               </button>
             </>
           )}
-          {canDelete && r.status === 'pending' && (
+          {canDelete && (
             <button
               onClick={() => setDeleteTarget(r)}
               className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"
@@ -333,7 +333,7 @@ export default function LeavesPage() {
         open={!!deleteTarget}
         danger
         title="Delete leave request"
-        message={`Delete request ${deleteTarget?.requestNo}? Only pending requests can be deleted.`}
+        message={`Delete request ${deleteTarget?.requestNo}?${deleteTarget?.status === 'approved' ? ' The attendance days marked for this leave will also be removed.' : ''}`}
         confirmLabel="Delete"
         loading={deleteMutation.isPending}
         onCancel={() => setDeleteTarget(null)}

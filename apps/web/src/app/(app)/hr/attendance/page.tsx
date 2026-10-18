@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { CalendarDays, Save } from 'lucide-react';
+import { CalendarDays, Save, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/context/auth-context';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { Field, Input, Select } from '@/components/ui/field';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
 import { StatusBadge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { dateOnly } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { AttendanceStatus } from '@/lib/types';
@@ -38,6 +39,7 @@ export default function AttendancePage() {
   const [date, setDate] = useState(today);
   const [rows, setRows] = useState<DayRow[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; employeeName: string } | null>(null);
 
   const { data: sheet, isLoading } = useQuery<AttendanceStatus[]>({
     queryKey: ['hr/attendance', 'by-day', date],
@@ -65,6 +67,16 @@ export default function AttendancePage() {
       setEditingId(null);
     },
     onError: (e: Error) => toast.error(e.message || 'Save failed'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiFetch(`/hr/attendance/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['hr/attendance'] });
+      setDeleteTarget(null);
+      toast.success('Attendance record deleted');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Delete failed'),
   });
 
   const countBy = (s: string) => rows.filter((r) => r.status === s).length;
@@ -169,7 +181,18 @@ export default function AttendancePage() {
                     )}
                     <td className="px-4 py-2.5">
                       {row.attendance ? (
-                        <StatusBadge status={row.attendance.status} />
+                        <div className="flex items-center gap-1">
+                          <StatusBadge status={row.attendance.status} />
+                          {canManage && (
+                            <button
+                              onClick={() => setDeleteTarget({ id: row.attendance!.id, employeeName: row.employee.fullName })}
+                              className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"
+                              title="Delete attendance record"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-xs text-slate-300">Not recorded</span>
                       )}
@@ -188,6 +211,17 @@ export default function AttendancePage() {
           </table>
         </div>
       </Card>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        danger
+        title="Delete attendance record"
+        message={`Delete the attendance record for ${deleteTarget?.employeeName} on ${dateOnly(date)}?`}
+        confirmLabel="Delete"
+        loading={deleteMutation.isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+      />
     </div>
   );
 }

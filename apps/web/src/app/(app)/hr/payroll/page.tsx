@@ -181,7 +181,7 @@ export default function PayrollPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['hr/payroll'] });
       setDeleteTarget(null);
-      toast.success('Draft payroll deleted');
+      toast.success('Payroll deleted');
     },
     onError: (e: Error) => toast.error(e.message || 'Delete failed'),
   });
@@ -293,7 +293,7 @@ export default function PayrollPage() {
               <XCircle className="h-4 w-4" />
             </button>
           )}
-          {canDelete && r.status === 'draft' && (
+          {canDelete && (
             <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete">
               <Trash2 className="h-4 w-4" />
             </button>
@@ -626,7 +626,13 @@ export default function PayrollPage() {
       <ConfirmDialog
         open={!!deleteTarget}
         title="Delete payroll"
-        message={`Delete draft payroll ${deleteTarget?.number}?`}
+        message={
+          deleteTarget?.status === 'posted'
+            ? `Delete posted payroll ${deleteTarget?.number}? This will reverse its accounting entries before deleting.`
+            : deleteTarget?.status === 'cancelled'
+              ? `Delete cancelled payroll ${deleteTarget?.number}?`
+              : `Delete draft payroll ${deleteTarget?.number}?`
+        }
         confirmLabel="Delete"
         danger
         loading={deleteMutation.isPending}

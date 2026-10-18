@@ -277,12 +277,28 @@ export class LeavesService {
     return result;
   }
 
+  /**
+   * Deletes a leave request of any status. If the request was approved, the
+   * attendance rows that approval auto-created (status "leave" within the
+   * request's date range) are removed too — rows the user has since changed
+   * to another status are left alone.
+   */
   async removeRequest(id: string, actorId?: string) {
     const request = await this.findOneRequest(id);
-    if (request.status !== 'pending') {
-      throw ApiException.invalidTransaction('Only pending leave requests can be deleted');
-    }
-    await this.prisma.hrLeaveRequest.delete({ where: { id } });
+
+    await this.prisma.$transaction(async (tx) => {
+      if (request.status === 'approved') {
+        await tx.hrAttendance.deleteMany({
+          where: {
+            employeeId: request.employeeId,
+            status: 'leave',
+            date: { gte: request.fromDate, lte: request.toDate },
+          },
+        });
+      }
+      await tx.hrLeaveRequest.delete({ where: { id } });
+    });
+
     this.audit.record({
       userId: actorId, action: 'DELETE', module: 'HR', entity: 'Leave request',
       entityId: id, message: `Leave request for ${request.employee.fullName} deleted`,
