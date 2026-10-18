@@ -10,6 +10,7 @@ import { useFlatOptions } from '@/hooks/use-options';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/field';
 import { ImageUrlField } from '@/components/ui/image-url-field';
+import { ItemImage } from '@/components/ui/item-image';
 import { DataTable } from '@/components/data-table';
 import { TableExportActions } from '@/components/table-export-actions';
 import { Modal } from '@/components/ui/modal';
@@ -124,11 +125,11 @@ export default function ItemsPage() {
         <DataTable<Item>
           columns={[
             {
-              key: 'image', header: '',
+              key: 'image', header: <span className="sr-only">Image</span>,
               render: (r) => (
                 <div className="h-10 w-10 overflow-hidden rounded border border-slate-200 bg-slate-50">
                   {r.image ? (
-                    <img src={r.image} alt={r.name} className="h-full w-full object-cover" />
+                    <ItemImage src={r.image} alt={r.name} className="h-full w-full object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-[10px] text-slate-300">—</div>
                   )}

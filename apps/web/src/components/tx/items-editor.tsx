@@ -4,6 +4,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { useRef } from 'react';
 import { Select, Input } from '@/components/ui/field';
 import { Button } from '@/components/ui/button';
+import { ItemImage } from '@/components/ui/item-image';
 import type { Option } from '@/hooks/use-options';
 import { money } from '@/lib/utils';
 import { getCurrencyInfo } from '@/lib/currency';
@@ -106,12 +107,10 @@ export function ItemsEditor({ items, onChange, itemOptions, priceKey, defaultPri
                   <td className="px-3 py-1.5 text-slate-400">{idx + 1}</td>
                   <td className="px-3 py-1.5">
                     <div className="flex items-center gap-2">
-                      {(() => {
-                        const img = itemOptions.find((o) => o.value === i.itemId)?.image;
-                        return img ? (
-                          <img src={img} alt="" className="h-8 w-8 shrink-0 rounded border border-slate-200 object-cover" />
-                        ) : null;
-                      })()}
+                      <ItemImage
+                        src={itemOptions.find((o) => o.value === i.itemId)?.image}
+                        className="h-8 w-8 shrink-0 rounded border border-slate-200 object-cover"
+                      />
                       <Select
                         value={i.itemId ?? ''}
                         onChange={(e) => onPickItem(i.key, e.target.value)}

@@ -13,6 +13,7 @@ import { ColumnPicker, useReportColumns, type ColumnDef } from '@/components/rep
 import { QueryError } from '@/components/query-error';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { money } from '@/lib/utils';
+import { ItemImage } from '@/components/ui/item-image';
 import type { StockReportRow } from '@/lib/types';
 
 const COLUMNS: ColumnDef[] = [
@@ -154,7 +155,7 @@ export default function StockReportPage() {
                   {cols.isVisible('item') && (
                     <td className="px-4 py-2 text-slate-700">
                       <div className="flex items-center gap-2">
-                        {r.image && <img src={r.image} alt="" className="h-8 w-8 shrink-0 rounded border border-slate-200 object-cover" />}
+                        <ItemImage src={r.image} className="h-8 w-8 shrink-0 rounded border border-slate-200 object-cover" />
                         <span>{r.itemName}</span>
                       </div>
                     </td>
@@ -201,7 +202,7 @@ function StockGroupRows({ group }: { group: { key: string; typeName: string; row
           <td className="px-4 py-2 font-mono text-slate-600">{r.itemCode}</td>
           <td className="px-4 py-2 font-medium text-slate-800">
             <div className="flex items-center gap-2">
-              {r.image && <img src={r.image} alt="" className="h-8 w-8 shrink-0 rounded border border-slate-200 object-cover" />}
+              <ItemImage src={r.image} className="h-8 w-8 shrink-0 rounded border border-slate-200 object-cover" />
               <span>{r.itemName}</span>
             </div>
           </td>

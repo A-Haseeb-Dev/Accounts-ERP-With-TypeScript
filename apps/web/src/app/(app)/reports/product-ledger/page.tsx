@@ -13,6 +13,7 @@ import { ColumnPicker, useReportColumns, type ColumnDef } from '@/components/rep
 import { QueryError } from '@/components/query-error';
 import { TableSkeleton } from '@/components/table-skeleton';
 import { money } from '@/lib/utils';
+import { ItemImage } from '@/components/ui/item-image';
 import type { Item, ProductLedgerRow } from '@/lib/types';
 
 const COLUMNS: ColumnDef[] = [
@@ -171,7 +172,7 @@ export default function ProductLedgerPage() {
             <ReportPrintHeader title="Product Ledger" />
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2 text-sm">
               <span className="flex items-center gap-2 text-slate-700">
-                {data?.item?.image && <img src={data.item.image} alt="" className="h-9 w-9 shrink-0 rounded border border-slate-200 object-cover" />}
+                <ItemImage src={data?.item?.image} className="h-9 w-9 shrink-0 rounded border border-slate-200 object-cover" />
                 <span>
                   <span className="font-semibold text-slate-900">Product Ledger</span>
                   {data?.item?.name && <span className="text-slate-500"> — {data.item.name}</span>}
@@ -287,7 +288,7 @@ function ProductGroupRows({ group }: { group: ProductSummaryGroup }) {
           <td className="px-4 py-2 font-mono text-slate-600">{r.code}</td>
           <td className="px-4 py-2 font-medium text-slate-800">
             <div className="flex items-center gap-2">
-              {r.image && <img src={r.image} alt="" className="h-8 w-8 shrink-0 rounded border border-slate-200 object-cover" />}
+              <ItemImage src={r.image} className="h-8 w-8 shrink-0 rounded border border-slate-200 object-cover" />
               <span>{r.name}</span>
             </div>
           </td>

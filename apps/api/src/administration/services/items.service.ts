@@ -60,7 +60,7 @@ export class ItemsService {
           openingUnitCost: dto.openingUnitCost ?? null,
           openingDate: dto.openingDate ? new Date(dto.openingDate) : null,
           description: dto.description ?? null,
-          image: dto.image ?? null,
+          image: dto.image?.trim() || null,
           itemTypeId: dto.itemTypeId ?? null,
           brandId: dto.brandId ?? null,
           defaultLocationId: dto.defaultLocationId ?? null,
@@ -256,6 +256,9 @@ export class ItemsService {
         where: { id },
         data: {
           ...dto,
+          // Clearing the image sends an empty string; store NULL so the column
+          // never holds a value that renders as a broken thumbnail.
+          ...(dto.image !== undefined ? { image: dto.image?.trim() || null } : {}),
           ...(dto.openingDate !== undefined
             ? { openingDate: dto.openingDate ? new Date(dto.openingDate) : null }
             : {}),

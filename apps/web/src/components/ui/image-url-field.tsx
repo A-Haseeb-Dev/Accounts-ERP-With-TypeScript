@@ -7,6 +7,41 @@ import { Field, Input } from '@/components/ui/field';
 /** Max size for an uploaded image (kept under the API's 6 MB JSON body limit). */
 export const MAX_IMAGE_BYTES = 1_500_000;
 
+/** Longest edge kept for an uploaded photo — plenty for the 40px thumbnails. */
+const MAX_DIMENSION = 512;
+
+/**
+ * Downscales a raster data URL to `MAX_DIMENSION` on its longest edge and
+ * re-encodes it as JPEG. Item images travel inside every `/items` response as
+ * base64, so an untrimmed phone photo would make the items list and the
+ * transaction item picker fetch megabytes per item. SVGs and already-small
+ * images are passed through untouched.
+ */
+async function shrinkDataUrl(dataUrl: string): Promise<string> {
+  if (!dataUrl.startsWith('data:image/') || dataUrl.startsWith('data:image/svg')) return dataUrl;
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = dataUrl;
+    });
+    const longest = Math.max(img.naturalWidth, img.naturalHeight);
+    if (!longest || longest <= MAX_DIMENSION) return dataUrl;
+    const scale = MAX_DIMENSION / longest;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return dataUrl;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const out = canvas.toDataURL('image/jpeg', 0.82);
+    return out.startsWith('data:image/') ? out : dataUrl;
+  } catch {
+    return dataUrl;
+  }
+}
+
 interface ImageUrlFieldProps {
   label: string;
   /** Current value: an external https URL or an inline base64 data URL. */
@@ -34,10 +69,10 @@ export function ImageUrlField({ label, value, onChange, fit = 'contain', classNa
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       if (typeof reader.result === 'string') {
         setError('');
-        onChange(reader.result);
+        onChange(await shrinkDataUrl(reader.result));
       }
     };
     reader.readAsDataURL(file);
@@ -70,6 +105,7 @@ export function ImageUrlField({ label, value, onChange, fit = 'contain', classNa
       {value && (
         <div className="mt-2 flex items-center gap-2">
           <img
+            key={value}
             src={value}
             alt={`${label} preview`}
             className={`h-12 w-12 rounded border border-slate-200 bg-white ${fit === 'cover' ? 'object-cover' : 'object-contain'}`}
