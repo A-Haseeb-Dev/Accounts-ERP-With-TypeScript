@@ -751,6 +751,7 @@ export interface InvestmentInstallment {
   paidAt?: string | null;
   paidVoucherId?: string | null;
   note?: string | null;
+  overdue?: boolean;
 }
 
 export interface Investment {
@@ -782,6 +783,8 @@ export interface Investment {
   principalPaid?: number;
   principalOutstanding?: number;
   nextDueDate?: string | null;
+  overdueCount?: number;
+  overdueAmount?: number;
 }
 
 export interface AuditEntry {

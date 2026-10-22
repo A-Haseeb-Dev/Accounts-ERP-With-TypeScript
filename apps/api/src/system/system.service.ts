@@ -105,6 +105,46 @@ const PRINT_LAYOUT_FIELDS: Record<string, string> = {
 /** Setting keys whose value must be the id of an existing main account. */
 const ACCOUNT_ID_SETTING_KEYS = SETTING_KEYS.filter((key) => key.startsWith('accounting.'));
 
+/**
+ * The account type each posting role must be mapped to. Picking a revenue
+ * account for Cost of Sales (for example) produces vouchers that post but
+ * report nonsense, so the mapping is checked when it is saved rather than
+ * discovered months later in the accounts.
+ */
+const ACCOUNT_ROLE_TYPES: Record<string, { label: string; types: string[] }> = {
+  'accounting.cash_account': { label: 'Cash Account', types: ['ASSET'] },
+  'accounting.bank_account': { label: 'Bank Account', types: ['ASSET'] },
+  'accounting.receivable_account': { label: 'Accounts Receivable', types: ['ASSET'] },
+  'accounting.inventory_account': { label: 'Inventory / Stock', types: ['ASSET'] },
+  'accounting.cheque_in_hand_account': { label: 'Cheques in Hand', types: ['ASSET'] },
+  'accounting.payable_account': { label: 'Accounts Payable', types: ['LIABILITY'] },
+  'accounting.tax_account': { label: 'Sales Tax Payable', types: ['LIABILITY'] },
+  'accounting.salaries_payable_account': { label: 'Salaries Payable', types: ['LIABILITY'] },
+  'accounting.payroll_deductions_account': {
+    label: 'Payroll Deductions Payable',
+    types: ['LIABILITY'],
+  },
+  'accounting.cheque_issued_account': { label: 'Cheques Issued', types: ['LIABILITY'] },
+  'accounting.commission_payable_account': {
+    label: 'Commission Payable',
+    types: ['LIABILITY'],
+  },
+  'accounting.opening_equity_account': { label: 'Opening Equity', types: ['EQUITY'] },
+  'accounting.revenue_account': { label: 'Sales Revenue', types: ['REVENUE'] },
+  'accounting.cost_of_sales_account': { label: 'Cost of Sales', types: ['EXPENSE'] },
+  'accounting.salary_expense_account': { label: 'Salary Expense', types: ['EXPENSE'] },
+  'accounting.commission_expense_account': { label: 'Commission Expense', types: ['EXPENSE'] },
+  'accounting.payroll_funding_account': { label: 'Payroll Funding Account', types: ['ASSET'] },
+  'accounting.investment_capital_account': {
+    label: 'Investment Capital Account',
+    types: ['LIABILITY', 'EQUITY'],
+  },
+  'accounting.investment_return_expense_account': {
+    label: 'Investment Return Expense',
+    types: ['EXPENSE'],
+  },
+};
+
 // Feature switches are stored in system_settings too, so backups/restores pick
 // them up. They are whitelisted by expanding the feature catalog below.
 for (const feature of FEATURES) {
@@ -235,12 +275,21 @@ export class SystemService {
     if (accountIds.length > 0) {
       const found = await this.prisma.mainAccount.findMany({
         where: { id: { in: accountIds.map((a) => a.value) } },
-        select: { id: true },
+        select: { id: true, code: true, name: true, accountType: true },
       });
-      const valid = new Set(found.map((a) => a.id));
-      const bad = accountIds.find((a) => !valid.has(a.value));
-      if (bad) {
-        throw ApiException.validation(`"${bad.key}" must point at an existing account`);
+      const byId = new Map(found.map((a) => [a.id, a]));
+      for (const { key, value } of accountIds) {
+        const account = byId.get(value);
+        if (!account) {
+          throw ApiException.validation(`"${key}" must point at an existing account`);
+        }
+        const role = ACCOUNT_ROLE_TYPES[key];
+        if (role && !role.types.includes(account.accountType)) {
+          throw ApiException.validation(
+            `"${role.label}" must point at an account of type ${role.types.join(' or ')}, ` +
+              `but "${account.name} (${account.code})" is a ${account.accountType} account.`,
+          );
+        }
       }
     }
 

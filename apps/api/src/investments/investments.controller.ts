@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+﻿import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -11,6 +11,7 @@ import {
   PayInstallmentDto,
   ReceiveInvestmentDto,
   UpdateInvestmentDto,
+  UpdateInstallmentDto,
   UpdateInvestorDto,
 } from './dto/investments.dto';
 
@@ -38,6 +39,15 @@ export class InvestorsController {
   @Post() @Permissions('investments.investor.create') @ApiOperation({ summary: 'Add an investor' })
   create(@Body() dto: CreateInvestorDto, @CurrentUser() actor: any) {
     return this.service.create(dto, actor?.id);
+  }
+
+  @Get(':id/statement') @Permissions('investments.view') @ApiOperation({ summary: 'Investor statement (capital in, returns, outstanding)' })
+  statement(
+    @Param('id') id: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.statement(id, { from, to });
   }
 
   @Get(':id') @Permissions('investments.view') @ApiOperation({ summary: 'Get an investor' })
@@ -110,6 +120,16 @@ export class InvestmentsController {
     return this.service.payInstallment(id, installmentId, dto, actor?.id);
   }
 
+  @Patch(':id/installments/:installmentId') @Permissions('investments.payout') @ApiOperation({ summary: 'Reschedule an installment' })
+  rescheduleInstallment(
+    @Param('id') id: string,
+    @Param('installmentId') installmentId: string,
+    @Body() dto: UpdateInstallmentDto,
+    @CurrentUser() actor: any,
+  ) {
+    return this.service.rescheduleInstallment(id, installmentId, dto, actor?.id);
+  }
+
   @Post(':id/installments/:installmentId/skip') @Permissions('investments.payout') @ApiOperation({ summary: 'Skip an installment' })
   skipInstallment(
     @Param('id') id: string,
@@ -133,3 +153,4 @@ export class InvestmentsController {
   @Delete(':id') @Permissions('investments.delete') @ApiOperation({ summary: 'Delete an investment' })
   remove(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.remove(id, actor?.id); }
 }
+

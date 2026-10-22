@@ -12,6 +12,7 @@ import {
   CreateInvestmentDto,
   PayInstallmentDto,
   ReceiveInvestmentDto,
+  UpdateInstallmentDto,
   UpdateInvestmentDto,
 } from './dto/investments.dto';
 
@@ -450,6 +451,55 @@ export class InvestmentsService {
   }
 
   /**
+   * Reschedules an installment: a new due date, a revised amount, or a note.
+   * Only the arrangement changes - no money moves, so nothing is posted.
+   */
+  async rescheduleInstallment(
+    investmentId: string,
+    installmentId: string,
+    dto: UpdateInstallmentDto,
+    actorId?: string,
+  ) {
+    const investment = await this.findOne(investmentId);
+    if (investment.status === 'closed' || investment.status === 'cancelled') {
+      throw ApiException.invalidTransaction(
+        `A ${investment.status} investment cannot have its schedule changed`,
+      );
+    }
+    const installment = investment.installments.find((i: any) => i.id === installmentId);
+    if (!installment) throw ApiException.notFound('Installment');
+    if (installment.status === 'paid') {
+      throw ApiException.invalidTransaction('A paid installment cannot be rescheduled');
+    }
+    if (dto.amount !== undefined && dto.amount < 0) {
+      throw ApiException.validation('The installment amount cannot be negative');
+    }
+
+    const updated = await this.prisma.investmentInstallment.update({
+      where: { id: installmentId },
+      data: {
+        ...(dto.dueDate !== undefined ? { dueDate: new Date(dto.dueDate) } : {}),
+        ...(dto.amount !== undefined ? { amount: round2(dto.amount) } : {}),
+        ...(dto.note !== undefined ? { note: dto.note } : {}),
+        // Moving a skipped row to a real date puts it back on the schedule.
+        ...(installment.status === 'skipped' && dto.dueDate !== undefined
+          ? { status: 'pending' }
+          : {}),
+      },
+    });
+
+    this.audit.record({
+      userId: actorId,
+      action: 'UPDATE',
+      module: 'INVESTMENTS',
+      entity: 'Investment',
+      entityId: investmentId,
+      message: `Investment ${investment.number} - installment ${installment.sequence} rescheduled`,
+    });
+    return updated;
+  }
+
+  /**
    * Closes an investment: the principal goes back to the investor and the
    * arrangement ends.
    */
@@ -704,9 +754,15 @@ export class InvestmentsService {
     }
   }
 
-  /** Adds the paid / pending / outstanding figures to an investment. */
+  /** Adds the paid / pending / outstanding / overdue figures to an investment. */
   private withTotals(investment: any) {
-    const installments = investment.installments ?? [];
+    const today = startOfDay(new Date());
+    const installments = (investment.installments ?? []).map((i: any) => ({
+      ...i,
+      // "Overdue" is derived rather than stored: an unpaid row is late the
+      // moment its due date passes, without needing a nightly job to flip it.
+      overdue: i.status === 'pending' && new Date(i.dueDate) < today,
+    }));
     const returnsPaid = installments
       .filter((i: any) => i.kind === 'RETURN' && i.status === 'paid')
       .reduce((s: number, i: any) => s + Number(i.amount), 0);
@@ -716,16 +772,26 @@ export class InvestmentsService {
     const pending = installments.filter(
       (i: any) => i.status === 'pending' && i.kind === 'RETURN',
     );
+    const overdue = installments.filter((i: any) => i.overdue);
     return {
       ...investment,
+      installments,
       returnsPaid: round2(returnsPaid),
       principalPaid: round2(principalPaid),
       principalOutstanding: round2(Number(investment.principal) - principalPaid),
+      overdueCount: overdue.length,
+      overdueAmount: round2(overdue.reduce((s: number, i: any) => s + Number(i.amount), 0)),
       nextDueDate: pending.length
         ? pending.sort((a: any, b: any) => +new Date(a.dueDate) - +new Date(b.dueDate))[0].dueDate
         : null,
     };
   }
+}
+
+function startOfDay(date: Date): Date {
+  const copy = new Date(date.getTime());
+  copy.setHours(0, 0, 0, 0);
+  return copy;
 }
 
 /** Adds whole months to a date, keeping the day of the month. */

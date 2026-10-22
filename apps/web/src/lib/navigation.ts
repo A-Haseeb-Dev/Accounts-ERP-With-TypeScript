@@ -25,6 +25,7 @@ import {
   UserRound,
   WalletCards,
   FileText,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { isAllowed } from '@/lib/auth-types';
 
@@ -80,7 +81,13 @@ export const NAV_ITEMS: NavItem[] = [
   {
     label: 'Investments',
     href: '/investments',
-    icon: Percent,
+    icon: WalletCards,
+    permission: 'investments.view',
+  },
+  {
+    label: 'Investment Control',
+    href: '/investments/control',
+    icon: SlidersHorizontal,
     permission: 'investments.view',
   },
   {
@@ -130,6 +137,8 @@ export const NAV_ITEMS: NavItem[] = [
       { label: 'General Journal', href: '/reports/general-journal', icon: FileSpreadsheet, permission: 'reports.accounting.view' },
       { label: 'Day Report', href: '/reports/day-report', icon: CalendarDays, permission: 'reports.accounting.view' },
       { label: 'Expense Report', href: '/reports/expense-report', icon: Receipt, permission: 'reports.accounting.view' },
+  { label: 'Profit & Loss', href: '/reports/profit-loss', icon: Briefcase, permission: 'reports.accounting.view' },
+  { label: 'Balance Sheet', href: '/reports/balance-sheet', icon: Landmark, permission: 'reports.accounting.view' },
       { label: 'Party Ageing', href: '/reports/party-ageing', icon: Hourglass, permission: 'reports.accounting.view' },
       { label: 'Party Statement', href: '/reports/party-statement', icon: FileText, permission: 'reports.accounting.view' },
       { label: 'Cash Book Report', href: '/reports/cash-book', icon: Wallet, permission: 'reports.accounting.view' },

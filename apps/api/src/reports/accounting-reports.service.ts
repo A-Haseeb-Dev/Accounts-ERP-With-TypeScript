@@ -343,6 +343,164 @@ export class AccountingReportsService {
     };
   }
 
+  /**
+   * Profit & Loss - revenue and expense movements for a period.
+   *
+   * Only movements inside the period are counted; opening balances are not
+   * part of a period result. Revenue is credit-natured and expenses are
+   * debit-natured, so each side is normalised to a positive figure.
+   */
+  async profitAndLoss(query: { from?: string; to?: string }) {
+    const { from, to } = query;
+    const accounts = await this.prisma.mainAccount.findMany({
+      where: { status: 'active', accountType: { in: ['REVENUE', 'EXPENSE'] } },
+      include: { subHead: { include: { headAccount: true } } },
+      orderBy: { code: 'asc' },
+    });
+
+    const memo = createOrphanMemo();
+    const voucherWhere = await this.postedVoucherFilter(
+      from || to ? { voucherDate: dateRange(from, to) } : {},
+      memo,
+    );
+
+    const rows: {
+      accountId: string;
+      code: string;
+      name: string;
+      accountType: string;
+      head: string | null;
+      subHead: string | null;
+      amount: number;
+    }[] = [];
+    let totalRevenue = 0;
+    let totalExpense = 0;
+
+    for (const acc of accounts) {
+      const agg = await this.prisma.voucherEntry.aggregate({
+        where: { mainAccountId: acc.id, voucher: voucherWhere },
+        _sum: { debit: true, credit: true },
+      });
+      const debit = Number(agg._sum.debit ?? 0);
+      const credit = Number(agg._sum.credit ?? 0);
+      const amount =
+        acc.accountType === 'REVENUE' ? round2(credit - debit) : round2(debit - credit);
+      if (amount === 0) continue;
+      if (acc.accountType === 'REVENUE') totalRevenue += amount;
+      else totalExpense += amount;
+      rows.push({
+        accountId: acc.id,
+        code: acc.code,
+        name: acc.name,
+        accountType: acc.accountType,
+        head: acc.subHead?.headAccount?.name ?? null,
+        subHead: acc.subHead?.name ?? null,
+        amount,
+      });
+    }
+
+    const netProfit = round2(totalRevenue - totalExpense);
+    return {
+      from: from ?? null,
+      to: to ?? null,
+      revenue: rows.filter((r) => r.accountType === 'REVENUE'),
+      expenses: rows.filter((r) => r.accountType === 'EXPENSE'),
+      totalRevenue: round2(totalRevenue),
+      totalExpense: round2(totalExpense),
+      netProfit,
+      margin: totalRevenue ? round2((netProfit / totalRevenue) * 100) : 0,
+    };
+  }
+
+  /**
+   * Balance Sheet - assets, liabilities and equity as of a date.
+   *
+   * Every posted voucher (opening balances included) contributes to the
+   * position. Retained earnings are not posted automatically, so the
+   * unclosed profit sitting in the revenue and expense accounts is shown as
+   * its own equity line - without it the sheet would not balance.
+   */
+  async balanceSheet(query: { asOf?: string }) {
+    const { asOf } = query;
+    const accounts = await this.prisma.mainAccount.findMany({
+      where: { status: 'active' },
+      include: { subHead: { include: { headAccount: true } } },
+      orderBy: { code: 'asc' },
+    });
+
+    const memo = createOrphanMemo();
+    const exclusions = await orphanVoucherExclusions(this.prisma, memo);
+    const voucherWhere: any = {
+      status: 'posted',
+      ...(asOf ? { voucherDate: { lte: endOfDay(asOf) } } : {}),
+      ...(exclusions.length ? { AND: exclusions } : {}),
+    };
+
+    const rows: {
+      accountId: string;
+      code: string;
+      name: string;
+      accountType: string;
+      head: string | null;
+      subHead: string | null;
+      amount: number;
+    }[] = [];
+    let totalAssets = 0;
+    let totalLiabilities = 0;
+    let totalEquity = 0;
+    let profitFromOperations = 0;
+
+    for (const acc of accounts) {
+      const agg = await this.prisma.voucherEntry.aggregate({
+        where: { mainAccountId: acc.id, voucher: voucherWhere },
+        _sum: { debit: true, credit: true },
+      });
+      const opening = await this.accountOpening(acc);
+      const balance = round2(
+        opening + Number(agg._sum.debit ?? 0) - Number(agg._sum.credit ?? 0),
+      );
+
+      if (acc.accountType === 'REVENUE' || acc.accountType === 'EXPENSE') {
+        // Revenue carries a credit balance and expenses a debit balance; their
+        // combined negative sum is the profit not yet closed to equity.
+        profitFromOperations += balance;
+        continue;
+      }
+
+      const amount = acc.accountType === 'ASSET' ? balance : round2(-balance);
+      if (amount === 0) continue;
+      if (acc.accountType === 'ASSET') totalAssets += amount;
+      else if (acc.accountType === 'LIABILITY') totalLiabilities += amount;
+      else if (acc.accountType === 'EQUITY') totalEquity += amount;
+      rows.push({
+        accountId: acc.id,
+        code: acc.code,
+        name: acc.name,
+        accountType: acc.accountType,
+        head: acc.subHead?.headAccount?.name ?? null,
+        subHead: acc.subHead?.name ?? null,
+        amount,
+      });
+    }
+
+    const profit = round2(-profitFromOperations);
+    totalEquity = round2(totalEquity + profit);
+    const totalLiabilitiesAndEquity = round2(totalLiabilities + totalEquity);
+
+    return {
+      asOf: asOf ?? null,
+      assets: rows.filter((r) => r.accountType === 'ASSET'),
+      liabilities: rows.filter((r) => r.accountType === 'LIABILITY'),
+      equity: rows.filter((r) => r.accountType === 'EQUITY'),
+      totalAssets: round2(totalAssets),
+      totalLiabilities: round2(totalLiabilities),
+      totalEquity,
+      profitForPeriod: profit,
+      totalLiabilitiesAndEquity,
+      balanced: round2(totalAssets) === totalLiabilitiesAndEquity,
+    };
+  }
+
   /** Trial balance filtered by sub head. */
   async subHeadTrial(query: { subHeadId: string; asOf?: string }) {
     const { subHeadId, asOf } = query;

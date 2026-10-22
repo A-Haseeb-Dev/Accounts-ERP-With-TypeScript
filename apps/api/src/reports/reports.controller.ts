@@ -106,6 +106,20 @@ export class ReportsController {
     return this.accounting.trialBalance({ asOf });
   }
 
+  @Get('profit-loss')
+  @Permissions('reports.accounting.view')
+  @ApiOperation({ summary: 'Profit & Loss' })
+  profitAndLoss(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.accounting.profitAndLoss({ from, to });
+  }
+
+  @Get('balance-sheet')
+  @Permissions('reports.accounting.view')
+  @ApiOperation({ summary: 'Balance Sheet' })
+  balanceSheet(@Query('asOf') asOf?: string) {
+    return this.accounting.balanceSheet({ asOf });
+  }
+
   @Get('sub-head-trial')
   @Permissions('reports.accounting.view')
   @ApiOperation({ summary: 'Sub Head Trial' })

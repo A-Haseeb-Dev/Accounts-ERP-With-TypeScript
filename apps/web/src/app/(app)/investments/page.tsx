@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -8,7 +8,10 @@ import {
   CheckCircle2,
   Edit3,
   Eye,
+  FileDown,
+  FileText,
   Plus,
+  Printer,
   Search,
   SkipForward,
   Trash2,
@@ -24,12 +27,51 @@ import { Modal } from '@/components/ui/modal';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { PageHeader } from '@/components/page-header';
 import { Card } from '@/components/ui/card';
-import { StatusBadge } from '@/components/ui/badge';
+import { Badge, StatusBadge } from '@/components/ui/badge';
+import { downloadTablePDF, printElement } from '@/lib/report-export';
 import { dateOnly, money } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { Investment, Investor, Paginated } from '@/lib/types';
 
 type Tab = 'investments' | 'investors';
+
+type StatementRow = {
+  date: string;
+  type: string;
+  reference: string;
+  description: string;
+  debit: number;
+  credit: number;
+  balance: number;
+};
+
+type InvestorStatement = {
+  investor: Investor;
+  from: string | null;
+  to: string | null;
+  openingCapital: number;
+  closingCapital: number;
+  totalCapitalReceived: number;
+  totalReturnsPaid: number;
+  totalPrincipalReturned: number;
+  capitalOutstanding: number;
+  activeInvestments: number;
+  closedInvestments: number;
+  nextDueDate: string | null;
+  investments: {
+    id: string;
+    number: string;
+    principal: number;
+    status: string;
+    startDate: string;
+    receivedAt: string | null;
+    closedAt: string | null;
+    returnsPaid: number;
+    principalReturned: number;
+    principalOutstanding: number;
+  }[];
+  rows: StatementRow[];
+};
 
 export default function InvestmentsPage() {
   const [tab, setTab] = useState<Tab>('investments');
@@ -97,6 +139,7 @@ function InvestmentsTab() {
   const [payTarget, setPayTarget] = useState<{ investment: Investment; installmentId: string; amount: number; kind: string } | null>(null);
   const [payAmount, setPayAmount] = useState('');
   const [payDate, setPayDate] = useState(new Date().toISOString().slice(0, 10));
+  const [rescheduleTarget, setRescheduleTarget] = useState<{ investmentId: string; installmentId: string; sequence: number; dueDate: string; amount: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Investment | null>(null);
 
   const { data, isLoading } = useQuery<Paginated<Investment>>({
@@ -194,6 +237,20 @@ function InvestmentsTab() {
     onError: (e: Error) => toast.error(e.message || 'Could not skip the installment'),
   });
 
+  const reschedule = useMutation({
+    mutationFn: ({ id, installmentId, payload }: { id: string; installmentId: string; payload: unknown }) =>
+      apiFetch(`/investments/${id}/installments/${installmentId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      invalidate();
+      setRescheduleTarget(null);
+      toast.success('Installment rescheduled');
+    },
+    onError: (e: Error) => toast.error(e.message || 'Could not reschedule the installment'),
+  });
+
   const close = useMutation({
     mutationFn: ({ id, payload }: { id: string; payload: unknown }) =>
       apiFetch<Investment>(`/investments/${id}/close`, { method: 'POST', body: JSON.stringify(payload) }),
@@ -284,7 +341,7 @@ function InvestmentsTab() {
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
           <div className="relative max-w-xs flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search number / investor…" className="pl-9" />
+            <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search number / investorâ€¦" className="pl-9" />
           </div>
           <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} className="w-40">
             <option value="">All status</option>
@@ -387,9 +444,9 @@ function InvestmentsTab() {
                 required
                 disabled={!!editId}
               >
-                <option value="">Select investor…</option>
+                <option value="">Select investorâ€¦</option>
                 {(investors?.items ?? []).map((i) => (
-                  <option key={i.id} value={i.id}>{i.code} · {i.name}</option>
+                  <option key={i.id} value={i.id}>{i.code} Â· {i.name}</option>
                 ))}
               </Select>
             </Field>
@@ -431,7 +488,7 @@ function InvestmentsTab() {
           </div>
 
           <Field label="Note">
-            <Textarea value={String(form.note ?? '')} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} placeholder="Optional notes…" />
+            <Textarea value={String(form.note ?? '')} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} placeholder="Optional notesâ€¦" />
           </Field>
 
           {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
@@ -481,7 +538,7 @@ function InvestmentsTab() {
                       <td className="px-3 py-2 text-slate-600">{dateOnly(it.dueDate)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-slate-800">{money(it.amount ?? 0)}</td>
                       <td className="px-3 py-2">
-                        <StatusBadge status={it.status} />
+                        {it.overdue ? <Badge tone="red">Overdue</Badge> : <StatusBadge status={it.status} />}
                       </td>
                       <td className="px-3 py-2 text-right">
                         {canPayout && it.status === 'pending' && detail.status === 'active' && (
@@ -496,6 +553,21 @@ function InvestmentsTab() {
                               title="Pay"
                             >
                               <Banknote className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() =>
+                                setRescheduleTarget({
+                                  investmentId: detail.id,
+                                  installmentId: it.id,
+                                  sequence: it.sequence,
+                                  dueDate: String(it.dueDate).slice(0, 10),
+                                  amount: String(it.amount ?? 0),
+                                })
+                              }
+                              className="rounded-lg p-1.5 text-slate-500 hover:bg-amber-50 hover:text-amber-700"
+                              title="Reschedule this installment"
+                            >
+                              <CalendarClock className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => skip.mutate({ id: detail.id, installmentId: it.id })}
@@ -554,6 +626,59 @@ function InvestmentsTab() {
         </div>
       </ConfirmDialog>
 
+      <Modal
+        open={!!rescheduleTarget}
+        onClose={() => setRescheduleTarget(null)}
+        title={`Reschedule installment ${rescheduleTarget?.sequence ?? ''}`}
+        size="sm"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!rescheduleTarget) return;
+            reschedule.mutate({
+              id: rescheduleTarget.investmentId,
+              installmentId: rescheduleTarget.installmentId,
+              payload: {
+                dueDate: rescheduleTarget.dueDate || undefined,
+                amount: Number(rescheduleTarget.amount || 0),
+              },
+            });
+          }}
+          className="space-y-4"
+        >
+          <Field label="Due date" required>
+            <Input
+              type="date"
+              value={rescheduleTarget?.dueDate ?? ''}
+              onChange={(e) =>
+                setRescheduleTarget((t) => (t ? { ...t, dueDate: e.target.value } : t))
+              }
+              required
+            />
+          </Field>
+          <Field label="Amount" hint="Moving a skipped row to a date puts it back on the schedule.">
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              value={rescheduleTarget?.amount ?? ''}
+              onChange={(e) =>
+                setRescheduleTarget((t) => (t ? { ...t, amount: e.target.value } : t))
+              }
+            />
+          </Field>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" onClick={() => setRescheduleTarget(null)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={reschedule.isPending}>
+              Save
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
       <ConfirmDialog
         open={!!closeTarget}
         danger
@@ -599,10 +724,17 @@ function InvestorsTab() {
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [error, setError] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Investor | null>(null);
+  const [statementId, setStatementId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery<Paginated<Investor>>({
     queryKey: ['investments/investors', page, search],
     queryFn: () => apiFetch('/investments/investors' + qs({ page, pageSize: 20, search: search || undefined })),
+  });
+
+  const { data: statement, isLoading: statementLoading } = useQuery<InvestorStatement>({
+    queryKey: ['investments/investors', 'statement', statementId],
+    queryFn: () => apiFetch(`/investments/investors/${statementId}/statement`),
+    enabled: !!statementId,
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['investments/investors'] });
@@ -698,7 +830,7 @@ function InvestorsTab() {
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
           <div className="relative max-w-xs flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search name / code / phone…" className="pl-9" />
+            <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search name / code / phoneâ€¦" className="pl-9" />
           </div>
           {canCreate && (
             <Button className="ml-auto" onClick={openCreate}>
@@ -714,7 +846,7 @@ function InvestorsTab() {
             { key: 'phone', header: 'Phone', render: (r) => <span className="text-slate-600">{r.phone ?? '-'}</span> },
             { key: 'mainAccount', header: 'Account', render: (r) => (
               <span className="font-mono text-xs text-slate-500">
-                {r.mainAccount ? `${r.mainAccount.code} · ${r.mainAccount.name}` : '-'}
+                {r.mainAccount ? `${r.mainAccount.code} Â· ${r.mainAccount.name}` : '-'}
               </span>
             ) },
             { key: 'capitalOutstanding', header: 'Capital owed', align: 'right', render: (r) => <span className="tabular-nums font-medium text-teal-700">{money(r.capitalOutstanding ?? 0)}</span> },
@@ -725,6 +857,9 @@ function InvestorsTab() {
               header: 'Actions',
               render: (r) => (
                 <div className="flex items-center gap-0.5">
+                  <button onClick={() => setStatementId(r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-blue-50 hover:text-blue-700" title="Statement">
+                    <FileText className="h-4 w-4" />
+                  </button>
                   {canUpdate && (
                     <button onClick={() => startEdit(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-amber-50 hover:text-amber-700" title="Edit">
                       <Edit3 className="h-4 w-4" />
@@ -798,6 +933,131 @@ function InvestorsTab() {
         </form>
       </Modal>
 
+      <Modal
+        open={!!statementId}
+        onClose={() => setStatementId(null)}
+        title={statement ? `Statement - ${statement.investor.name}` : 'Investor statement'}
+        size="xl"
+      >
+        {statementLoading || !statement ? null : (
+          <div>
+            <div className="mb-3 flex flex-wrap justify-end gap-2 print:hidden">
+              <Button variant="outline" size="md" onClick={() => printElement('investor-statement', 'Investor Statement')}>
+                <Printer className="h-4 w-4" /> Print
+              </Button>
+              <Button
+                variant="outline"
+                size="md"
+                onClick={() =>
+                  downloadTablePDF('investor-statement', `statement-${statement.investor.code}`, 'Investor Statement')
+                }
+              >
+                <FileDown className="h-4 w-4" /> PDF
+              </Button>
+            </div>
+
+            <div id="investor-statement" className="rounded-lg bg-white p-1">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">{statement.investor.name}</h3>
+                  <p className="text-xs text-slate-500">
+                    {statement.investor.code}
+                    {statement.investor.phone ? ` · ${statement.investor.phone}` : ''}
+                    {statement.investor.cnic ? ` · CNIC ${statement.investor.cnic}` : ''}
+                  </p>
+                  {statement.investor.mainAccount && (
+                    <p className="text-xs text-slate-500">
+                      Ledger: {statement.investor.mainAccount.code} · {statement.investor.mainAccount.name}
+                    </p>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500">
+                  {statement.from || statement.to
+                    ? `${statement.from ?? 'Start'} to ${statement.to ?? 'Today'}`
+                    : 'All transactions'}
+                </p>
+              </div>
+
+              <div className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                <Fact label="Capital received" value={money(statement.totalCapitalReceived)} />
+                <Fact label="Principal returned" value={money(statement.totalPrincipalReturned)} />
+                <Fact label="Capital outstanding" value={money(statement.capitalOutstanding)} />
+                <Fact label="Returns paid" value={money(statement.totalReturnsPaid)} />
+                <Fact label="Active investments" value={String(statement.activeInvestments)} />
+                <Fact label="Closed investments" value={String(statement.closedInvestments)} />
+                <Fact label="Next due" value={statement.nextDueDate ? dateOnly(statement.nextDueDate) : '-'} />
+                <Fact label="Closing capital" value={money(statement.closingCapital)} />
+              </div>
+
+              {statement.investments.length > 0 && (
+                <div className="mb-4 overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                        <th className="px-3 py-2">Investment</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2 text-right">Principal</th>
+                        <th className="px-3 py-2 text-right">Returns paid</th>
+                        <th className="px-3 py-2 text-right">Principal returned</th>
+                        <th className="px-3 py-2 text-right">Outstanding</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {statement.investments.map((inv) => (
+                        <tr key={inv.id} className="border-b border-slate-100">
+                          <td className="px-3 py-2 font-mono text-xs text-slate-600">{inv.number}</td>
+                          <td className="px-3 py-2">
+                            <StatusBadge status={inv.status} />
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-slate-800">{money(inv.principal)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-slate-600">{money(inv.returnsPaid)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-slate-600">{money(inv.principalReturned)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums font-medium text-teal-700">{money(inv.principalOutstanding)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
+                      <th className="px-3 py-2">Date</th>
+                      <th className="px-3 py-2">Investment</th>
+                      <th className="px-3 py-2">Description</th>
+                      <th className="px-3 py-2 text-right">Paid out</th>
+                      <th className="px-3 py-2 text-right">Received</th>
+                      <th className="px-3 py-2 text-right">Capital balance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {statement.rows.map((row, index) => (
+                      <tr key={`${row.reference}-${row.type}-${index}`} className="border-b border-slate-100">
+                        <td className="px-3 py-2 text-slate-600">{row.date}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-slate-600">{row.reference}</td>
+                        <td className="px-3 py-2 text-slate-700">{row.description}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-red-600">{row.debit ? money(row.debit) : ''}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-teal-700">{row.credit ? money(row.credit) : ''}</td>
+                        <td className="px-3 py-2 text-right tabular-nums font-medium text-slate-800">{money(row.balance)}</td>
+                      </tr>
+                    ))}
+                    {statement.rows.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-8 text-center text-slate-400">
+                          No transactions in this period.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       <ConfirmDialog
         open={!!deleteTarget}
         danger
@@ -820,3 +1080,4 @@ function Fact({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+

@@ -157,6 +157,64 @@ describe('SystemService print layout', () => {
   });
 });
 
+describe('SystemService account role validation', () => {
+  function withAccounts(accounts: { id: string; code: string; name: string; accountType: string }[]) {
+    return buildService({ mainAccount: { findMany: vi.fn().mockResolvedValue(accounts) } });
+  }
+
+  it('rejects a cost-of-sales mapping that points at a revenue account', async () => {
+    const { svc } = withAccounts([
+      { id: 'sales', code: 'R1', name: 'Sales', accountType: 'REVENUE' },
+    ]);
+
+    await expect(
+      svc.updateSettings({ values: { 'accounting.cost_of_sales_account': 'sales' } }),
+    ).rejects.toMatchObject({
+      response: {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: expect.stringContaining('must point at an account of type EXPENSE'),
+        },
+      },
+    });
+  });
+
+  it('accepts a mapping to an account of the right type', async () => {
+    const { svc, prisma } = withAccounts([
+      { id: 'cogs', code: 'E1', name: 'Cost of Sales', accountType: 'EXPENSE' },
+    ]);
+
+    await svc.updateSettings({ values: { 'accounting.cost_of_sales_account': 'cogs' } });
+
+    const written = prisma.systemSetting.upsert.mock.calls.map((c) => c[0].create.key);
+    expect(written).toContain('accounting.cost_of_sales_account');
+  });
+
+  it('rejects a payable mapping that points at an asset account', async () => {
+    const { svc } = withAccounts([
+      { id: 'cash', code: 'A1', name: 'Cash', accountType: 'ASSET' },
+    ]);
+
+    await expect(
+      svc.updateSettings({ values: { 'accounting.payable_account': 'cash' } }),
+    ).rejects.toMatchObject({
+      response: {
+        error: { message: expect.stringContaining('Accounts Payable') },
+      },
+    });
+  });
+
+  it('still rejects a mapping that points at no account at all', async () => {
+    const { svc } = withAccounts([]);
+
+    await expect(
+      svc.updateSettings({ values: { 'accounting.cash_account': 'ghost' } }),
+    ).rejects.toMatchObject({
+      response: { error: { message: expect.stringContaining('must point at an existing account') } },
+    });
+  });
+});
+
 describe('SystemService settings still write print layout keys', () => {
   it('keeps the shared settings screen able to set print options', async () => {
     const { svc, prisma } = buildService();

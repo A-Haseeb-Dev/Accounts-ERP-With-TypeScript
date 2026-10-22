@@ -190,3 +190,91 @@ describe('AccountingReportsService orphan guard', () => {
     expect(lookups).toBe(1);
   });
 });
+describe('AccountingReportsService.profitAndLoss', () => {
+  const accounts = [
+    {
+      id: 'sales', code: '04-01', name: 'Sales', accountType: 'REVENUE',
+      openingBalance: 0, status: 'active', subHead: { name: 'Revenue', headAccount: { name: 'Revenue' } },
+    },
+    {
+      id: 'cogs', code: '05-01', name: 'Cost of Sales', accountType: 'EXPENSE',
+      openingBalance: 0, status: 'active', subHead: { name: 'Direct Cost', headAccount: { name: 'Expense' } },
+    },
+    {
+      id: 'idle', code: '05-02', name: 'Office Expense', accountType: 'EXPENSE',
+      openingBalance: 0, status: 'active', subHead: { name: 'Admin', headAccount: { name: 'Expense' } },
+    },
+  ];
+
+  it('nets revenue against expenses and reports the profit', async () => {
+    const { svc } = buildService(accounts, {
+      sales: { _sum: { debit: 150, credit: 1150 } },
+      cogs: { _sum: { debit: 400, credit: 0 } },
+      idle: { _sum: { debit: 0, credit: 0 } },
+    });
+
+    const result = await svc.profitAndLoss({ from: '2026-01-01', to: '2026-12-31' });
+
+    expect(result.totalRevenue).toBe(1000);
+    expect(result.totalExpense).toBe(400);
+    expect(result.netProfit).toBe(600);
+    expect(result.margin).toBe(60);
+    expect(result.revenue.map((r) => r.name)).toEqual(['Sales']);
+    // A zero-movement account is left out rather than shown as a dead row.
+    expect(result.expenses.map((r) => r.name)).toEqual(['Cost of Sales']);
+  });
+
+  it('normalises a refund (debit on a revenue account) as a reduction', async () => {
+    const { svc } = buildService(accounts, {
+      sales: { _sum: { debit: 1200, credit: 1000 } },
+    });
+
+    const result = await svc.profitAndLoss({});
+    expect(result.totalRevenue).toBe(-200);
+    expect(result.netProfit).toBe(-200);
+  });
+});
+
+describe('AccountingReportsService.balanceSheet', () => {
+  const accounts = [
+    {
+      id: 'cash', code: '01-01', name: 'Cash', accountType: 'ASSET',
+      openingBalance: 0, status: 'active', subHead: { name: 'Current Assets', headAccount: { name: 'Assets' } },
+    },
+    {
+      id: 'loan', code: '02-01', name: 'Loan', accountType: 'LIABILITY',
+      openingBalance: 0, status: 'active', subHead: { name: 'Current Liabilities', headAccount: { name: 'Liabilities' } },
+    },
+    {
+      id: 'capital', code: '03-01', name: 'Capital', accountType: 'EQUITY',
+      openingBalance: 0, status: 'active', subHead: { name: 'Equity', headAccount: { name: 'Equity' } },
+    },
+    {
+      id: 'sales', code: '04-01', name: 'Sales', accountType: 'REVENUE',
+      openingBalance: 0, status: 'active', subHead: { name: 'Revenue', headAccount: { name: 'Revenue' } },
+    },
+    {
+      id: 'expense', code: '05-01', name: 'Expense', accountType: 'EXPENSE',
+      openingBalance: 0, status: 'active', subHead: { name: 'Expense', headAccount: { name: 'Expense' } },
+    },
+  ];
+
+  it('adds unclosed profit to equity so the sheet balances', async () => {
+    const { svc } = buildService(accounts, {
+      cash: { _sum: { debit: 1000, credit: 0 } },
+      loan: { _sum: { debit: 0, credit: 300 } },
+      capital: { _sum: { debit: 0, credit: 200 } },
+      sales: { _sum: { debit: 0, credit: 500 } },
+      expense: { _sum: { debit: 0, credit: 0 } },
+    });
+
+    const result = await svc.balanceSheet({ asOf: '2026-12-31' });
+
+    expect(result.totalAssets).toBe(1000);
+    expect(result.totalLiabilities).toBe(300);
+    expect(result.profitForPeriod).toBe(500);
+    expect(result.totalEquity).toBe(700);
+    expect(result.totalLiabilitiesAndEquity).toBe(1000);
+    expect(result.balanced).toBe(true);
+  });
+});

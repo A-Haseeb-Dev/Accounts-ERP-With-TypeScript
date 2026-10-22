@@ -106,6 +106,155 @@ export class InvestorsService {
     };
   }
 
+  /**
+   * A statement for one investor: every rupee in, every return paid out and
+   * every principal returned, with the capital still owed running alongside.
+   * The same data drives the on-screen view and its print/PDF output.
+   */
+  async statement(id: string, query: { from?: string; to?: string }) {
+    const investor = await this.prisma.investor.findUnique({
+      where: { id },
+      include: {
+        mainAccount: { select: { id: true, code: true, name: true } },
+        investments: {
+          include: { installments: true },
+          orderBy: { startDate: 'asc' },
+        },
+      },
+    });
+    if (!investor) throw ApiException.notFound('Investor');
+
+    type Event = {
+      date: Date;
+      type: 'CAPITAL_IN' | 'RETURN' | 'PRINCIPAL';
+      reference: string;
+      description: string;
+      amount: number;
+    };
+    const events: Event[] = [];
+
+    for (const inv of investor.investments) {
+      if (inv.receivedAt) {
+        events.push({
+          date: new Date(inv.receivedAt),
+          type: 'CAPITAL_IN',
+          reference: inv.number,
+          description: 'Capital received',
+          amount: Number(inv.principal),
+        });
+      }
+      for (const inst of inv.installments) {
+        if (inst.status !== 'paid' || !inst.paidAt) continue;
+        events.push({
+          date: new Date(inst.paidAt),
+          type: inst.kind === 'PRINCIPAL' ? 'PRINCIPAL' : 'RETURN',
+          reference: inv.number,
+          description:
+            inst.kind === 'PRINCIPAL'
+              ? 'Principal returned'
+              : `Monthly return${inst.note ? ` - ${inst.note}` : ''}`,
+          amount: Number(inst.amount),
+        });
+      }
+    }
+    events.sort((a, b) => +a.date - +b.date);
+
+    const from = query.from ? new Date(query.from) : null;
+    const to = query.to ? new Date(query.to) : null;
+
+    let openingCapital = 0;
+    for (const e of events) {
+      if (from && e.date < from) openingCapital += capitalDelta(e.type, e.amount);
+    }
+
+    let running = round2(openingCapital);
+    const rows: {
+      date: string;
+      type: string;
+      reference: string;
+      description: string;
+      debit: number;
+      credit: number;
+      balance: number;
+    }[] = [];
+
+    for (const e of events) {
+      if (from && e.date < from) continue;
+      if (to && e.date > to) continue;
+      running = round2(running + capitalDelta(e.type, e.amount));
+      rows.push({
+        date: e.date.toISOString().slice(0, 10),
+        type: e.type,
+        reference: e.reference,
+        description: e.description,
+        debit: e.type === 'CAPITAL_IN' ? 0 : e.amount,
+        credit: e.type === 'CAPITAL_IN' ? e.amount : 0,
+        balance: running,
+      });
+    }
+
+    const allInstallments = investor.investments.flatMap((i) => i.installments);
+    const capitalReceived = investor.investments
+      .filter((i) => i.receivedAt)
+      .reduce((s, i) => s + Number(i.principal), 0);
+    const returnsPaid = allInstallments
+      .filter((i) => i.status === 'paid' && i.kind === 'RETURN')
+      .reduce((s, i) => s + Number(i.amount), 0);
+    const principalReturned = allInstallments
+      .filter((i) => i.status === 'paid' && i.kind === 'PRINCIPAL')
+      .reduce((s, i) => s + Number(i.amount), 0);
+    const pendingReturns = allInstallments.filter(
+      (i) => i.status === 'pending' && i.kind === 'RETURN',
+    );
+    const nextDue = pendingReturns.sort((a, b) => +new Date(a.dueDate) - +new Date(b.dueDate))[0];
+
+    return {
+      investor: {
+        id: investor.id,
+        code: investor.code,
+        name: investor.name,
+        phone: investor.phone,
+        email: investor.email,
+        cnic: investor.cnic,
+        address: investor.address,
+        status: investor.status,
+        mainAccount: investor.mainAccount,
+      },
+      from: query.from ?? null,
+      to: query.to ?? null,
+      openingCapital: round2(openingCapital),
+      closingCapital: round2(running),
+      totalCapitalReceived: round2(capitalReceived),
+      totalReturnsPaid: round2(returnsPaid),
+      totalPrincipalReturned: round2(principalReturned),
+      capitalOutstanding: round2(capitalReceived - principalReturned),
+      activeInvestments: investor.investments.filter((i) => i.status === 'active').length,
+      closedInvestments: investor.investments.filter((i) => i.status === 'closed').length,
+      nextDueDate: nextDue?.dueDate ?? null,
+      investments: investor.investments.map((i) => {
+        const paidReturns = i.installments
+          .filter((x) => x.status === 'paid' && x.kind === 'RETURN')
+          .reduce((s, x) => s + Number(x.amount), 0);
+        const paidPrincipal = i.installments
+          .filter((x) => x.status === 'paid' && x.kind === 'PRINCIPAL')
+          .reduce((s, x) => s + Number(x.amount), 0);
+        return {
+          id: i.id,
+          number: i.number,
+          principal: Number(i.principal),
+          status: i.status,
+          startDate: i.startDate,
+          receivedAt: i.receivedAt,
+          closedAt: i.closedAt,
+          returnsPaid: round2(paidReturns),
+          principalReturned: round2(paidPrincipal),
+          principalOutstanding: round2(Number(i.principal) - paidPrincipal),
+        };
+      }),
+      rows,
+    };
+  }
+
   async create(dto: CreateInvestorDto, actorId?: string) {
     const code = (dto.code ?? '').trim() || (await this.nextInvestorCode());
     const existing = await this.prisma.investor.findFirst({ where: { code } });
@@ -292,4 +441,11 @@ export class InvestorsService {
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+/** How an event moves the capital still owed to the investor. */
+function capitalDelta(type: 'CAPITAL_IN' | 'RETURN' | 'PRINCIPAL', amount: number): number {
+  if (type === 'CAPITAL_IN') return amount;
+  if (type === 'PRINCIPAL') return -amount;
+  return 0;
 }
