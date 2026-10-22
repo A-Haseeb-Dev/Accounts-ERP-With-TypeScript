@@ -213,6 +213,18 @@ export const PERMISSION_CATALOG: {
   { name: 'sales.quotation.print', module: 'sales', action: 'print', description: 'Print quotations' },
   { name: 'sales.quotation.export', module: 'sales', action: 'export', description: 'Export quotations to Excel' },
 
+  // Delivery orders - the physical dispatch of goods to a customer
+  { name: 'sales.delivery-order.view', module: 'sales', action: 'view', description: 'View delivery orders' },
+  { name: 'sales.delivery-order.create', module: 'sales', action: 'create' },
+  { name: 'sales.delivery-order.update', module: 'sales', action: 'update' },
+  { name: 'sales.delivery-order.delete', module: 'sales', action: 'delete' },
+  { name: 'sales.delivery-order.submit', module: 'sales', action: 'submit', description: 'Submit a draft delivery order for approval' },
+  { name: 'sales.delivery-order.post', module: 'sales', action: 'post', description: 'Post a delivery order (goods leave the warehouse)' },
+  { name: 'sales.delivery-order.reject', module: 'sales', action: 'reject', description: 'Reject a submitted delivery order back to draft' },
+  { name: 'sales.delivery-order.cancel', module: 'sales', action: 'cancel' },
+  { name: 'sales.delivery-order.print', module: 'sales', action: 'print', description: 'Print delivery orders' },
+  { name: 'sales.delivery-order.export', module: 'sales', action: 'export', description: 'Export delivery orders to Excel' },
+
   // Reports
   { name: 'reports.accounting.view', module: 'reports', action: 'view', description: 'View accounting reports (trial balance, ledgers, journal)' },
   { name: 'reports.inventory.view', module: 'reports', action: 'view', description: 'View inventory reports (stock, product ledger)' },
@@ -221,6 +233,18 @@ export const PERMISSION_CATALOG: {
   { name: 'reports.hr.view', module: 'reports', action: 'view', description: 'View payroll & HR reports (register, department cost)' },
   { name: 'reports.print', module: 'reports', action: 'print', description: 'Print reports' },
   { name: 'reports.export', module: 'reports', action: 'export', description: 'Export reports' },
+
+  // Investments - money placed with an investor
+  { name: 'investments.view', module: 'investments', action: 'view', description: 'View investments, investors and payouts' },
+  { name: 'investments.investor.create', module: 'investments', action: 'create', description: 'Add an investor' },
+  { name: 'investments.investor.update', module: 'investments', action: 'update', description: 'Edit an investor' },
+  { name: 'investments.investor.delete', module: 'investments', action: 'delete', description: 'Remove an investor' },
+  { name: 'investments.create', module: 'investments', action: 'create', description: 'Record a new investment' },
+  { name: 'investments.update', module: 'investments', action: 'update', description: 'Edit an investment' },
+  { name: 'investments.delete', module: 'investments', action: 'delete', description: 'Remove an investment' },
+  { name: 'investments.receive', module: 'investments', action: 'receive', description: 'Record the money received for an investment' },
+  { name: 'investments.payout', module: 'investments', action: 'payout', description: 'Pay a monthly return to the investor' },
+  { name: 'investments.close', module: 'investments', action: 'close', description: 'Close an investment and return the principal' },
 
   // System
   { name: 'system.branding.manage', module: 'system', action: 'manage', description: 'Manage company branding' },

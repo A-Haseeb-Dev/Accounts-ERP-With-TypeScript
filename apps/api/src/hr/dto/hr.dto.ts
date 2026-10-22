@@ -143,8 +143,27 @@ export class CreateSalaryRecordDto {
   @IsString() @IsOptional() @MaxLength(500) note?: string;
 }
 
+/**
+ * Ends an employee's employment without erasing them.
+ *
+ * The employee is kept, and marked inactive with the leaving date and reason,
+ * so their attendance, leave history and the payroll runs they were part of
+ * stay intact and still add up.
+ */
+export class DeactivateEmployeeDto {
+  @IsDateString() @IsOptional() exitDate?: string;
+  @IsString() @IsOptional() @MaxLength(500) exitReason?: string;
+}
+
 export class DisbursePayrollDto {
   @IsString() @IsOptional() bankAccountId?: string;
+  /**
+   * The account the money actually leaves. Defaults to the run's funding
+   * account, so the pot the operator funded is the pot the salaries come out
+   * of. A bank account may be named instead when the payment goes out of a
+   * different account.
+   */
+  @IsString() @IsOptional() settlementAccountId?: string;
 }
 
 export class CreateLeaveTypeDto {
@@ -199,12 +218,41 @@ export class AttendanceBulkDto {
   records: AttendanceBulkRowDto[];
 }
 
+/**
+ * Edits a single attendance record. The employee and the day cannot change -
+ * only what was recorded about them - so a correction cannot silently move a
+ * record to another person or another date.
+ */
+export class UpdateAttendanceDto {
+  @IsIn(['present', 'absent', 'leave', 'half_day', 'holiday']) @IsOptional() status?: string;
+  @IsNumber() @IsOptional() @Min(0) overtimeHours?: number;
+  @IsString() @IsOptional() @MaxLength(500) note?: string;
+}
+
+/** Clears one whole day of attendance. */
+export class DeleteAttendanceDayDto {
+  @IsDateString() date: string;
+}
+
 export class GeneratePayrollDto {
   @IsInt() @Min(1) periodMonth: number;
   @IsInt() @Min(2000) periodYear: number;
   @IsDateString() @IsOptional() payDate?: string;
   @IsString() @IsOptional() @MaxLength(500) note?: string;
   @IsString() @IsOptional() fundingAccountId?: string;
+  /**
+   * How far the run goes in one operation.
+   *
+   * `draft` only creates the run. `post` also books the accrual against the
+   * employee accounts. `post_and_pay` books the accrual *and* pays it out of
+   * the funding account, in a single transaction - the money is deducted from
+   * the funding account and credited to the employee accounts together, so a
+   * failure cannot leave one half applied.
+   */
+  @IsIn(['draft', 'post', 'post_and_pay']) @IsOptional()
+  mode?: 'draft' | 'post' | 'post_and_pay';
+  /** The account the money is paid out of. Defaults to the funding account. */
+  @IsString() @IsOptional() settlementAccountId?: string;
 }
 
 export class UpdatePayrollItemDto {

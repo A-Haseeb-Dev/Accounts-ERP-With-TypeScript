@@ -21,9 +21,12 @@ import {
   CreateLeaveTypeDto,
   CreateSalaryComponentDto,
   CreateSalaryRecordDto,
+  DeactivateEmployeeDto,
   DecideLeaveDto,
+  DeleteAttendanceDayDto,
   DisbursePayrollDto,
   GeneratePayrollDto,
+  UpdateAttendanceDto,
   UpdateDepartmentDto,
   UpdateDesignationDto,
   UpdateEmployeeDto,
@@ -114,8 +117,15 @@ export class EmployeesController {
   createSalaryRecord(@Param('id') id: string, @Body() dto: CreateSalaryRecordDto, @CurrentUser() actor: any) { return this.salaryComponents.createSalaryRecord({ ...dto, employeeId: id }, actor?.id); }
   @Patch(':id') @Permissions('hr.employees.update') @ApiOperation({ summary: 'Update an employee' })
   update(@Param('id') id: string, @Body() dto: UpdateEmployeeDto, @CurrentUser() actor: any) { return this.service.update(id, dto, actor?.id); }
-  @Delete(':id') @Permissions('hr.employees.delete') @ApiOperation({ summary: 'Delete an employee' })
-  remove(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.remove(id, actor?.id); }
+  @Post(':id/deactivate') @Permissions('hr.employees.delete') @ApiOperation({ summary: 'Deactivate an employee (keeps the history)' })
+  deactivate(@Param('id') id: string, @Body() dto: DeactivateEmployeeDto, @CurrentUser() actor: any) { return this.service.deactivate(id, dto, actor?.id); }
+  @Post(':id/activate') @Permissions('hr.employees.update') @ApiOperation({ summary: 'Reactivate a deactivated employee' })
+  activate(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.activate(id, actor?.id); }
+  @Delete(':id') @Permissions('hr.employees.delete') @ApiOperation({ summary: 'Deactivate an employee, or delete them outright with ?force=true' })
+  remove(@Param('id') id: string, @Query('force') force: string | undefined, @Body() dto: DeactivateEmployeeDto, @CurrentUser() actor: any) {
+    if (force === 'true') return this.service.remove(id, actor?.id);
+    return this.service.deactivate(id, dto, actor?.id);
+  }
 }
 
 @ApiTags('HR - Attendance')
@@ -134,6 +144,10 @@ export class AttendanceController {
   employee(@Param('employeeId') employeeId: string, @Query('page') page = '1', @Query('pageSize') pageSize = '25', @Query('from') from?: string, @Query('to') to?: string) {
     return this.service.findByEmployee(employeeId, { page: Number(page), pageSize: Number(pageSize), from, to });
   }
+  @Patch(':id') @Permissions('hr.attendance.manage') @ApiOperation({ summary: 'Edit one attendance record' })
+  update(@Param('id') id: string, @Body() dto: UpdateAttendanceDto, @CurrentUser() actor: any) { return this.service.update(id, dto, actor?.id); }
+  @Delete('day') @Permissions('hr.attendance.manage') @ApiOperation({ summary: 'Clear one whole day of attendance' })
+  removeDay(@Body() dto: DeleteAttendanceDayDto, @CurrentUser() actor: any) { return this.service.removeDay(dto, actor?.id); }
   @Delete(':id') @Permissions('hr.attendance.manage') @ApiOperation({ summary: 'Delete an attendance record' })
   remove(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.remove(id, actor?.id); }
 }
@@ -206,12 +220,16 @@ export class PayrollController {
   }
   @Get('next-code') @Permissions('hr.payroll.view') @ApiOperation({ summary: 'Next auto-generated payroll number' })
   async nextCode() { const code = await this.service.previewCode(); return code ? { code } : {}; }
+  @Get('funding-accounts') @Permissions('hr.payroll.view') @ApiOperation({ summary: 'Accounts a payroll can be funded from, with their balances' })
+  fundingAccounts() { return this.service.fundingAccounts(); }
   @Get(':id') @Permissions('hr.payroll.view') @ApiOperation({ summary: 'Get a payroll run with items' })
   findOne(@Param('id') id: string) { return this.service.findOne(id); }
   @Get(':id/export') @Permissions('hr.payroll.export') @ApiOperation({ summary: 'Export bank payment file (CSV)' })
   exportBank(@Param('id') id: string) { return this.service.exportBankFile(id); }
   @Patch(':id/items') @Permissions('hr.payroll.update') @ApiOperation({ summary: 'Adjust payroll items (overtime / deductions)' })
   updateItems(@Param('id') id: string, @Body() dto: UpdatePayrollItemsDto, @CurrentUser() actor: any) { return this.service.updateItems(id, dto, actor?.id); }
+  @Post(':id/refresh') @Permissions('hr.payroll.update') @ApiOperation({ summary: 'Recalculate a draft payroll from the live attendance and salary data' })
+  refresh(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.refresh(id, actor?.id); }
   @Post(':id/post') @Permissions('hr.payroll.post') @ApiOperation({ summary: 'Post payroll to accounting' })
   post(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.post(id, actor?.id); }
   @Post(':id/disburse') @Permissions('hr.payroll.disburse') @ApiOperation({ summary: 'Disburse salaries via bank' })

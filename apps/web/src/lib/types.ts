@@ -348,7 +348,52 @@ export interface SaleItem {
   discount: number;
   tax: number;
   lineTotal: number;
+  /** How much of this line has already been dispatched on a delivery order. */
+  deliveredQuantity?: number;
+  /** How much of this line this invoice relieved from the warehouse. */
+  relievedQuantity?: number;
   item?: Item;
+}
+
+export interface DeliveryOrderItem {
+  id: string;
+  deliveryOrderId: string;
+  itemId: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  saleItemId?: string | null;
+  item?: Item;
+}
+
+export interface DeliveryOrder {
+  id: string;
+  number: string;
+  deliveryDate: string;
+  saleId?: string | null;
+  customerId: string;
+  stockLocationId: string;
+  reference?: string | null;
+  deliveryTo?: string | null;
+  vehicleNo?: string | null;
+  driverName?: string | null;
+  driverPhone?: string | null;
+  note?: string | null;
+  subtotal: number;
+  grandTotal: number;
+  status: 'draft' | 'pending' | 'posted' | 'cancelled';
+  /** Whether this order took the goods out of the warehouse itself. */
+  stockRelieved?: boolean;
+  postedAt?: string | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+  rejectReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  customer?: Customer;
+  stockLocation?: StockLocation;
+  sale?: { id: string; number: string; grandTotal: number; status: string } | null;
+  items: DeliveryOrderItem[];
 }
 
 export interface Sale {
@@ -532,7 +577,7 @@ export interface HrLeaveRequest {
 
 export interface AttendanceStatus {
   employee: { id: string; code: string; fullName: string; status: string };
-  attendance?: { id: string; status: string; overtimeHours: number; remarks?: string };
+  attendance?: { id: string; status: string; overtimeHours: number; note?: string | null };
 }
 
 export interface PayrollItem {
@@ -580,12 +625,26 @@ export interface PayrollRun {
   voucherNo?: string;
   fundingAccountId?: string;
   fundingAccountName?: string;
+  /** The account the money actually left from when the run was paid out. */
+  settlementAccountId?: string;
+  settlementAccountName?: string;
+  /** The balance the funding account holds right now, read from the ledger. */
+  fundingBalance?: number | null;
   disbursementVoucherId?: string;
+  disbursementVoucherNo?: string;
   paidAt?: string;
   createdById?: string;
   createdAt: string;
   updatedAt: string;
   items?: PayrollItem[];
+}
+
+export interface PayrollFundingAccount {
+  id: string;
+  code: string;
+  name: string;
+  accountType: string;
+  balance: number;
 }
 
 export interface SalaryComponent {
@@ -656,6 +715,73 @@ export interface PayrollBreakdownItem {
   name: string;
   type: string;
   amount: number;
+}
+
+export interface Investor {
+  id: string;
+  code: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  cnic?: string | null;
+  address?: string | null;
+  mainAccountId?: string | null;
+  openingBalance: number;
+  note?: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  mainAccount?: { id: string; code: string; name: string } | null;
+  /** The capital still owed to this investor. */
+  capitalOutstanding?: number;
+  /** The balance of the investor's own ledger account. */
+  accountBalance?: number;
+  returnsPaid?: number;
+  investments?: Investment[];
+}
+
+export interface InvestmentInstallment {
+  id: string;
+  investmentId: string;
+  sequence: number;
+  kind: 'RETURN' | 'PRINCIPAL';
+  dueDate: string;
+  amount: number;
+  status: 'pending' | 'paid' | 'skipped';
+  paidAt?: string | null;
+  paidVoucherId?: string | null;
+  note?: string | null;
+}
+
+export interface Investment {
+  id: string;
+  number: string;
+  investorId: string;
+  principal: number;
+  startDate: string;
+  termMonths: number;
+  returnType: 'FIXED' | 'PROFIT_SHARE';
+  monthlyReturn: number;
+  profitSharePercent: number;
+  totalReturn: number;
+  status: 'planned' | 'active' | 'matured' | 'closed' | 'cancelled';
+  fundingAccountId?: string | null;
+  capitalAccountId?: string | null;
+  returnExpenseAccountId?: string | null;
+  receivedAt?: string | null;
+  receivedVoucherId?: string | null;
+  closedAt?: string | null;
+  closedVoucherId?: string | null;
+  note?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  investor?: { id: string; code: string; name: string; mainAccountId?: string | null };
+  fundingAccount?: { id: string; code: string; name: string } | null;
+  installments: InvestmentInstallment[];
+  returnsPaid?: number;
+  principalPaid?: number;
+  principalOutstanding?: number;
+  nextDueDate?: string | null;
 }
 
 export interface AuditEntry {

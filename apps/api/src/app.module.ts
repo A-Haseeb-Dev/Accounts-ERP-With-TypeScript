@@ -22,6 +22,7 @@ import { SystemModule } from './system/system.module';
 import { FeaturesModule } from './features/features.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { HrModule } from './hr/hr.module';
+import { InvestmentsModule } from './investments/investments.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { HrModule } from './hr/hr.module';
     FeaturesModule,
     DashboardModule,
     HrModule,
+    InvestmentsModule,
   ],
   providers: [
     {

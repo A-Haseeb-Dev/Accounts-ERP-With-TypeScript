@@ -1,8 +1,8 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
-import { CalendarDays, Save, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { CalendarDays, CheckCheck, Eraser, Save, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/context/auth-context';
 import { Button } from '@/components/ui/button';
@@ -40,6 +40,7 @@ export default function AttendancePage() {
   const [rows, setRows] = useState<DayRow[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; employeeName: string } | null>(null);
+  const [clearDayOpen, setClearDayOpen] = useState(false);
 
   const { data: sheet, isLoading } = useQuery<AttendanceStatus[]>({
     queryKey: ['hr/attendance', 'by-day', date],
@@ -51,19 +52,39 @@ export default function AttendancePage() {
     setRows(
       sheet.map((row) => ({
         employeeId: row.employee.id,
-        status: row.attendance?.status ?? (row.employee.status === 'active' ? 'present' : 'present'),
+        status: row.attendance?.status ?? 'present',
         overtimeHours: Number(row.attendance?.overtimeHours ?? 0),
-        note: row.attendance?.remarks ?? '',
+        note: row.attendance?.note ?? '',
       })),
     );
   };
 
+  // Only the rows the user actually touched are written back. Saving the
+  // whole sheet would rewrite every employee's row, and a record that another
+  // user had already corrected would be stamped over.
+  const dirtyRows = useMemo(() => {
+    if (!sheet) return [];
+    return rows.filter((row) => {
+      const original = sheet.find((s) => s.employee.id === row.employeeId)?.attendance;
+      if (!original) return true;
+      return (
+        original.status !== row.status ||
+        Number(original.overtimeHours) !== Number(row.overtimeHours) ||
+        (original.note ?? '') !== (row.note ?? '')
+      );
+    });
+  }, [rows, sheet]);
+
   const bulkMutation = useMutation({
     mutationFn: (payload: { date: string; records: DayRow[] }) =>
       apiFetch('/hr/attendance/bulk', { method: 'POST', body: JSON.stringify(payload) }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['hr/attendance'] });
-      toast.success('Attendance saved');
+      toast.success(
+        variables.records.length === 1
+          ? 'Attendance saved'
+          : `Attendance saved for ${variables.records.length} employees`,
+      );
       setEditingId(null);
     },
     onError: (e: Error) => toast.error(e.message || 'Save failed'),
@@ -79,7 +100,28 @@ export default function AttendancePage() {
     onError: (e: Error) => toast.error(e.message || 'Delete failed'),
   });
 
+  const clearDayMutation = useMutation({
+    mutationFn: (day: string) =>
+      apiFetch<{ deleted?: number }>('/hr/attendance/day', { method: 'DELETE', body: JSON.stringify({ date: day }) }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['hr/attendance'] });
+      setClearDayOpen(false);
+      setRows([]);
+      setEditingId(null);
+      toast.success(
+        res?.deleted
+          ? `Cleared ${res.deleted} attendance record${res.deleted === 1 ? '' : 's'}`
+          : 'No attendance to clear',
+      );
+    },
+    onError: (e: Error) => toast.error(e.message || 'Clear day failed'),
+  });
+
   const countBy = (s: string) => rows.filter((r) => r.status === s).length;
+
+  const markAllPresent = () => {
+    setRows((prev) => prev.map((r) => ({ ...r, status: 'present' })));
+  };
 
   return (
     <div>
@@ -95,7 +137,8 @@ export default function AttendancePage() {
           ) : (
             <Button
               loading={bulkMutation.isPending}
-              onClick={() => bulkMutation.mutate({ date, records: rows })}
+              disabled={dirtyRows.length === 0}
+              onClick={() => bulkMutation.mutate({ date, records: dirtyRows })}
             >
               <Save className="h-4 w-4" /> Save for {dateOnly(date)}
             </Button>
@@ -104,11 +147,26 @@ export default function AttendancePage() {
       />
 
       <Card>
-        <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
           <CalendarDays className="h-4 w-4 text-slate-400" />
           <Field label="Date" className="min-w-44">
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </Field>
+          {canManage && editingId === date && (
+            <>
+              <Button size="sm" variant="outline" onClick={markAllPresent}>
+                <CheckCheck className="h-4 w-4" /> Mark all present
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setClearDayOpen(true)}>
+                <Eraser className="h-4 w-4" /> Clear this day
+              </Button>
+            </>
+          )}
+          {canManage && editingId !== date && (sheet ?? []).some((r) => r.attendance) && (
+            <Button size="sm" variant="outline" onClick={() => setClearDayOpen(true)}>
+              <Eraser className="h-4 w-4" /> Clear this day
+            </Button>
+          )}
           {rows.length > 0 && (
             <div className="ml-auto flex flex-wrap gap-2 text-xs text-slate-500">
               <span>P: {countBy('present')}</span>
@@ -116,6 +174,9 @@ export default function AttendancePage() {
               <span>L: {countBy('leave')}</span>
               <span>HD: {countBy('half_day')}</span>
               <span>H: {countBy('holiday')}</span>
+              {editingId === date && (
+                <span className="font-medium text-teal-700">{dirtyRows.length} changed</span>
+              )}
             </div>
           )}
         </div>
@@ -129,6 +190,7 @@ export default function AttendancePage() {
                 <th className="px-4 py-3 font-medium">Department</th>
                 {editingId === date && <th className="px-4 py-3 font-medium">Status</th>}
                 {editingId === date && <th className="px-4 py-3 font-medium">Overtime (hrs)</th>}
+                {editingId === date && <th className="px-4 py-3 font-medium">Note</th>}
                 <th className="px-4 py-3 font-medium">Recorded</th>
               </tr>
             </thead>
@@ -179,10 +241,29 @@ export default function AttendancePage() {
                         />
                       </td>
                     )}
+                    {editingId === date && (
+                      <td className="px-4 py-2.5">
+                        <Input
+                          className="w-56"
+                          placeholder="Note"
+                          value={current?.note ?? ''}
+                          onChange={(e) =>
+                            setRows((prev) =>
+                              prev.map((p) =>
+                                p.employeeId === row.employee.id ? { ...p, note: e.target.value } : p,
+                              ),
+                            )
+                          }
+                        />
+                      </td>
+                    )}
                     <td className="px-4 py-2.5">
                       {row.attendance ? (
                         <div className="flex items-center gap-1">
                           <StatusBadge status={row.attendance.status} />
+                          {row.attendance.note && (
+                            <span className="text-xs text-slate-500">{row.attendance.note}</span>
+                          )}
                           {canManage && (
                             <button
                               onClick={() => setDeleteTarget({ id: row.attendance!.id, employeeName: row.employee.fullName })}
@@ -221,6 +302,17 @@ export default function AttendancePage() {
         loading={deleteMutation.isPending}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+      />
+
+      <ConfirmDialog
+        open={clearDayOpen}
+        danger
+        title="Clear this day"
+        message={`Remove every attendance record for ${dateOnly(date)}? The day will then show as not recorded for everyone.`}
+        confirmLabel="Clear day"
+        loading={clearDayMutation.isPending}
+        onCancel={() => setClearDayOpen(false)}
+        onConfirm={() => clearDayMutation.mutate(date)}
       />
     </div>
   );

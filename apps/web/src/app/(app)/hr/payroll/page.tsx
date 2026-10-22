@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useMemo, useState } from 'react';
-import { CheckCircle2, Download, Eye, Plus, Printer, Send, Trash2, XCircle } from 'lucide-react';
+import { CheckCircle2, Download, Eye, Plus, Printer, RefreshCw, Send, Trash2, XCircle } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { useAuth } from '@/context/auth-context';
 import { useFlatOptions } from '@/hooks/use-options';
@@ -17,7 +17,7 @@ import { StatusBadge } from '@/components/ui/badge';
 import { dateOnly, money } from '@/lib/utils';
 import { toast } from 'sonner';
 import type { Column } from '@/components/data-table';
-import type { Paginated, PayrollItem, PayrollRun } from '@/lib/types';
+import type { Paginated, PayrollFundingAccount, PayrollItem, PayrollRun } from '@/lib/types';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -68,8 +68,20 @@ export default function PayrollPage() {
   const canDisburse = can('hr.payroll.disburse');
   const canExport = can('hr.payroll.export');
 
-  const { options: bankOptions } = useFlatOptions('banks');
   const { options: fundingOptions } = useFlatOptions('main-accounts');
+
+  // The funding accounts carry the balance they hold right now, read from
+  // the ledger, so the operator can see before choosing whether an account
+  // can cover the run.
+  const { data: fundingAccounts } = useQuery<PayrollFundingAccount[]>({
+    queryKey: ['hr/payroll', 'funding-accounts'],
+    queryFn: () => apiFetch('/hr/payroll/funding-accounts'),
+  });
+  const fundingBalances = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const a of fundingAccounts ?? []) map.set(a.id, a.balance);
+    return map;
+  }, [fundingAccounts]);
 
   const year = new Date().getFullYear();
   const monthNow = new Date().getMonth() + 1;
@@ -91,7 +103,10 @@ export default function PayrollPage() {
   const [payDate, setPayDate] = useState('');
   const [note, setNote] = useState('');
   const [fundingAccountId, setFundingAccountId] = useState('');
+  const [genMode, setGenMode] = useState<'draft' | 'post' | 'post_and_pay'>('draft');
+  const [settlementAccountId, setSettlementAccountId] = useState('');
   const [genError, setGenError] = useState('');
+  const [refreshTarget, setRefreshTarget] = useState<PayrollRun | null>(null);
 
   const { data: runs, isLoading } = useQuery<Paginated<PayrollRun>>({
     queryKey: ['hr/payroll', page, status],
@@ -130,8 +145,8 @@ export default function PayrollPage() {
   });
 
   const disburseMutation = useMutation({
-    mutationFn: ({ id, bankAccountId }: { id: string; bankAccountId?: string }) =>
-      apiFetch(`/hr/payroll/${id}/disburse`, { method: 'POST', body: JSON.stringify({ bankAccountId: bankAccountId || undefined }) }),
+    mutationFn: ({ id, settlementAccountId }: { id: string; settlementAccountId?: string }) =>
+      apiFetch(`/hr/payroll/${id}/disburse`, { method: 'POST', body: JSON.stringify({ settlementAccountId: settlementAccountId || undefined }) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['hr/payroll'] });
       setDisburseTarget(null);
@@ -151,6 +166,19 @@ export default function PayrollPage() {
     onError: (e: Error) => {
       setGenError(e.message);
       toast.error(e.message || 'Generate failed');
+    },
+  });
+
+  // Recalculates a draft from the live attendance, salary and loan data.
+  const refreshMutation = useMutation({
+    mutationFn: (id: string) => apiFetch(`/hr/payroll/${id}/refresh`, { method: 'POST' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['hr/payroll'] });
+      setRefreshTarget(null);
+      toast.success('Payroll recalculated from live data');
+    },
+    onError: (e: Error) => {
+      toast.error(e.message || 'Refresh failed');
     },
   });
 
@@ -271,6 +299,11 @@ export default function PayrollPage() {
           {canPost && r.status === 'draft' && (
             <button onClick={() => setPostTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-teal-50 hover:text-teal-600" title="Post">
               <Send className="h-4 w-4" />
+            </button>
+          )}
+          {canUpdate && r.status === 'draft' && (
+            <button onClick={() => setRefreshTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-blue-50 hover:text-blue-600" title="Recalculate from live data">
+              <RefreshCw className="h-4 w-4" />
             </button>
           )}
           {canDisburse && r.status === 'posted' && !r.paidAt && (
@@ -402,6 +435,9 @@ export default function PayrollPage() {
               payDate: payDate || undefined,
               note: note || undefined,
               fundingAccountId: fundingAccountId || undefined,
+              mode: genMode,
+              settlementAccountId:
+                genMode === 'post_and_pay' && settlementAccountId ? settlementAccountId : undefined,
             });
           }}
           className="space-y-4"
@@ -428,10 +464,39 @@ export default function PayrollPage() {
             <Select value={fundingAccountId} onChange={(e) => setFundingAccountId(e.target.value)}>
               <option value="">Use configured default</option>
               {fundingOptions.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                  {fundingBalances.has(o.value) ? ` — ${money(fundingBalances.get(o.value) ?? 0)}` : ''}
+                </option>
               ))}
             </Select>
           </Field>
+          <Field
+            label="What should happen"
+            hint="Posting writes the salary expense to accounting. Paying also moves the money out of the funding account."
+          >
+            <Select value={genMode} onChange={(e) => setGenMode(e.target.value as typeof genMode)}>
+              <option value="draft">Save as draft only</option>
+              <option value="post">Post to accounting</option>
+              <option value="post_and_pay">Post and pay the salaries</option>
+            </Select>
+          </Field>
+          {genMode === 'post_and_pay' && (
+            <Field
+              label="Settlement Account"
+              hint="The account the money actually leaves. It is the funding account unless another one is named here."
+            >
+              <Select value={settlementAccountId} onChange={(e) => setSettlementAccountId(e.target.value)}>
+                <option value="">Use the funding account</option>
+                {fundingOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                    {fundingBalances.has(o.value) ? ` — ${money(fundingBalances.get(o.value) ?? 0)}` : ''}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
           <Field label="Note">
             <Textarea value={note} onChange={(e) => setNote(e.target.value)} />
           </Field>
@@ -461,7 +526,16 @@ export default function PayrollPage() {
               )}
               <span className="text-slate-600">Created {dateOnly(detail.createdAt)}</span>
               {detail.fundingAccountName && <span className="text-slate-600">Funded from: {detail.fundingAccountName}</span>}
+              {detail.fundingBalance !== null && detail.fundingBalance !== undefined && (
+                <span className="text-slate-600">Balance: {money(detail.fundingBalance)}</span>
+              )}
+              {detail.settlementAccountName && (
+                <span className="text-slate-600">Paid from: {detail.settlementAccountName}</span>
+              )}
               {detail.voucherNo && <span className="text-slate-600">Voucher: {detail.voucherNo}</span>}
+              {detail.disbursementVoucherNo && (
+                <span className="text-slate-600">Payment voucher: {detail.disbursementVoucherNo}</span>
+              )}
               <div className="ml-auto flex items-center gap-2">
                 {canExport && detail.status !== 'cancelled' && (
                   <Button size="sm" variant="outline" onClick={() => exportMutation.mutate(detail.id)} loading={exportMutation.isPending}>
@@ -557,7 +631,7 @@ export default function PayrollPage() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              disburseMutation.mutate({ id: disburseTarget.id, bankAccountId: disburseBank || undefined });
+              disburseMutation.mutate({ id: disburseTarget.id, settlementAccountId: disburseBank || undefined });
             }}
             className="space-y-4"
           >
@@ -569,11 +643,17 @@ export default function PayrollPage() {
                 Creates a journal entry Dr Salaries Payable / Cr bank, then marks salaries as paid.
               </div>
             </div>
-            <Field label="Bank Account">
+            <Field
+              label="Settlement Account"
+              hint="The account the money leaves. It is the funding account unless another one is named here."
+            >
               <Select value={disburseBank} onChange={(e) => setDisburseBank(e.target.value)}>
-                <option value="">Use default bank</option>
-                {bankOptions.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
+                <option value="">Use the funding account</option>
+                {fundingOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                    {fundingBalances.has(o.value) ? ` — ${money(fundingBalances.get(o.value) ?? 0)}` : ''}
+                  </option>
                 ))}
               </Select>
             </Field>
@@ -595,6 +675,20 @@ export default function PayrollPage() {
         loading={postMutation.isPending}
         onCancel={() => setPostTarget(null)}
         onConfirm={() => postTarget?.id && postMutation.mutate(postTarget.id)}
+      />
+
+      <ConfirmDialog
+        open={!!refreshTarget}
+        title="Recalculate payroll"
+        message={
+          refreshTarget
+            ? `Recalculate ${refreshTarget.number} from the live attendance, salary and loan data? Any manual adjustment saved on this draft is replaced.`
+            : ''
+        }
+        confirmLabel="Recalculate"
+        loading={refreshMutation.isPending}
+        onCancel={() => setRefreshTarget(null)}
+        onConfirm={() => refreshTarget?.id && refreshMutation.mutate(refreshTarget.id)}
       />
 
       <Modal

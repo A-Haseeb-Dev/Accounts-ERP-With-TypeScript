@@ -59,6 +59,9 @@ function buildService(opts: {
       fn({
         item: { findMany: vi.fn(async () => [{ id: 'i-1', averageCost: 40 }]) },
         sale: { update: vi.fn().mockResolvedValue({}) },
+        // The post remembers how much it relieved, so an edit or a deletion
+        // puts back exactly that much.
+        saleItem: { update: vi.fn().mockResolvedValue({}) },
       }),
     ),
   };

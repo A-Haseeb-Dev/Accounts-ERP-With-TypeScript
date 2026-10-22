@@ -36,6 +36,8 @@ const ACCOUNT_ROLES: { key: string; label: string }[] = [
   { key: 'accounting.salary_expense_account', label: 'Salary Expense' },
   { key: 'accounting.commission_expense_account', label: 'Commission Expense' },
   { key: 'accounting.payroll_funding_account', label: 'Payroll Funding Account' },
+  { key: 'accounting.investment_capital_account', label: 'Investment Capital Account' },
+  { key: 'accounting.investment_return_expense_account', label: 'Investment Return Expense' },
 ];
 
 export default function SettingsPage() {
@@ -71,6 +73,9 @@ export default function SettingsPage() {
       salesReturnPrefix: form.salesReturnPrefix || undefined,
       purchaseReturnPrefix: form.purchaseReturnPrefix || undefined,
       stockTransferPrefix: form.stockTransferPrefix || undefined,
+      deliveryOrderPrefix: form.deliveryOrderPrefix || undefined,
+      investorPrefix: form.investorPrefix || undefined,
+      investmentPrefix: form.investmentPrefix || undefined,
       voucherPrefix: form.voucherPrefix || undefined,
       invoiceShowBalance: form.invoiceShowBalance || undefined,
       invoiceShowAmountWords: form.invoiceShowAmountWords || undefined,
@@ -168,6 +173,9 @@ export default function SettingsPage() {
                 <Field label="Sales Return Prefix"><Input value={merged.salesReturnPrefix ?? ''} onChange={(e) => set('salesReturnPrefix', e.target.value)} placeholder="SR" /></Field>
                 <Field label="Purchase Return Prefix"><Input value={merged.purchaseReturnPrefix ?? ''} onChange={(e) => set('purchaseReturnPrefix', e.target.value)} placeholder="PR" /></Field>
                 <Field label="Stock Transfer Prefix"><Input value={merged.stockTransferPrefix ?? ''} onChange={(e) => set('stockTransferPrefix', e.target.value)} placeholder="ST" /></Field>
+                <Field label="Delivery Order Prefix"><Input value={merged.deliveryOrderPrefix ?? ''} onChange={(e) => set('deliveryOrderPrefix', e.target.value)} placeholder="DO" /></Field>
+                <Field label="Investor Prefix"><Input value={merged.investorPrefix ?? ''} onChange={(e) => set('investorPrefix', e.target.value)} placeholder="INV" /></Field>
+                <Field label="Investment Prefix"><Input value={merged.investmentPrefix ?? ''} onChange={(e) => set('investmentPrefix', e.target.value)} placeholder="INV" /></Field>
                 <Field label="Voucher Prefix"><Input value={merged.voucherPrefix ?? ''} onChange={(e) => set('voucherPrefix', e.target.value)} placeholder="JV" /></Field>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-4">

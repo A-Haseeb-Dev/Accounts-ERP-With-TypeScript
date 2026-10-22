@@ -3,7 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { ApiException } from '../../common/exceptions/api.exception';
 import { NumberingService } from '../../common/services/numbering.service';
-import { CreateEmployeeDto, UpdateEmployeeDto } from '../dto/hr.dto';
+import { CreateEmployeeDto, DeactivateEmployeeDto, UpdateEmployeeDto } from '../dto/hr.dto';
 
 @Injectable()
 export class EmployeesService {
@@ -154,6 +154,71 @@ export class EmployeesService {
     return item;
   }
 
+  /**
+   * Ends an employee's employment: the employee is marked inactive with the
+   * leaving date and reason, and kept.
+   *
+   * Deleting the record outright was the wrong behaviour - an employee who
+   * has left is still the employee whose attendance, leave and salary history
+   * the past payroll runs are built from. Deactivating keeps the history and
+   * still takes them out of future payroll runs, because those only pick up
+   * active employees.
+   */
+  async deactivate(id: string, dto: DeactivateEmployeeDto, actorId?: string) {
+    const item = await this.findOne(id);
+    if (item.status !== 'active') {
+      throw ApiException.invalidTransaction(`Employee "${item.fullName}" is already inactive`);
+    }
+    const updated = await this.prisma.employee.update({
+      where: { id },
+      data: {
+        status: 'inactive',
+        exitDate: dto.exitDate ? new Date(dto.exitDate) : new Date(),
+        exitReason: dto.exitReason ?? null,
+      },
+      include: { department: true, designation: true },
+    });
+    this.audit.record({
+      userId: actorId, action: 'UPDATE', module: 'HR', entity: 'Employee',
+      entityId: id,
+      message: `Employee ${item.fullName} (${item.code}) deactivated${dto.exitReason ? ` - ${dto.exitReason}` : ''}`,
+    });
+    return updated;
+  }
+
+  /**
+   * Brings a previously deactivated employee back.
+   *
+   * The exit date and reason are cleared, because the employee is not on
+   * leave any more - leaving them behind would show a leaving employee in
+   * the roster.
+   */
+  async activate(id: string, actorId?: string) {
+    const item = await this.findOne(id);
+    if (item.status === 'active') {
+      throw ApiException.invalidTransaction(`Employee "${item.fullName}" is already active`);
+    }
+    const updated = await this.prisma.employee.update({
+      where: { id },
+      data: { status: 'active', exitDate: null, exitReason: null },
+      include: { department: true, designation: true },
+    });
+    this.audit.record({
+      userId: actorId, action: 'UPDATE', module: 'HR', entity: 'Employee',
+      entityId: id, message: `Employee ${item.fullName} (${item.code}) reactivated`,
+    });
+    return updated;
+  }
+
+  /**
+   * Removes an employee record outright.
+   *
+   * This is the hard delete and it is deliberately not the default: it is
+   * refused while any attendance, leave or payroll history refers to the
+   * employee, because losing that history would leave the old payroll runs
+   * unable to add up. The everyday "this person has left" case is
+   * deactivation.
+   */
   async remove(id: string, actorId?: string) {
     const item = await this.findOne(id);
     const [attendance, leaves, payroll] = await Promise.all([
@@ -165,7 +230,7 @@ export class EmployeesService {
     if (attendance) references.push(`${attendance} attendance record${attendance === 1 ? '' : 's'}`);
     if (leaves) references.push(`${leaves} leave request${leaves === 1 ? '' : 's'}`);
     if (payroll) references.push(`${payroll} payroll item${payroll === 1 ? '' : 's'}`);
-    if (references.length) throw ApiException.deleteBlocked(`Employee "${item.fullName}"`, references);
+    if (references.length) throw ApiException.deleteBlocked('Employee "' + item.fullName + '"', references);
 
     await this.prisma.employee.delete({ where: { id } });
     this.audit.record({

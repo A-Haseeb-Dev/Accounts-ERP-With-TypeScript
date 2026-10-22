@@ -85,28 +85,16 @@ export class PayrollService {
     }
   }
 
-  async generate(dto: GeneratePayrollDto, actorId?: string) {
-    const { periodMonth, periodYear } = dto;
-    if (periodMonth < 1 || periodMonth > 12) {
-      throw ApiException.validation('Period month must be between 1 and 12');
-    }
-    const existing = await this.prisma.payrollRun.findFirst({
-      where: { periodMonth, periodYear, status: { not: 'cancelled' } },
-    });
-    if (existing) {
-      throw ApiException.conflict(
-        `Payroll for ${this.periodLabel(periodMonth, periodYear)} already exists (${existing.number}). Cancel it first or use a different period.`,
-      );
-    }
-
-    const employees = await this.prisma.employee.findMany({
-      where: { status: 'active' },
-      orderBy: { code: 'asc' },
-    });
-    if (employees.length === 0) {
-      throw ApiException.invalidTransaction('No active employees to include in the payroll run');
-    }
-
+  /**
+   * Builds the payroll lines for a period from the live HR data: attendance,
+   * the salary structure, the active salary components and the loan
+   * installments falling due that month.
+   *
+   * This is the one place a payroll line is derived, so generating a run and
+   * recalculating a draft read exactly the same figures - a run cannot
+   * disagree with the attendance and salary it claims to be based on.
+   */
+  private async computeLines(employees: any[], periodMonth: number, periodYear: number) {
     const [components, salaryLinks, loans] = await Promise.all([
       this.prisma.salaryComponent.findMany({ where: { status: 'active' }, orderBy: { sortOrder: 'asc' } }),
       this.prisma.employeeSalaryComponent.findMany({
@@ -170,6 +158,251 @@ export class PayrollService {
         }),
       };
     });
+    return { lines, totalDays };
+  }
+
+  /**
+   * Resolves the account a run's money is actually paid out of.
+   *
+   * The funding account is the default, because that is the pot the operator
+   * filled in order to pay the salaries: the money that leaves must be the
+   * money they set aside. A different account can be named for the cases where
+   * the payment genuinely goes out of a different bank, but then that account
+   * is the one whose balance is checked and reduced.
+   */
+  private async resolveSettlementAccount(
+    funding: { id: string; code: string; name: string } | null,
+    preferredId?: string | null,
+  ) {
+    if (preferredId) {
+      const account = await this.prisma.mainAccount.findFirst({
+        where: { id: preferredId, status: 'active' },
+        select: { id: true, code: true, name: true },
+      });
+      if (!account) {
+        throw ApiException.validation('The selected payroll settlement account was not found or is inactive.');
+      }
+      return account;
+    }
+    if (!funding) {
+      throw ApiException.invalidTransaction(
+        'No payroll funding account is set, so there is no account to pay the salaries from.',
+      );
+    }
+    return funding;
+  }
+
+  /**
+   * Builds the accrual voucher: the salary expense is charged (split by
+   * department where a department has its own expense account) and the net pay
+   * is credited to each employee's own account, with the deductions held back
+   * in the deductions payable account.
+   */
+  private async buildAccrualEntries(
+    run: any,
+    totals: { gross: number; deduction: number; net: number },
+  ) {
+    const salaryExpenseId = await this.defaultAccounts.resolveAccount('accounting.salary_expense_account');
+    const salariesPayableId = await this.defaultAccounts.resolveAccount('accounting.salaries_payable_account');
+    const deductionsPayableId = await this.defaultAccounts.resolveAccount('accounting.payroll_deductions_account');
+    if (!salaryExpenseId || !salariesPayableId || (totals.deduction > 0 && !deductionsPayableId)) {
+      throw ApiException.invalidTransaction(
+        'Salary expense / salaries payable accounts are not configured. Set them in Chart of Accounts defaults before posting payroll.',
+      );
+    }
+
+    // Expense is split per department when the department has its own salary
+    // expense account configured; otherwise it posts to the global default.
+    const expenseAccounts = new Map<string, number>();
+    const accountsById = new Map<string, string>();
+    for (const item of run.items) {
+      const accountId = item.employee.department?.salaryExpenseAccountId ?? salaryExpenseId;
+      accountsById.set(accountId, item.employee.department?.name ?? 'General');
+      expenseAccounts.set(accountId, (expenseAccounts.get(accountId) ?? 0) + Number(item.grossPay));
+    }
+
+    const entries: { mainAccountId: string; debit?: number; credit?: number; narration?: string }[] = [];
+    for (const [accountId, amount] of expenseAccounts) {
+      const rounded = Math.round((amount + Number.EPSILON) * 100) / 100;
+      entries.push({
+        mainAccountId: accountId,
+        debit: rounded,
+        narration: `Salary expense${accountsById.get(accountId) ? ` - ${accountsById.get(accountId)}` : ''}`,
+      });
+    }
+    // Net pay is credited to each employee's own bound account when one is set;
+    // employees without an account roll up to the global salaries payable.
+    const unlinkedNet = run.items.reduce(
+      (s: number, item: any) => (item.employee.mainAccountId ? s : s + Number(item.netPay)),
+      0,
+    );
+    if (unlinkedNet > 0) {
+      entries.push({
+        mainAccountId: salariesPayableId,
+        credit: Math.round((unlinkedNet + Number.EPSILON) * 100) / 100,
+        narration: 'Net salaries payable',
+      });
+    }
+    for (const item of run.items) {
+      if (!item.employee.mainAccountId) continue;
+      entries.push({
+        mainAccountId: item.employee.mainAccountId,
+        credit: Math.round((Number(item.netPay) + Number.EPSILON) * 100) / 100,
+        narration: `Net pay - ${item.employee.fullName}`,
+      });
+    }
+    if (totals.deduction > 0) {
+      entries.push({
+        mainAccountId: deductionsPayableId!,
+        credit: totals.deduction,
+        narration: 'Payroll deductions',
+      });
+    }
+    return entries;
+  }
+
+  /**
+   * Builds the settlement voucher: the employee accounts credited at posting
+   * are cleared, and the money leaves the account it was funded from.
+   */
+  private async buildSettlementEntries(run: any, netAmount: number, settlementAccountId: string) {
+    const salariesPayableId = await this.defaultAccounts.resolveAccount('accounting.salaries_payable_account');
+    if (!salariesPayableId) {
+      throw ApiException.invalidTransaction(
+        'Salaries Payable account is not configured. Set it in Chart of Accounts defaults before disbursing payroll.',
+      );
+    }
+    const entries: { mainAccountId: string; debit?: number; credit?: number; narration?: string }[] = [];
+    // Settle each employee's own bound account first; the rest clears the
+    // global salaries payable account.
+    const unlinkedNet = run.items.reduce(
+      (s: number, item: any) => (item.employee.mainAccountId ? s : s + Number(item.netPay)),
+      0,
+    );
+    if (unlinkedNet > 0) {
+      entries.push({
+        mainAccountId: salariesPayableId,
+        debit: Math.round((unlinkedNet + Number.EPSILON) * 100) / 100,
+        narration: 'Salaries settled',
+      });
+    }
+    for (const item of run.items) {
+      if (!item.employee.mainAccountId) continue;
+      entries.push({
+        mainAccountId: item.employee.mainAccountId,
+        debit: Math.round((Number(item.netPay) + Number.EPSILON) * 100) / 100,
+        narration: `Salary settled - ${item.employee.fullName}`,
+      });
+    }
+    entries.push({
+      mainAccountId: settlementAccountId,
+      credit: round2(netAmount),
+      narration: 'Payroll funding',
+    });
+    return entries;
+  }
+
+  /**
+   * Books a run into the ledger inside a transaction the caller owns.
+   *
+   * `post` writes the accrual, `settle` writes the payment. Both run against
+   * the caller's transaction, so a caller that wants "generate, post and pay"
+   * gets one atomic operation rather than three steps that can half-fail.
+   */
+  private async bookRun(
+    tx: any,
+    run: any,
+    actorId: string | undefined,
+    opts: { post: boolean; settle: boolean; settlementAccountId?: string | null },
+  ) {
+    const totals = this.itemTotals(run.items);
+    const data: Record<string, unknown> = {
+      // Repair the header to match the items, so the stored totals can never
+      // disagree with the voucher that was just booked.
+      totalGross: totals.gross,
+      totalDeduction: totals.deduction,
+      totalNet: totals.net,
+    };
+
+    if (opts.post) {
+      const entries = await this.buildAccrualEntries(run, totals);
+      const number = await this.numbering.next('voucher_journal', 'JV', tx);
+      const voucher = await this.accounting.createVoucher(
+        tx,
+        {
+          voucherType: 'JOURNAL',
+          voucherDate: run.payDate,
+          description: `Payroll for ${this.periodLabel(run.periodMonth, run.periodYear)}`,
+          reference: run.number,
+          entries,
+          createdById: actorId,
+        },
+        number,
+      );
+      await this.accounting.postVoucher(tx, voucher.id, actorId);
+      data.status = 'posted';
+      data.voucherId = voucher.id;
+      data.postedById = actorId ?? null;
+      data.postedAt = new Date();
+    }
+
+    if (opts.settle) {
+      const settlementAccountId = opts.settlementAccountId ?? run.fundingAccountId;
+      if (!settlementAccountId) {
+        throw ApiException.invalidTransaction(
+          'No settlement account is set for this payroll, so there is nowhere to pay the salaries from.',
+        );
+      }
+      const entries = await this.buildSettlementEntries(run, totals.net, settlementAccountId);
+      const number = await this.numbering.next('voucher_journal', 'JV', tx);
+      const voucher = await this.accounting.createVoucher(
+        tx,
+        {
+          voucherType: 'JOURNAL',
+          voucherDate: new Date(),
+          description: `Salary disbursement - ${this.periodLabel(run.periodMonth, run.periodYear)}`,
+          reference: `${run.number}-DISB`,
+          entries,
+          createdById: actorId,
+        },
+        number,
+      );
+      await this.accounting.postVoucher(tx, voucher.id, actorId);
+      data.paidAt = new Date();
+      data.disbursementVoucherId = voucher.id;
+      data.settlementAccountId = settlementAccountId;
+    }
+
+    return tx.payrollRun.update({
+      where: { id: run.id },
+      data,
+      include: { items: { include: { employee: true } } },
+    });
+  }
+
+  async generate(dto: GeneratePayrollDto, actorId?: string) {
+    const { periodMonth, periodYear } = dto;
+    if (periodMonth < 1 || periodMonth > 12) {
+      throw ApiException.validation('Period month must be between 1 and 12');
+    }
+    const existing = await this.prisma.payrollRun.findFirst({
+      where: { periodMonth, periodYear, status: { not: 'cancelled' } },
+    });
+    if (existing) {
+      throw ApiException.conflict(
+        `Payroll for ${this.periodLabel(periodMonth, periodYear)} already exists (${existing.number}). Cancel it first or use a different period.`,
+      );
+    }
+
+    const employees = await this.prisma.employee.findMany({
+      where: { status: 'active' },
+      orderBy: { code: 'asc' },
+    });
+    if (employees.length === 0) {
+      throw ApiException.invalidTransaction('No active employees to include in the payroll run');
+    }
+
+    const { lines } = await this.computeLines(employees, periodMonth, periodYear);
 
     const totalNet = round2(lines.reduce((sum, l) => sum + l.netPay, 0));
     const funding = await this.resolveFundingAccount(dto.fundingAccountId);
@@ -179,6 +412,16 @@ export class PayrollService {
       );
     }
     await this.assertFundingBalance(funding, totalNet);
+
+    const mode = dto.mode ?? 'draft';
+    // When the run is also paid out, the money leaves the settlement account -
+    // the funding account unless another one was named - so that account is
+    // checked for the balance as well, before anything is written.
+    let settlement: { id: string; code: string; name: string } | null = null;
+    if (mode === 'post_and_pay') {
+      settlement = await this.resolveSettlementAccount(funding, dto.settlementAccountId);
+      await this.assertFundingBalance(settlement, totalNet);
+    }
 
     const run = await this.prisma.$transaction(async (tx) => {
       const number = await this.numbering.next('payroll', 'PAY', tx, 4, { year: false });
@@ -208,12 +451,28 @@ export class PayrollService {
           items: { include: { employee: { include: { department: true, designation: true } } } },
         },
       });
-      return saved!;
+      if (mode === 'draft') return saved!;
+
+      // Generating, posting and paying happen in this one transaction: the
+      // accrual, the payment out of the funding account and the run itself
+      // either all land or none of them do. A run that is paid can never be
+      // left sitting in the books as a posted-but-unpaid salary.
+      return this.bookRun(tx, saved!, actorId, {
+        post: true,
+        settle: mode === 'post_and_pay',
+        settlementAccountId: settlement?.id ?? null,
+      });
     });
 
     this.audit.record({
       userId: actorId, action: 'CREATE', module: 'HR', entity: 'Payroll',
-      entityId: run.id, message: `Payroll ${run.number} generated for ${this.periodLabel(periodMonth, periodYear)}`,
+      entityId: run.id,
+      message:
+        mode === 'post_and_pay'
+          ? `Payroll ${run.number} generated, posted and paid for ${this.periodLabel(periodMonth, periodYear)}`
+          : mode === 'post'
+            ? `Payroll ${run.number} generated and posted for ${this.periodLabel(periodMonth, periodYear)}`
+            : `Payroll ${run.number} generated for ${this.periodLabel(periodMonth, periodYear)}`,
     });
     return run;
   }
@@ -273,6 +532,7 @@ export class PayrollService {
       where: { id },
       include: {
         fundingAccount: { select: { id: true, code: true, name: true } },
+        settlementAccount: { select: { id: true, code: true, name: true } },
         items: {
           include: { employee: { include: { department: true, designation: true } } },
           orderBy: { employee: { code: 'asc' } },
@@ -280,19 +540,49 @@ export class PayrollService {
       },
     });
     if (!item) throw ApiException.notFound('Payroll run');
-    let voucherNo: string | null = null;
-    if (item.voucherId) {
-      const voucher = await this.prisma.voucher.findUnique({
-        where: { id: item.voucherId },
-        select: { number: true },
-      });
-      voucherNo = voucher?.number ?? null;
-    }
+    const [voucherNo, disbursementVoucherNo, fundingBalance] = await Promise.all([
+      item.voucherId
+        ? this.prisma.voucher.findUnique({ where: { id: item.voucherId }, select: { number: true } })
+        : Promise.resolve(null),
+      item.disbursementVoucherId
+        ? this.prisma.voucher.findUnique({ where: { id: item.disbursementVoucherId }, select: { number: true } })
+        : Promise.resolve(null),
+      item.fundingAccountId
+        ? this.accounting.accountBalance(item.fundingAccountId)
+        : Promise.resolve(null),
+    ]);
     return {
       ...item,
       periodLabel: this.periodLabel(item.periodMonth, item.periodYear),
-      voucherNo,
+      voucherNo: voucherNo?.number ?? null,
+      disbursementVoucherNo: disbursementVoucherNo?.number ?? null,
+      fundingBalance: fundingBalance === null ? null : round2(fundingBalance),
     };
+  }
+
+  /**
+   * The accounts a payroll can be funded from, each with the balance it
+   * currently holds.
+   *
+   * The Generate Payroll form shows these so the operator can see, before
+   * choosing, whether the account they have in mind can actually cover the
+   * run - and the balance is read from the ledger, not from a stored figure
+   * that may be stale.
+   */
+  async fundingAccounts() {
+    const accounts = await this.prisma.mainAccount.findMany({
+      where: { status: 'active' },
+      select: { id: true, code: true, name: true, accountType: true },
+      orderBy: { code: 'asc' },
+    });
+    const balances = await this.accounting.accountBalances(accounts.map((a) => a.id));
+    return accounts.map((a) => ({
+      id: a.id,
+      code: a.code,
+      name: a.name,
+      accountType: a.accountType,
+      balance: round2(balances.get(a.id) ?? 0),
+    }));
   }
 
   private async assertDraft(id: string) {
@@ -317,6 +607,23 @@ export class PayrollService {
     };
   }
 
+  /**
+   * The configured EARNING components on a stored line, excluding the three
+   * the gross is rebuilt from (basic, allowance and overtime).
+   *
+   * Rebuilding gross from those three alone used to drop every configured
+   * earning - a transport allowance, a housing allowance - the moment somebody
+   * edited an employee's overtime, quietly paying that employee less.
+   */
+  private earningComponentsAmount(item: any) {
+    const breakdown = Array.isArray(item.componentBreakdown) ? item.componentBreakdown : [];
+    return round2(
+      breakdown
+        .filter((b: any) => b.type === 'EARNING' && !['Basic', 'Allowance', 'Overtime'].includes(b.name))
+        .reduce((sum: number, b: any) => sum + Number(b.amount ?? 0), 0),
+    );
+  }
+
   async updateItems(id: string, dto: UpdatePayrollItemsDto, actorId?: string) {
     const run = await this.assertDraft(id);
     const existing = new Map(run.items.map((i) => [i.id, i]));
@@ -332,7 +639,8 @@ export class PayrollService {
       const overtimeAmount = Math.round((overtimeHours * hourlyRate + Number.EPSILON) * 100) / 100;
       const otherDeduction = change.otherDeduction ?? Number(item.otherDeduction);
       const taxDeduction = change.taxDeduction ?? Number(item.taxDeduction);
-      const grossPay = Math.round((basic + allowance + overtimeAmount + Number.EPSILON) * 100) / 100;
+      const earningsTotal = this.earningComponentsAmount(item);
+      const grossPay = Math.round((basic + allowance + overtimeAmount + earningsTotal + Number.EPSILON) * 100) / 100;
       const totalDeduction = Math.round(
         (Number(item.absentDeduction) + otherDeduction + taxDeduction + Number.EPSILON) * 100,
       ) / 100;
@@ -384,6 +692,91 @@ export class PayrollService {
     return updatedRun;
   }
 
+  /**
+   * Recalculates a draft run from the live HR data.
+   *
+   * Attendance, the salary structure, the active salary components and the
+   * loan installments are the source of truth: a run generated before a
+   * correction to any of them would otherwise keep the old figures. Manual
+   * adjustments on the draft are replaced by this - it is a recalculation,
+   * not a merge - so the operator is told exactly what it does before calling
+   * it.
+   */
+  async refresh(id: string, actorId?: string) {
+    const run = await this.assertDraft(id);
+    const employees = await this.prisma.employee.findMany({
+      where: { status: 'active' },
+      orderBy: { code: 'asc' },
+    });
+    if (employees.length === 0) {
+      throw ApiException.invalidTransaction('No active employees to include in the payroll run');
+    }
+
+    const { lines } = await this.computeLines(employees, run.periodMonth, run.periodYear);
+    const existingByEmployee = new Map(run.items.map((i) => [i.employeeId, i]));
+    // The tax deduction is not derivable from attendance, it is the operator's
+    // own figure, so a recalculation keeps it.
+    const taxByEmployee = new Map(run.items.map((i) => [i.employeeId, Number(i.taxDeduction ?? 0)]));
+
+    const refreshed = await this.prisma.$transaction(async (tx) => {
+      for (const line of lines) {
+        const taxDeduction = taxByEmployee.get(line.employeeId) ?? 0;
+        const totalDeduction = round2(line.absentDeduction + line.otherDeduction + taxDeduction);
+        const netPay = round2(line.grossPay - totalDeduction);
+        const data = {
+          basic: line.basic,
+          allowance: line.allowance,
+          overtimeHours: line.overtimeHours,
+          overtimeAmount: line.overtimeAmount,
+          absentDays: line.absentDays,
+          absentDeduction: line.absentDeduction,
+          otherDeduction: line.otherDeduction,
+          taxDeduction,
+          grossPay: line.grossPay,
+          totalDeduction,
+          netPay,
+          componentBreakdown: line.componentBreakdown.map((b) => ({
+            name: b.name,
+            type: b.type,
+            amount: b.amount,
+          })),
+        };
+        const existing = existingByEmployee.get(line.employeeId);
+        if (existing) {
+          await tx.payrollItem.update({ where: { id: existing.id }, data });
+        } else {
+          // Somebody joined after the run was generated; the run should cover
+          // the roster as it stands now.
+          await tx.payrollItem.create({ data: { ...data, employeeId: line.employeeId, payrollRunId: id } });
+        }
+      }
+      const totals = await tx.payrollItem.aggregate({
+        where: { payrollRunId: id },
+        _sum: { grossPay: true, totalDeduction: true, netPay: true },
+      });
+      return tx.payrollRun.update({
+        where: { id },
+        data: {
+          totalGross: round2(Number(totals._sum.grossPay ?? 0)),
+          totalDeduction: round2(Number(totals._sum.totalDeduction ?? 0)),
+          totalNet: round2(Number(totals._sum.netPay ?? 0)),
+        },
+        include: {
+          items: {
+            include: { employee: { include: { department: true, designation: true } } },
+            orderBy: { employee: { code: 'asc' } },
+          },
+        },
+      });
+    });
+
+    this.audit.record({
+      userId: actorId, action: 'UPDATE', module: 'HR', entity: 'Payroll',
+      entityId: id, message: `Payroll ${run.number} recalculated from live attendance and salary data`,
+    });
+    return refreshed;
+  }
+
   async post(id: string, actorId?: string) {
     const run = await this.findOne(id);
     if (run.status !== 'draft') {
@@ -402,94 +795,9 @@ export class PayrollService {
     }
     await this.assertFundingBalance(funding, totals.net);
 
-    const salaryExpenseId = await this.defaultAccounts.resolveAccount('accounting.salary_expense_account');
-    const salariesPayableId = await this.defaultAccounts.resolveAccount('accounting.salaries_payable_account');
-    const deductionsPayableId = await this.defaultAccounts.resolveAccount('accounting.payroll_deductions_account');
-    if (!salaryExpenseId || !salariesPayableId || (totals.deduction > 0 && !deductionsPayableId)) {
-      throw ApiException.invalidTransaction(
-        'Salary expense / salaries payable accounts are not configured. Set them in Chart of Accounts defaults before posting payroll.',
-      );
-    }
-
-    // Expense is split per department when the department has its own salary
-    // expense account configured; otherwise it posts to the global default.
-    const expenseAccounts = new Map<string, number>();
-    const accountsById = new Map<string, string>();
-    for (const item of run.items) {
-      const accountId = item.employee.department?.salaryExpenseAccountId ?? salaryExpenseId;
-      accountsById.set(accountId, item.employee.department?.name ?? 'General');
-      expenseAccounts.set(accountId, (expenseAccounts.get(accountId) ?? 0) + Number(item.grossPay));
-    }
-
-    const entries: { mainAccountId: string; debit?: number; credit?: number; narration?: string }[] = [];
-    for (const [accountId, amount] of expenseAccounts) {
-      const rounded = Math.round((amount + Number.EPSILON) * 100) / 100;
-      entries.push({
-        mainAccountId: accountId,
-        debit: rounded,
-        narration: `Salary expense${accountsById.get(accountId) ? ` - ${accountsById.get(accountId)}` : ''}`,
-      });
-    }
-    // Net pay is credited to each employee's own bound account when one is set;
-    // employees without an account roll up to the global salaries payable.
-    const unlinkedNet = run.items.reduce(
-      (s, item) => (item.employee.mainAccountId ? s : s + Number(item.netPay)),
-      0,
+    const posted = await this.prisma.$transaction(async (tx) =>
+      this.bookRun(tx, run, actorId, { post: true, settle: false }),
     );
-    if (unlinkedNet > 0) {
-      entries.push({
-        mainAccountId: salariesPayableId,
-        credit: Math.round((unlinkedNet + Number.EPSILON) * 100) / 100,
-        narration: 'Net salaries payable',
-      });
-    }
-    for (const item of run.items) {
-      if (!item.employee.mainAccountId) continue;
-      entries.push({
-        mainAccountId: item.employee.mainAccountId,
-        credit: Math.round((Number(item.netPay) + Number.EPSILON) * 100) / 100,
-        narration: `Net pay - ${item.employee.fullName}`,
-      });
-    }
-    if (totals.deduction > 0) {
-      entries.push({
-        mainAccountId: deductionsPayableId!,
-        credit: totals.deduction,
-        narration: 'Payroll deductions',
-      });
-    }
-
-    const posted = await this.prisma.$transaction(async (tx) => {
-      const number = await this.numbering.next('voucher_journal', 'JV', tx);
-      const voucher = await this.accounting.createVoucher(
-        tx,
-        {
-          voucherType: 'JOURNAL',
-          voucherDate: run.payDate,
-          description: `Payroll for ${run.periodLabel}`,
-          reference: run.number,
-          entries,
-          createdById: actorId,
-        },
-        number,
-      );
-      await this.accounting.postVoucher(tx, voucher.id, actorId);
-      return tx.payrollRun.update({
-        where: { id },
-        data: {
-          status: 'posted',
-          voucherId: voucher.id,
-          postedById: actorId ?? null,
-          postedAt: new Date(),
-          // Repair the header to match the voucher that was just booked, so the
-          // stored totals can never disagree with the posted voucher.
-          totalGross: totals.gross,
-          totalDeduction: totals.deduction,
-          totalNet: totals.net,
-        },
-        include: { items: { include: { employee: true } } },
-      });
-    });
 
     this.audit.record({
       userId: actorId, action: 'POST', module: 'HR', entity: 'Payroll',
@@ -507,95 +815,40 @@ export class PayrollService {
       throw ApiException.invalidTransaction('This payroll has already been disbursed');
     }
 
-    let bankMainAccountId: string | null = null;
-    let bankName = '';
-    if (dto.bankAccountId) {
+    // The money leaves the account it was funded from. A bank account may be
+    // named instead, which is the case where the salary is paid out of a
+    // different account than the one the run was funded from.
+    const funding = await this.resolveFundingAccount(run.fundingAccountId);
+    let settlementId = dto.settlementAccountId ?? null;
+    let settlementName = '';
+    if (!settlementId && dto.bankAccountId) {
       const bank = await this.prisma.bankAccount.findUnique({
         where: { id: dto.bankAccountId },
         include: { mainAccount: true },
       });
-      bankMainAccountId = bank?.mainAccountId ?? null;
-      bankName = bank?.name ?? '';
-    } else {
-      const bank = await this.prisma.bankAccount.findFirst({
-        where: { mainAccountId: { not: null }, status: 'active' },
-        orderBy: { updatedAt: 'desc' },
-        include: { mainAccount: true },
-      });
-      bankMainAccountId = bank?.mainAccountId ?? null;
-      bankName = bank?.name ?? '';
+      if (!bank?.mainAccountId) {
+        throw ApiException.invalidTransaction(
+          'The selected bank account is not linked to a chart-of-accounts entry. Link one in Accounts > Banks first.',
+        );
+      }
+      settlementId = bank.mainAccountId;
+      settlementName = bank.name;
     }
-    if (!bankMainAccountId) {
-      throw ApiException.invalidTransaction(
-        'No bank account is linked to a chart-of-accounts entry. Link one in Accounts > Banks first.',
-      );
-    }
-
-    const salariesPayableId = await this.defaultAccounts.resolveAccount('accounting.salaries_payable_account');
-    if (!salariesPayableId) {
-      throw ApiException.invalidTransaction(
-        'Salaries Payable account is not configured. Set it in Chart of Accounts defaults before disbursing payroll.',
-      );
-    }
+    const settlement = await this.resolveSettlementAccount(funding, settlementId);
+    settlementName = settlementName || `${settlement.code} · ${settlement.name}`;
 
     // The disbursement clears exactly what posting credited, so it uses the
     // same item-derived net rather than a possibly-drifted header total.
     const netAmount = this.itemTotals(run.items).net;
-    const paid = await this.prisma.$transaction(async (tx) => {
-      const number = await this.numbering.next('voucher_journal', 'JV', tx);
-      const settlementEntries: { mainAccountId: string; debit?: number; credit?: number; narration?: string }[] = [];
-      // Settle each employee's own bound account first; the rest clears the
-      // global salaries payable account.
-      const unlinkedNet = run.items.reduce(
-        (s, item) => (item.employee.mainAccountId ? s : s + Number(item.netPay)),
-        0,
-      );
-      if (unlinkedNet > 0) {
-        settlementEntries.push({
-          mainAccountId: salariesPayableId,
-          debit: Math.round((unlinkedNet + Number.EPSILON) * 100) / 100,
-          narration: 'Salaries settled',
-        });
-      }
-      for (const item of run.items) {
-        if (!item.employee.mainAccountId) continue;
-        settlementEntries.push({
-          mainAccountId: item.employee.mainAccountId,
-          debit: Math.round((Number(item.netPay) + Number.EPSILON) * 100) / 100,
-          narration: `Salary settled - ${item.employee.fullName}`,
-        });
-      }
-      settlementEntries.push({
-        mainAccountId: bankMainAccountId!,
-        credit: netAmount,
-        narration: 'Bank transfer',
-      });
-      const voucher = await this.accounting.createVoucher(
-        tx,
-        {
-          voucherType: 'JOURNAL',
-          voucherDate: new Date(),
-          description: `Salary disbursement - ${run.periodLabel}`,
-          reference: `${run.number}-DISB`,
-          entries: settlementEntries,
-          createdById: actorId,
-        },
-        number,
-      );
-      await this.accounting.postVoucher(tx, voucher.id, actorId);
-      return tx.payrollRun.update({
-        where: { id },
-        data: {
-          paidAt: new Date(),
-          disbursementVoucherId: voucher.id,
-          note: run.note,
-        },
-      });
-    });
+    await this.assertFundingBalance(settlement, netAmount);
+
+    const paid = await this.prisma.$transaction(async (tx) =>
+      this.bookRun(tx, run, actorId, { post: false, settle: true, settlementAccountId: settlement.id }),
+    );
 
     this.audit.record({
       userId: actorId, action: 'POST', module: 'HR', entity: 'Payroll',
-      entityId: id, message: `Payroll ${run.number} disbursed${bankName ? ` via ${bankName}` : ''} (voucher ${paid.disbursementVoucherId})`,
+      entityId: id, message: `Payroll ${run.number} disbursed from ${settlementName} (voucher ${paid.disbursementVoucherId})`,
     });
     return paid;
   }
@@ -695,6 +948,11 @@ export class PayrollService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      // The disbursement is reversed first: the money has to come back into
+      // the funding account before the accrual that created it is undone.
+      if (run.disbursementVoucherId) {
+        await this.accounting.cancelVoucher(tx, run.disbursementVoucherId, `Payroll cancelled: ${reason}`, actorId);
+      }
       if (run.voucherId) {
         await this.accounting.cancelVoucher(tx, run.voucherId, `Payroll cancelled: ${reason}`, actorId);
       }

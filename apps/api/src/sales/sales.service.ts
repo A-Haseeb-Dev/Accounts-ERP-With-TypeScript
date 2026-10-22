@@ -186,15 +186,22 @@ export class SalesService {
 
       let costOfGoodsSold = 0;
       for (const line of sale.items) {
+        // A delivery order raised before this invoice was posted has already
+        // taken its share of the goods out of the warehouse, so the invoice
+        // relieves only what is left. Relieving the full quantity as well
+        // would leave the inventory short by the dispatched amount.
+        const dispatched = Number(line.deliveredQuantity ?? 0);
+        const toRelieve = round2(Number(line.quantity) - dispatched);
+        if (toRelieve <= 0) continue;
         const unitCost = costByItem.get(line.itemId) ?? 0;
-        costOfGoodsSold = round2(costOfGoodsSold + Number(line.quantity) * unitCost);
+        costOfGoodsSold = round2(costOfGoodsSold + toRelieve * unitCost);
         try {
           await this.inventory.recordOut(
             tx,
             {
               itemId: line.itemId,
               locationId: sale.stockLocationId,
-              quantity: Number(line.quantity),
+              quantity: toRelieve,
               transactionType: 'SALE',
               referenceType: 'Sale',
               referenceId: sale.id,
@@ -210,11 +217,17 @@ export class SalesService {
             throw ApiException.insufficientStock(
               item?.name ?? line.itemId,
               available,
-              Number(line.quantity),
+              toRelieve,
             );
           }
           throw err;
         }
+        // Remember what this invoice relieved, so an edit or a deletion puts
+        // back exactly that much and not the whole line.
+        await tx.saleItem.update({
+          where: { id: line.id },
+          data: { relievedQuantity: toRelieve },
+        });
       }
 
       // 2. Accounting: Dr Customer/Receivable, Cr Sales Revenue (+ tax payable).
@@ -425,6 +438,20 @@ export class SalesService {
       if (wasPosted) {
         await this.reversePostedEffects(tx, sale, actorId, 'edited');
       }
+      // The lines are rebuilt from scratch below, so what each old line had
+      // already dispatched and relieved is carried over to its replacement.
+      // The delivery orders that settled those lines are re-pointed at the
+      // new lines, so a part-delivered invoice stays part-delivered.
+      const oldLines = [...sale.items];
+      const carried = new Map<string, { delivered: number; relieved: number }[]>();
+      for (const line of oldLines) {
+        const list = carried.get(line.itemId) ?? [];
+        list.push({
+          delivered: Number(line.deliveredQuantity ?? 0),
+          relieved: Number(line.relievedQuantity ?? 0),
+        });
+        carried.set(line.itemId, list);
+      }
       await tx.saleItem.deleteMany({ where: { saleId: id } });
       const saved = await tx.sale.update({
         where: { id },
@@ -459,10 +486,41 @@ export class SalesService {
         include: { items: true, customer: true, stockLocation: true },
       });
 
+      // Pair each new line with the old line it replaces (same item, in the
+      // order they were entered) and move the dispatch history onto it.
+      const used = new Set<string>();
+      for (const newLine of saved.items) {
+        const candidates = carried.get(newLine.itemId) ?? [];
+        const oldLine = oldLines.find(
+          (l) => l.itemId === newLine.itemId && !used.has(l.id),
+        );
+        if (!oldLine) continue;
+        used.add(oldLine.id);
+        const history = candidates.shift() ?? { delivered: 0, relieved: 0 };
+        await tx.saleItem.update({
+          where: { id: newLine.id },
+          data: {
+            deliveredQuantity: history.delivered,
+            relievedQuantity: history.relieved,
+          },
+        });
+        await tx.deliveryOrderItem.updateMany({
+          where: { saleItemId: oldLine.id },
+          data: { saleItemId: newLine.id },
+        });
+      }
+
       // Re-post inside the same transaction as the reversal above, so a failure
       // here rolls the reversal back instead of stranding the invoice half
-      // reversed. `saved` carries the corrected header and lines.
-      return wasPosted ? this.post(id, actorId, { tx, sale: saved }) : saved;
+      // reversed. The lines are re-read first: the posting works out what is
+      // left to relieve from the dispatch history, and the history was just
+      // moved onto the new lines.
+      if (!wasPosted) return saved;
+      const reloaded = await tx.sale.findUnique({
+        where: { id },
+        include: { items: true, customer: true, stockLocation: true },
+      });
+      return this.post(id, actorId, { tx, sale: reloaded });
     });
 
     this.audit.record({
@@ -522,15 +580,24 @@ export class SalesService {
     );
 
     for (const line of sale.items) {
+      // Only what this invoice actually relieved goes back. A delivery order
+      // raised before the invoice was posted relieved its own share, and that
+      // stock must stay out of the warehouse.
+      const relieved = Number(line.relievedQuantity ?? 0);
+      if (relieved <= 0) continue;
       await this.inventory.recordIn(tx, {
         itemId: line.itemId,
         locationId: sale.stockLocationId,
-        quantity: Number(line.quantity),
+        quantity: relieved,
         transactionType: 'SALE_ADJUST',
         referenceType: 'Sale',
         referenceId: sale.id,
         unitCost: costByItem.get(line.itemId) ?? 0,
         createdById: actorId,
+      });
+      await tx.saleItem.update({
+        where: { id: line.id },
+        data: { relievedQuantity: 0 },
       });
     }
     const vouchers = await tx.voucher.findMany({ where: { reference: sale.number } });

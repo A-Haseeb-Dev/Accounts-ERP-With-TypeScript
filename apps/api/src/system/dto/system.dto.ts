@@ -131,6 +131,18 @@ export class UpdateSettingsDto {
 
   @IsString()
   @IsOptional()
+  deliveryOrderPrefix?: string;
+
+  @IsString()
+  @IsOptional()
+  investorPrefix?: string;
+
+  @IsString()
+  @IsOptional()
+  investmentPrefix?: string;
+
+  @IsString()
+  @IsOptional()
   voucherPrefix?: string;
 
   @IsString()

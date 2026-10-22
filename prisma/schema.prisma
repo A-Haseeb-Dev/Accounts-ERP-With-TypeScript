@@ -62,6 +62,9 @@ model Organization {
   employeeSalaryComponents EmployeeSalaryComponent[]
   employeeLoans     EmployeeLoan[]
   employeeSalaryRecords EmployeeSalaryRecord[]
+  deliveryOrders    DeliveryOrder[]
+  investors         Investor[]
+  investments       Investment[]
 }
 
 // ============================================================
@@ -95,6 +98,8 @@ model User {
   createdSales      Sale[]         @relation("CreatedSales")
   createdTransfers  StockTransfer[] @relation("CreatedTransfers")
   createdQuotations Quotation[]    @relation("CreatedQuotations")
+  createdDeliveryOrders DeliveryOrder[] @relation("CreatedDeliveryOrders")
+  createdInvestments  Investment[]    @relation("CreatedInvestments")
 
   @@index([organizationId])
   @@index([status])
@@ -247,6 +252,11 @@ model MainAccount {
   pdcPaymentEntries PaymentEntry[] @relation("PaymentPdcAccount")
   salaryExpenseDepartments Department[] @relation("DepartmentSalaryExpenseAccount")
   payrollFundingRuns PayrollRun[] @relation("PayrollRunFundingAccount")
+  payrollSettlementRuns PayrollRun[] @relation("PayrollRunSettlementAccount")
+  investors      Investor[]      @relation("InvestorMainAccount")
+  investmentFundingRuns Investment[] @relation("InvestmentFundingAccount")
+  investmentCapitalRuns  Investment[] @relation("InvestmentCapitalAccount")
+  investmentReturnRuns   Investment[] @relation("InvestmentReturnExpenseAccount")
 
   @@unique([code, organizationId])
   @@index([organizationId])
@@ -334,6 +344,7 @@ model Item {
   salesReturnItems     SalesReturnItem[]
   quotationItems       QuotationItem[]
   transferItems        StockTransferItem[]
+  deliveryOrderItems   DeliveryOrderItem[]
 
   @@index([name])
   @@index([status])
@@ -360,6 +371,7 @@ model StockLocation {
   salesReturns SalesReturn[]
   transferFrom StockTransfer[] @relation("TransferFrom")
   transferTo   StockTransfer[] @relation("TransferTo")
+  deliveryOrders DeliveryOrder[]
 
   @@unique([code, organizationId])
 }
@@ -410,6 +422,7 @@ model Customer {
   sales        Sale[]
   salesReturns SalesReturn[]
   quotations   Quotation[]
+  deliveryOrders DeliveryOrder[]
 
   @@unique([code, organizationId])
   @@index([name])
@@ -652,6 +665,7 @@ model Sale {
   items            SaleItem[]
   salesReturns     SalesReturn[]
   quotation        Quotation?       @relation("QuotationConversion")
+  deliveryOrders   DeliveryOrder[]
 
   @@unique([number, organizationId])
   @@index([saleDate])
@@ -668,11 +682,96 @@ model SaleItem {
   discount Decimal  @default(0) @db.Decimal(18, 2)
   tax      Decimal  @default(0) @db.Decimal(18, 2)
   lineTotal Decimal @default(0) @db.Decimal(18, 2)
+  /// How much of this line has already left the warehouse on a delivery
+  /// order. The invoice is the financial document; the delivery order is the
+  /// physical one, so the two are tracked separately and a delivery order can
+  /// ship part of an invoice.
+  deliveredQuantity Decimal @default(0) @db.Decimal(18, 2)
+  /// How much of this line the invoice's own posting took out of the stock.
+  /// A delivery order raised before the invoice was posted relieves its own
+  /// share, so the invoice relieves only the rest; this is the invoice's share
+  /// and it is what an edit or a deletion puts back.
+  relievedQuantity  Decimal @default(0) @db.Decimal(18, 2)
 
   sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
   item Item @relation(fields: [itemId], references: [id])
+  deliveryOrderItems DeliveryOrderItem[]
 
   @@index([itemId])
+}
+
+/// A delivery order (DO) is the physical dispatch of goods to a customer.
+/// The sales invoice is the financial document; the DO is the warehouse
+/// document. They are tracked separately so an invoice can be delivered in
+/// parts, and so the stock ledger records when the goods actually left.
+model DeliveryOrder {
+  id              String    @id @default(cuid())
+  number          String    @unique
+  deliveryDate    DateTime  @default(now())
+  /// The invoice this dispatch settles, when it is raised against one.
+  saleId          String?
+  customerId      String
+  stockLocationId String
+  reference       String?
+  /// Where the goods are being taken - often not the customer's address.
+  deliveryTo      String?
+  vehicleNo       String?
+  driverName      String?
+  driverPhone     String?
+  note            String?
+  subtotal        Decimal   @default(0) @db.Decimal(18, 2)
+  grandTotal      Decimal   @default(0) @db.Decimal(18, 2)
+  status          String    @default("draft") // draft | pending | posted | cancelled
+  submittedById   String?
+  submittedAt     DateTime?
+  rejectedById    String?
+  rejectedAt      DateTime?
+  rejectReason    String?
+  postedById      String?
+  postedAt        DateTime?
+  cancelledAt     DateTime?
+  cancelReason    String?
+  /// Whether this order actually took the goods out of the warehouse. A
+  /// delivery order raised against an already-posted invoice does not: that
+  /// invoice's posting already relieved the same stock, and relieving it a
+  /// second time would leave the inventory short by the dispatched quantity.
+  stockRelieved   Boolean   @default(false)
+  createdById     String?
+  organizationId  String    @default("default-org")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization  Organization?   @relation(fields: [organizationId], references: [id])
+  sale          Sale?           @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  customer      Customer        @relation(fields: [customerId], references: [id])
+  stockLocation StockLocation   @relation(fields: [stockLocationId], references: [id])
+  createdBy     User?           @relation("CreatedDeliveryOrders", fields: [createdById], references: [id], onDelete: SetNull)
+  items         DeliveryOrderItem[]
+
+  @@unique([number, organizationId])
+  @@index([deliveryDate])
+  @@index([status])
+  @@index([saleId])
+  @@index([customerId])
+}
+
+model DeliveryOrderItem {
+  id              String   @id @default(cuid())
+  deliveryOrderId String
+  itemId          String
+  quantity        Decimal  @default(0) @db.Decimal(18, 2)
+  unitPrice       Decimal  @default(0) @db.Decimal(18, 2)
+  lineTotal       Decimal  @default(0) @db.Decimal(18, 2)
+  /// The invoice line this dispatch settles, so a part-delivered invoice can
+  /// be tracked line by line rather than item by item.
+  saleItemId      String?
+
+  deliveryOrder DeliveryOrder @relation(fields: [deliveryOrderId], references: [id], onDelete: Cascade)
+  item          Item          @relation(fields: [itemId], references: [id])
+  saleItem      SaleItem?     @relation(fields: [saleItemId], references: [id], onDelete: SetNull)
+
+  @@index([itemId])
+  @@index([saleItemId])
 }
 
 /// A price offer sent to a customer. It never touches stock or the general
@@ -1233,6 +1332,10 @@ model PayrollRun {
   /// Account the run's salaries are funded from. The run can only be generated
   /// (and posted) while this account holds enough to cover the total net pay.
   fundingAccountId String?
+  /// The account the money actually left when the run was paid out. It is the
+  /// funding account unless the operator paid through a different bank, and it
+  /// is the account whose balance the payment reduced.
+  settlementAccountId String?
   paidAt         DateTime?
   note           String?
   postedById     String?
@@ -1245,6 +1348,7 @@ model PayrollRun {
 
   organization   Organization? @relation(fields: [organizationId], references: [id])
   fundingAccount MainAccount?  @relation("PayrollRunFundingAccount", fields: [fundingAccountId], references: [id], onDelete: SetNull)
+  settlementAccount MainAccount? @relation("PayrollRunSettlementAccount", fields: [settlementAccountId], references: [id], onDelete: SetNull)
   items          PayrollItem[]
 
   @@unique([number, organizationId])
@@ -1275,4 +1379,114 @@ model PayrollItem {
 
   @@unique([payrollRunId, employeeId])
   @@index([employeeId])
+}
+
+// ============================================================
+// INVESTMENTS
+// ============================================================
+
+/// Someone who lends money to the business. Their capital is a liability of
+/// the business, not income, so it is booked against an account rather than
+/// being mixed into revenue.
+model Investor {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  name           String
+  phone          String?
+  email          String?
+  cnic           String?
+  address        String?
+  /// The ledger account that carries this investor's capital, so the balance
+  /// owed to each investor is a real account balance and not a number that
+  /// has to be summed from the investment rows.
+  mainAccountId  String?
+  openingBalance Decimal  @default(0) @db.Decimal(18, 2)
+  note           String?
+  status         String   @default("active")
+  organizationId String   @default("default-org")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  mainAccount  MainAccount?  @relation("InvestorMainAccount", fields: [mainAccountId], references: [id], onDelete: SetNull)
+  investments  Investment[]
+
+  @@unique([code, organizationId])
+  @@index([name])
+}
+
+/// A single money-lending arrangement: a principal that comes in, a schedule
+/// of returns that goes out, and the principal that comes back at maturity.
+model Investment {
+  id              String   @id @default(cuid())
+  number          String   @unique
+  investorId      String
+  principal       Decimal  @default(0) @db.Decimal(18, 2)
+  startDate       DateTime @default(now())
+  termMonths      Int      @default(6)
+  /// FIXED pays a set amount every month; PROFIT_SHARE pays a share of the
+  /// profit the business declares for the period.
+  returnType      String   @default("FIXED")
+  /// The fixed monthly return, used when returnType is FIXED.
+  monthlyReturn   Decimal  @default(0) @db.Decimal(18, 2)
+  /// The share of profit, used when returnType is PROFIT_SHARE.
+  profitSharePercent Decimal @default(0) @db.Decimal(9, 4)
+  totalReturn     Decimal  @default(0) @db.Decimal(18, 2)
+  /// planned | active | matured | closed | cancelled
+  status          String   @default("planned")
+  /// The cash/bank account the money is received into and paid out of.
+  fundingAccountId String?
+  /// The liability account the principal is credited to while it is held.
+  capitalAccountId  String?
+  /// The expense account monthly returns are charged to.
+  returnExpenseAccountId String?
+  receivedAt      DateTime?
+  receivedVoucherId String?
+  maturedAt       DateTime?
+  closedAt        DateTime?
+  closedVoucherId String?
+  note            String?
+  createdById     String?
+  organizationId  String   @default("default-org")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization      Organization? @relation(fields: [organizationId], references: [id])
+  investor          Investor      @relation(fields: [investorId], references: [id])
+  fundingAccount    MainAccount?  @relation("InvestmentFundingAccount", fields: [fundingAccountId], references: [id], onDelete: SetNull)
+  capitalAccount    MainAccount?  @relation("InvestmentCapitalAccount", fields: [capitalAccountId], references: [id], onDelete: SetNull)
+  returnExpenseAccount MainAccount? @relation("InvestmentReturnExpenseAccount", fields: [returnExpenseAccountId], references: [id], onDelete: SetNull)
+  createdBy         User?         @relation("CreatedInvestments", fields: [createdById], references: [id], onDelete: SetNull)
+  installments      InvestmentInstallment[]
+
+  @@unique([number, organizationId])
+  @@index([investorId])
+  @@index([status])
+}
+
+/// One scheduled payout on an investment. Monthly returns and the final
+/// principal return are both installments, so both flow through the same
+/// payment path and both show on the investor's statement.
+model InvestmentInstallment {
+  id             String    @id @default(cuid())
+  investmentId   String
+  sequence       Int       @default(1)
+  /// RETURN is a monthly profit share; PRINCIPAL is the money coming back.
+  kind           String    @default("RETURN")
+  dueDate        DateTime
+  amount         Decimal   @default(0) @db.Decimal(18, 2)
+  /// pending | paid | skipped
+  status         String    @default("pending")
+  paidAt         DateTime?
+  paidVoucherId  String?
+  note           String?
+  organizationId String    @default("default-org")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  investment Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+
+  @@unique([investmentId, sequence])
+  @@index([dueDate])
+  @@index([status])
 }

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { ApiException } from '../../common/exceptions/api.exception';
-import { AttendanceBulkDto, UpsertAttendanceDto } from '../dto/hr.dto';
+import { AttendanceBulkDto, DeleteAttendanceDayDto, UpdateAttendanceDto, UpsertAttendanceDto } from '../dto/hr.dto';
 
 @Injectable()
 export class AttendanceService {
@@ -124,6 +124,50 @@ export class AttendanceService {
       this.prisma.hrAttendance.count({ where }),
     ]);
     return { items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+  }
+
+  /**
+   * Edits one attendance record in place.
+   *
+   * Correcting a single mistyped cell used to mean re-saving the whole day
+   * through the bulk endpoint, which re-writes every row and can quietly
+   * overwrite what somebody else had already corrected.
+   */
+  async update(id: string, dto: UpdateAttendanceDto, actorId?: string) {
+    const item = await this.prisma.hrAttendance.findUnique({ where: { id }, include: { employee: true } });
+    if (!item) throw ApiException.notFound('Attendance record');
+
+    const updated = await this.prisma.hrAttendance.update({
+      where: { id },
+      data: {
+        status: dto.status ?? item.status,
+        overtimeHours: dto.overtimeHours ?? Number(item.overtimeHours),
+        note: dto.note !== undefined ? dto.note : item.note,
+      },
+      include: { employee: true },
+    });
+
+    this.audit.record({
+      userId: actorId, action: 'UPDATE', module: 'HR', entity: 'Attendance', entityId: id,
+      message: `Attendance updated for ${item.employee.fullName} on ${item.date.toISOString().slice(0, 10)} (${updated.status})`,
+    });
+    return updated;
+  }
+
+  /**
+   * Clears one whole day of attendance.
+   *
+   * Used when a day was recorded in error and the sheet has to start again;
+   * only that day's rows are removed, every other day is untouched.
+   */
+  async removeDay(dto: DeleteAttendanceDayDto, actorId?: string) {
+    const date = AttendanceService.dayKey(dto.date);
+    const { count } = await this.prisma.hrAttendance.deleteMany({ where: { date } });
+    this.audit.record({
+      userId: actorId, action: 'DELETE', module: 'HR', entity: 'Attendance',
+      message: `Attendance cleared for ${date.toISOString().slice(0, 10)} (${count} record${count === 1 ? '' : 's'})`,
+    });
+    return { date: date.toISOString().slice(0, 10), deleted: count };
   }
 
   async remove(id: string, actorId?: string) {

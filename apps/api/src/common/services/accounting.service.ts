@@ -221,6 +221,64 @@ export class AccountingService {
   }
 
   /**
+   * Balances of several accounts at once.
+   *
+   * The same figure `accountBalance` returns for each account, but for a whole
+   * set in a fixed number of queries instead of two per account - which
+   * matters when a page offers a list of accounts and wants to show what each
+   * one currently holds.
+   */
+  async accountBalances(mainAccountIds: string[]): Promise<Map<string, number>> {
+    const ids = [...new Set(mainAccountIds.filter(Boolean))];
+    const balances = new Map<string, number>();
+    if (!ids.length) return balances;
+
+    const accounts = await this.prisma.mainAccount.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, openingBalance: true, openingBalanceType: true },
+    });
+
+    const [movements, openings] = await Promise.all([
+      this.prisma.voucherEntry.groupBy({
+        by: ['mainAccountId'],
+        where: {
+          mainAccountId: { in: ids },
+          voucher: { status: 'posted', NOT: { reference: { startsWith: 'OB:' } } },
+        },
+        _sum: { debit: true, credit: true },
+      }),
+      this.prisma.voucherEntry.groupBy({
+        by: ['mainAccountId'],
+        where: {
+          mainAccountId: { in: ids },
+          voucher: { status: 'posted', reference: { startsWith: 'OB:' } },
+        },
+        _sum: { debit: true, credit: true },
+      }),
+    ]);
+
+    const movementBy = new Map(movements.map((m) => [m.mainAccountId, m]));
+    const openingBy = new Map(openings.map((m) => [m.mainAccountId, m]));
+
+    for (const account of accounts) {
+      const opening = openingBy.get(account.id);
+      const fromOpening = round2(Number(opening?._sum.debit ?? 0) - Number(opening?._sum.credit ?? 0));
+      const base =
+        fromOpening !== 0
+          ? fromOpening
+          : account.openingBalanceType === 'CR'
+            ? -Number(account.openingBalance ?? 0)
+            : Number(account.openingBalance ?? 0);
+      const movement = movementBy.get(account.id);
+      balances.set(
+        account.id,
+        round2(base + Number(movement?._sum.debit ?? 0) - Number(movement?._sum.credit ?? 0)),
+      );
+    }
+    return balances;
+  }
+
+  /**
    * Creates (or updates) the posted "Opening Balance" voucher for an account.
    *
    * The voucher is a single balanced JOURNAL entry carrying `reference

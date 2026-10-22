@@ -2,7 +2,8 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestj
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SalesService } from './sales.service';
 import { SalesReturnsService } from './sales-returns.service';
-import { CreateSaleDto, CreateSalesReturnDto } from './dto/sales.dto';
+import { DeliveryOrdersService } from './delivery-orders.service';
+import { CreateSaleDto, CreateSalesReturnDto, CreateDeliveryOrderDto } from './dto/sales.dto';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
@@ -48,6 +49,52 @@ export class SalesController {
   remove(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.remove(id, actor?.id); }
 
   @Delete(':id/cancel') @Permissions('sales.invoice.cancel') @ApiOperation({ summary: 'Cancel a draft invoice' })
+  cancel(@Param('id') id: string, @Body() body: { reason: string }, @CurrentUser() actor: any) { return this.service.cancel(id, body.reason ?? 'Cancelled', actor?.id); }
+}
+
+@ApiTags('Sales Delivery Orders')
+@ApiBearerAuth()
+@Controller('sales/delivery-orders')
+export class DeliveryOrdersController {
+  constructor(private readonly service: DeliveryOrdersService) {}
+
+  @Post() @Permissions('sales.delivery-order.create') @ApiOperation({ summary: 'Create a delivery order (draft)' })
+  create(@Body() dto: CreateDeliveryOrderDto, @CurrentUser() actor: any) { return this.service.create(dto, actor?.id); }
+
+  @Get() @Permissions('sales.delivery-order.view') @ApiOperation({ summary: 'List delivery orders' })
+  findAll(
+    @Query('page') page = '1',
+    @Query('pageSize') pageSize = '25',
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('customerId') customerId?: string,
+    @Query('saleId') saleId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) { return this.service.findAll({ page: Number(page), pageSize: Number(pageSize), search, status, customerId, saleId, from, to }); }
+
+  @Get('next-number') @Permissions('sales.delivery-order.view') @ApiOperation({ summary: 'Preview the next auto-generated delivery order number' })
+  async nextNumber() { return { number: await this.service.previewNumber() }; }
+
+  @Get(':id') @Permissions('sales.delivery-order.view') @ApiOperation({ summary: 'Get a delivery order' })
+  findOne(@Param('id') id: string) { return this.service.findOne(id); }
+
+  @Post(':id/post') @Permissions('sales.delivery-order.post') @ApiOperation({ summary: 'Post a delivery order (stock out + dispatch recorded)' })
+  post(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.post(id, actor?.id); }
+
+  @Post(':id/submit') @Permissions('sales.delivery-order.submit') @ApiOperation({ summary: 'Submit a draft delivery order for approval' })
+  submit(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.submit(id, actor?.id); }
+
+  @Post(':id/reject') @Permissions('sales.delivery-order.reject') @ApiOperation({ summary: 'Reject a submitted delivery order back to draft' })
+  reject(@Param('id') id: string, @Body() body: { reason: string }, @CurrentUser() actor: any) { return this.service.reject(id, body.reason ?? 'Rejected', actor?.id); }
+
+  @Patch(':id') @Permissions('sales.delivery-order.update') @ApiOperation({ summary: 'Update a draft delivery order' })
+  update(@Param('id') id: string, @Body() dto: CreateDeliveryOrderDto, @CurrentUser() actor: any) { return this.service.update(id, dto, actor?.id); }
+
+  @Delete(':id') @Permissions('sales.delivery-order.delete') @ApiOperation({ summary: 'Delete a delivery order' })
+  remove(@Param('id') id: string, @CurrentUser() actor: any) { return this.service.remove(id, actor?.id); }
+
+  @Delete(':id/cancel') @Permissions('sales.delivery-order.cancel') @ApiOperation({ summary: 'Cancel a delivery order' })
   cancel(@Param('id') id: string, @Body() body: { reason: string }, @CurrentUser() actor: any) { return this.service.cancel(id, body.reason ?? 'Cancelled', actor?.id); }
 }
 

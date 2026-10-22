@@ -14,6 +14,9 @@ const SETTING_KEYS = [
   'numbering.salesReturnPrefix',
   'numbering.purchaseReturnPrefix',
   'numbering.stockTransferPrefix',
+  'numbering.deliveryOrderPrefix',
+  'numbering.investorPrefix',
+  'numbering.investmentPrefix',
   'numbering.voucherPrefix',
   'numbering.template',
   'numbering.padding',
@@ -67,6 +70,8 @@ const SETTING_KEYS = [
   'accounting.salary_expense_account',
   'accounting.commission_expense_account',
   'accounting.payroll_funding_account',
+  'accounting.investment_capital_account',
+  'accounting.investment_return_expense_account',
 ];
 
 /**
@@ -194,6 +199,9 @@ export class SystemService {
     if (dto.salesReturnPrefix !== undefined) map['numbering.salesReturnPrefix'] = dto.salesReturnPrefix;
     if (dto.purchaseReturnPrefix !== undefined) map['numbering.purchaseReturnPrefix'] = dto.purchaseReturnPrefix;
     if (dto.stockTransferPrefix !== undefined) map['numbering.stockTransferPrefix'] = dto.stockTransferPrefix;
+    if (dto.deliveryOrderPrefix !== undefined) map['numbering.deliveryOrderPrefix'] = dto.deliveryOrderPrefix;
+    if (dto.investorPrefix !== undefined) map['numbering.investorPrefix'] = dto.investorPrefix;
+    if (dto.investmentPrefix !== undefined) map['numbering.investmentPrefix'] = dto.investmentPrefix;
     if (dto.voucherPrefix !== undefined) map['numbering.voucherPrefix'] = dto.voucherPrefix;
     if (dto.negativeInventory !== undefined) map['inventory.negative_stock'] = dto.negativeInventory;
     if (dto.defaultStockLocationId !== undefined) map['defaults.stockLocationId'] = dto.defaultStockLocationId;

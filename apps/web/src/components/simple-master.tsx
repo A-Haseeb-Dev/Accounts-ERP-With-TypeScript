@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
-import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Power, PowerOff, Search, Trash2 } from 'lucide-react';
 import { apiFetch, qs } from '@/lib/api';
 import { parseDeleteGuard } from '@/lib/delete-guard';
 import { useAuth } from '@/context/auth-context';
@@ -47,6 +47,17 @@ export interface SimpleMasterConfig<TRecord extends { id: string }> {
   fields: FieldDef[];
   allowStatusFilter?: boolean;
   /**
+   * When the record is never really deleted but deactivated, the delete
+   * button becomes a deactivate action, and a record that is already
+   * inactive can be brought back. The history stays either way.
+   */
+  deactivate?: {
+    deactivatePath: string;
+    activatePath?: string;
+    label?: string;
+    activateLabel?: string;
+  };
+  /**
    * Fields the auto code depends on, sent as query params to the `next-code`
    * endpoint — an account type for a head, a parent id for the levels below it.
    * Until they are all chosen there is no code to show.
@@ -86,6 +97,7 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
   const [editing, setEditing] = useState<TRecord | null>(null);
   const [form, setForm] = useState<Partial<TRecord> & Record<string, unknown>>({});
   const [deleteTarget, setDeleteTarget] = useState<TRecord | null>(null);
+  const [statusTarget, setStatusTarget] = useState<{ record: TRecord; path: string; active: boolean } | null>(null);
   const [delWarn, setDelWarn] = useState<{ target: TRecord; forceable: boolean; labels: string[] } | null>(null);
   const [formError, setFormError] = useState('');
 
@@ -166,6 +178,24 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
     },
   });
 
+  const statusMutation = useMutation({
+    mutationFn: ({ id, path }: { id: string; path: string }) =>
+      apiFetch(`${config.apiPath}/${id}/${path}`, { method: 'POST' }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: [config.apiPath] });
+      setStatusTarget(null);
+      toast.success(
+        variables.path === config.deactivate?.deactivatePath
+          ? `${config.singular} ${config.deactivate?.label?.toLowerCase() ?? 'deactivated'}`
+          : `${config.singular} ${config.deactivate?.activateLabel?.toLowerCase() ?? 'reactivated'}`,
+      );
+    },
+    onError: (e: Error) => {
+      setStatusTarget(null);
+      toast.error(e.message || 'Update failed');
+    },
+  });
+
   const openCreate = () => {
     setEditing(null);
     setForm({});
@@ -220,21 +250,50 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
                 <Pencil className="h-4 w-4" />
               </button>
             )}
-            {canDelete && (
+            {canDelete && !config.deactivate && (
               <button onClick={() => setDeleteTarget(r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600" title="Delete">
                 <Trash2 className="h-4 w-4" />
               </button>
             )}
+            {config.deactivate && (() => {
+              const active = String((r as Record<string, unknown>).status ?? 'active') === 'active';
+              const path = active
+                ? config.deactivate.deactivatePath
+                : config.deactivate.activatePath;
+              if (!path) return null;
+              // Deactivating ends the employment, so it needs the delete
+              // permission; bringing the person back only updates them.
+              if (active ? !canDelete : !canUpdate) return null;
+              const label = active
+                ? config.deactivate.label ?? 'Deactivate'
+                : config.deactivate.activateLabel ?? 'Reactivate';
+              return (
+                <button
+                  onClick={() => setStatusTarget({ record: r, path, active })}
+                  className="rounded-lg p-1.5 text-slate-500 hover:bg-amber-50 hover:text-amber-700"
+                  title={label}
+                >
+                  {active ? <Power className="h-4 w-4" /> : <PowerOff className="h-4 w-4" />}
+                </button>
+              );
+            })()}
           </div>
         ),
       });
     }
     return base;
-  }, [config.columns, config.allowStatusFilter, canUpdate, canDelete, openEdit]);
+  }, [config.columns, config.allowStatusFilter, config.deactivate, canUpdate, canDelete, openEdit]);
 
   const optionsFor = (field: FieldDef) => field.options ?? [];
   const nameOf = (r: TRecord | null) =>
-    r ? String((r as Record<string, unknown>).name ?? (r as Record<string, unknown>).code ?? '') : '';
+    r
+      ? String(
+          (r as Record<string, unknown>).name ??
+            (r as Record<string, unknown>).fullName ??
+            (r as Record<string, unknown>).code ??
+            '',
+        )
+      : '';
   const targetLabel = nameOf(deleteTarget);
   const warnLabel = nameOf(delWarn?.target ?? null);
 
@@ -377,6 +436,27 @@ export function SimpleMaster<TRecord extends { id: string }>({ config }: { confi
         loading={deleteMutation.isPending}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => deleteTarget?.id && deleteMutation.mutate(deleteTarget.id)}
+      />
+
+      <ConfirmDialog
+        open={!!statusTarget}
+        danger={statusTarget?.active}
+        title={
+          statusTarget?.active
+            ? `${config.deactivate?.label ?? 'Deactivate'} ${config.singular}`
+            : `${config.deactivate?.activateLabel ?? 'Reactivate'} ${config.singular}`
+        }
+        message={
+          statusTarget?.active
+            ? `"${statusTarget?.record ? nameOf(statusTarget.record) : ''}" will be marked inactive. Past records stay as they are, and the ${config.singular.toLowerCase()} can be reactivated later.`
+            : `"${statusTarget?.record ? nameOf(statusTarget.record) : ''}" will be marked active again.`
+        }
+        confirmLabel={statusTarget?.active ? config.deactivate?.label ?? 'Deactivate' : config.deactivate?.activateLabel ?? 'Reactivate'}
+        loading={statusMutation.isPending}
+        onCancel={() => setStatusTarget(null)}
+        onConfirm={() =>
+          statusTarget && statusMutation.mutate({ id: statusTarget.record.id, path: statusTarget.path })
+        }
       />
 
       <DeleteWarnDialog

@@ -57,6 +57,12 @@ export default function EmployeesPage() {
         description: 'Your workforce — the people whose salaries payroll is computed from.',
         singular: 'Employee',
         permission: 'hr.employees.view',
+        deactivate: {
+          deactivatePath: 'deactivate',
+          activatePath: 'activate',
+          label: 'Deactivate',
+          activateLabel: 'Reactivate',
+        },
         columns,
         fields: [
           { name: 'code', label: 'Employee Code', auto: true, placeholder: 'e.g. EMP-001' },

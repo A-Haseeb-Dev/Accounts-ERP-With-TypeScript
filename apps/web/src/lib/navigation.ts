@@ -74,7 +74,14 @@ export const NAV_ITEMS: NavItem[] = [
       { label: 'Sales Invoices', href: '/sales/invoices', icon: ShoppingCart, permission: 'sales.invoice.view' },
       { label: 'Quotations', href: '/sales/quotations', icon: FileText, permission: 'sales.quotation.view' },
       { label: 'Sales Returns', href: '/sales/returns', icon: Receipt, permission: 'sales.return.view' },
+      { label: 'Delivery Orders', href: '/sales/delivery-orders', icon: Truck, permission: 'sales.delivery-order.view' },
     ],
+  },
+  {
+    label: 'Investments',
+    href: '/investments',
+    icon: Percent,
+    permission: 'investments.view',
   },
   {
     label: 'Inventory',
